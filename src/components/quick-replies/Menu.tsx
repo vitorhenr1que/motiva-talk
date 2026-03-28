@@ -39,7 +39,7 @@ export const QuickReplyMenu = ({ onSelect, onClose, search }: QuickReplyMenuProp
         const resp = await fetch(url);
         if (resp.ok) {
           const data = await resp.json();
-          setReplies(data);
+          setReplies(data.data || []);
         }
       } catch (e) {
         console.error('Quick replies fetch failed');

@@ -49,9 +49,11 @@ export interface Conversation {
   assignedTo?: string;
   status: ConversationStatus;
   createdAt: string;
+  lastMessageAt?: string;
   contact: Contact;
   channel: Channel;
   tags?: ConversationTag[];
+  messages?: Message[];
 }
 
 export interface Message {

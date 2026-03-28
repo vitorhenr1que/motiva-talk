@@ -9,36 +9,32 @@ export const useRealtimeInbox = () => {
     addMessage, 
     selectedChannelId, 
     setConversations, 
-    conversations,
     loadingConversations,
     setLoadingConversations
   } = useChatStore();
 
-  /**
-   * REFRESH CONVERSATIONS:
-   * Re-fetch the conversation list when there's an update in the channel.
-   * We do a re-fetch because Prisma might have changed multiple related fields (includes, tags, etc)
-   * which are hard to normalize from the raw Supabase payload.
-   */
   const refreshConversations = async (channelId: string) => {
     try {
+      console.log(`[REALTIME_SYNC] Sincronizando lista de conversas para o canal: ${channelId}`);
       const res = await fetch(`/api/conversations?channelId=${channelId}`);
       if (res.ok) {
         const data = await res.json();
         setConversations(data.data || []);
+        console.log(`[REALTIME_SYNC] Lista de conversas atualizada com ${data.data?.length} registros.`);
       }
     } catch (e) {
-      console.error('Realtime: Error refreshing conversations');
+      console.error('[REALTIME_SYNC] Erro ao atualizar lista de conversas:', e);
     }
   };
 
   /**
    * SUBSCRIPTION: CONVERSATIONS
-   * Listen for status or assignment changes in the selected channel.
    */
   useEffect(() => {
     if (!selectedChannelId) return;
 
+    console.log(`[REALTIME_SUB] Iniciando escuta de Conversas para canal: ${selectedChannelId}`);
+    
     const channel = supabase
       .channel(`public:Conversation:channelId=eq.${selectedChannelId}`)
       .on(
@@ -49,23 +45,28 @@ export const useRealtimeInbox = () => {
           table: 'Conversation',
           filter: `channelId=eq.${selectedChannelId}`
         },
-        () => {
+        (payload) => {
+          console.log(`[REALTIME_EVENT] Mudança na tabela Conversation detectada (${payload.eventType})`, payload.new);
           refreshConversations(selectedChannelId);
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`[REALTIME_STATUS] Conversas Subscription Status: ${status}`);
+      });
 
     return () => {
+      console.log(`[REALTIME_SUB] Encerrando escuta de Conversas: ${selectedChannelId}`);
       supabase.removeChannel(channel);
     };
   }, [selectedChannelId]);
 
   /**
    * SUBSCRIPTION: MESSAGES
-   * Listen for new messages in the ACTIVE conversation.
    */
   useEffect(() => {
     if (!activeConversation) return;
+
+    console.log(`[REALTIME_SUB] Iniciando escuta de Mensagens para conversa: ${activeConversation.id}`);
 
     const channel = supabase
       .channel(`public:Message:conversationId=eq.${activeConversation.id}`)
@@ -79,19 +80,24 @@ export const useRealtimeInbox = () => {
         },
         (payload) => {
           const newMessage = payload.new as Message;
+          console.log(`[REALTIME_EVENT] Nova mensagem detectada!`, newMessage.content.substring(0, 20) + '...');
           
-          // Only add if it's NOT from the AGENT (since AGENT messages are optimisticly added locally)
-          // Wait, better to check by ID to avoid duplicates if optimistic UI is used
-          addMessage(newMessage); // The store logic should handle deduplication if needed
+          // Adicionar no chat se for a conversa atual
+          addMessage(newMessage); 
           
-          // Also refresh conversation list to show the "last message" correctly
-          if (selectedChannelId) refreshConversations(selectedChannelId);
+          // E também disparar refresh da lista lateral (sidebar) para atualizar o preview
+          if (selectedChannelId) {
+            refreshConversations(selectedChannelId);
+          }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`[REALTIME_STATUS] Mensagens Subscription Status: ${status}`);
+      });
 
     return () => {
+      console.log(`[REALTIME_SUB] Encerrando escuta de Mensagens: ${activeConversation.id}`);
       supabase.removeChannel(channel);
     };
-  }, [activeConversation, selectedChannelId]);
+  }, [activeConversation?.id, selectedChannelId, addMessage]);
 };

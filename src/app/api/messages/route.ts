@@ -11,11 +11,19 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const conversationId = searchParams.get('conversationId')
     
+    console.log(`[MSG_DEBUG] Buscando mensagens para conversa: ${conversationId}`);
+
     if (!conversationId) {
       throw new AppError('conversationId é obrigatório', 400, 'VALIDATION_ERROR');
     }
 
     const messages = await MessageService.listByConversation(conversationId)
+    
+    console.log(`[MSG_DEBUG] Encontradas ${messages?.length || 0} mensagens.`);
+    if (messages && messages.length > 0) {
+      console.log(`[MSG_DEBUG] IDs das mensagens encontradas:`, messages.map(m => m.id));
+    }
+
     return NextResponse.json({ success: true, data: messages })
   } catch (error) {
     return handleApiError(error, req, { route: ROUTE })

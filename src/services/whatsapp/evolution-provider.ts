@@ -226,6 +226,7 @@ export class EvolutionProvider implements WhatsAppProvider {
       await evolutionApi.deleteInstance(instanceName);
     } catch (e: any) {
       console.error(`[EVO_PROVIDER] Falha em deleteSession (${instanceName}): ${e.message}`);
+      throw e;
     }
   }
 
@@ -246,20 +247,81 @@ export class EvolutionProvider implements WhatsAppProvider {
   }
 
   /**
+   * Normaliza o payload bruto da Evolution API para um formato padronizado interno.
+   * Suporta Evolution v1, v2 e estruturas aninhadas do Baileys.
+   */
+  private normalizeIncomingEvolutionMessage(payload: any) {
+    const data = payload.data || payload;
+    const instanceName = payload.instance || data.instanceName || payload.instanceName || '';
+    
+    // Suporte para array de mensagens (Baileys padrão na Evolution) ou objeto único (v1)
+    const rawMessage = data.messages?.[0] || data;
+    const key = rawMessage.key || data.key;
+    const message = rawMessage.message || data.message;
+
+    if (!key || !message) {
+      console.warn('[EVO_PARSER] Estrutura de mensagem incompleta ou não reconhecida:', JSON.stringify(payload).substring(0, 200));
+      return null;
+    }
+
+    // 1. Extração de Identificadores
+    const externalMessageId = key.id;
+    const fromMe = !!key.fromMe;
+    
+    // 2. Extração de Remetente
+    const jid = key.remoteJid || key.participant || '';
+    const senderPhone = jid.split('@')[0];
+    const senderName = rawMessage.pushName || data.pushName || 'Contato WhatsApp';
+
+    // 3. Extração de Conteúdo (Extremamente robusto para Baileys)
+    // O conteúdo pode estar em 'conversation', 'extendedTextMessage', 'imageMessage', etc.
+    // Às vezes o Baileys aninha mais um nível: message.message.conversation
+    const inner = message.message || message;
+    
+    const content = 
+      inner.conversation || 
+      inner.extendedTextMessage?.text || 
+      inner.imageMessage?.caption || 
+      inner.videoMessage?.caption || 
+      inner.audioMessage?.caption ||
+      inner.documentMessage?.caption ||
+      '';
+
+    // 4. Tipo da Mensagem
+    let type: MessageType = 'TEXT';
+    if (inner.imageMessage) type = 'IMAGE';
+    if (inner.audioMessage) type = 'AUDIO';
+    if (inner.documentMessage) type = 'DOCUMENT';
+
+    // 5. Timestamp
+    const timestamp = (rawMessage.messageTimestamp || data.messageTimestamp || Date.now()) * 1000;
+
+    const result = {
+      instanceName,
+      externalMessageId,
+      senderPhone,
+      senderName,
+      content,
+      type,
+      timestamp,
+      fromMe,
+      raw: payload
+    };
+
+    console.log(`[EVO_PARSER] Normalizado: From[${senderPhone}] Content[${content.substring(0, 15)}...] FromMe[${fromMe}]`);
+    return result;
+  }
+
+  /**
    * Parses various Evolution API events into our generic WebhookEvent format.
-   * Handles both v1 and potentially v2 payload structures.
    */
   async parseIncomingWebhook(payload: any): Promise<WebhookEvent> {
-    // Common Evolution v1 pattern: { event: "...", data: { ... }, instance: "..." }
     const eventType = payload.event || payload.type;
     const data = payload.data || payload; 
-    const instanceName = payload.instance || payload.instanceName;
-    
-    // Use instance name directly as it is now just our channel ID 
-    const channelId = instanceName || '';
+    const instanceName = payload.instance || data.instanceName || payload.instanceName || '';
     
     const base: WebhookEvent = {
-      channelId: channelId,
+      channelId: instanceName, // Usamos o nome da instância como o ID do canal para busca posterior
       timestamp: Date.now(),
       type: 'STATUS',
       metadata: data
@@ -268,25 +330,21 @@ export class EvolutionProvider implements WhatsAppProvider {
     switch (eventType) {
       case 'MESSAGES_UPSERT':
       case 'messages.upsert': {
-        const message = data.message || data.messages?.[0];
-        if (!message) return base;
-
-        const key = message.key || data.key;
-        if (key?.fromMe) {
-          // You could return an AGENT message type here if tracking outgoing is needed
-        }
+        const normalized = this.normalizeIncomingEvolutionMessage(payload);
+        if (!normalized) return base;
 
         return {
           ...base,
           type: 'MESSAGE',
-          senderPhone: (key.remoteJid || key.participant || '').split('@')[0],
-          senderName: data.pushName || 'Contato WhatsApp',
-          content: message.conversation || 
-                   message.extendedTextMessage?.text || 
-                   message.message?.conversation || 
-                   '',
-          messageType: 'TEXT',
-          metadata: { ...data, externalId: key.id }
+          senderPhone: normalized.senderPhone,
+          senderName: normalized.senderName,
+          content: normalized.content,
+          messageType: normalized.type,
+          metadata: { 
+            ...normalized.raw, 
+            externalId: normalized.externalMessageId,
+            fromMe: normalized.fromMe 
+          }
         };
       }
 
@@ -302,18 +360,20 @@ export class EvolutionProvider implements WhatsAppProvider {
 
       case 'QRCODE_UPDATED':
       case 'qrcode.updated': {
+        const qrcode = data.qrcode?.base64 || data.base64 || data.code;
         return {
           ...base,
           type: 'STATUS',
-          metadata: { qrcode: data.qrcode?.base64 || data.base64 }
+          metadata: { qrcode }
         };
       }
 
       default:
-        console.log(`Unhandled Evolution webhook event: ${eventType}`);
+        console.log(`[EVO_DEBUG] Evento ignorado: ${eventType}`);
         return base;
     }
   }
+
   async setWebhook(channel: Channel, url: string, events: string[]): Promise<void> {
     const instanceName = this.getInstanceName(channel);
     console.log(`[EVO_PROVIDER] Configurando webhook para: ${instanceName} -> ${url}`);

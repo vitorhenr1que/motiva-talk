@@ -15,7 +15,11 @@ export class WebhookIngestionService {
     }
 
     try {
-      // 1. Identify Channel (handles UUID dash differences)
+      const { ContactRepository } = await import('@/repositories/contactRepository');
+      const { ConversationRepository } = await import('@/repositories/conversationRepository');
+      const { generateId } = await import('@/lib/utils');
+
+      // 1. Identificar canal (handles UUID dash differences)
       const { data: channels } = await supabaseAdmin
         .from('Channel')
         .select('*')
@@ -27,88 +31,77 @@ export class WebhookIngestionService {
       );
 
       if (!channel) {
-        console.error(`Channel with ID ${channelId} not found for message ingestion.`);
+        console.error(`[INGEST] ERRO: Canal ${channelId} não encontrado no banco.`);
         return;
       }
+      console.log(`[INGEST] 1. Canal encontrado: ${channel.name} (${channel.id})`);
 
-      // 2. Deduplicate
-      if (externalMessageId) {
+      // 2. Extrair metadados normalizados
+      const isFromMe = !!metadata?.fromMe;
+      const senderType = isFromMe ? 'AGENT' : 'USER';
+      const externalId = metadata?.externalId;
+
+      // 3. Deduplicação por externalId
+      if (externalId) {
         const { data: existing } = await supabaseAdmin
           .from('Message')
           .select('id')
-          .eq('externalMessageId', externalMessageId)
+          .eq('externalMessageId', externalId)
           .maybeSingle()
         
         if (existing) {
-          console.log(`Duplicate message ${externalMessageId} ignored.`);
+          console.log(`[INGEST] Deduplicação aplicada: Mensagem ${externalId} já existe. Ignorando.`);
           return;
         }
       }
 
-      // 3. Identify or Create Contact
-      const { data: contact, error: contactError } = await supabaseAdmin
-        .from('Contact')
-        .upsert({ 
-          phone: senderPhone, 
-          name: senderName || senderPhone 
-        }, { onConflict: 'phone' })
-        .select()
-        .single()
+      // 4. Identificar ou Criar Contato
+      const contact = await ContactRepository.findOrCreateByPhone(
+        senderPhone, 
+        senderName || senderPhone
+      );
+      console.log(`[INGEST] 2. Contato encontrado/criado: ${contact.name} (${contact.id})`);
 
-      if (contactError || !contact) throw contactError || new Error('Failed to identify contact');
-
-      // 4. Identify or Create Open Conversation
-      let { data: conversation } = await supabaseAdmin
-        .from('Conversation')
-        .select('*')
-        .eq('contactId', contact.id)
-        .eq('channelId', channel.id)
-        .in('status', ['OPEN', 'IN_PROGRESS'])
-        .order('createdAt', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+      // 5. Identificar ou Criar Conversa Aberta
+      let conversation = await ConversationRepository.findActive(contact.id, channel.id);
 
       if (!conversation) {
-        const { data: newConv, error: newConvError } = await supabaseAdmin
-          .from('Conversation')
-          .insert([{
-            contactId: contact.id,
-            channelId: channel.id,
-            status: 'OPEN',
-            lastMessageAt: new Date().toISOString()
-          }])
-          .select()
-          .single()
-        
-        if (newConvError) throw newConvError
-        conversation = newConv
+        console.log(`[INGEST] Criando nova conversa para o contato...`);
+        conversation = await ConversationRepository.create({
+          contactId: contact.id,
+          channelId: channel.id,
+          status: 'OPEN',
+          lastMessageAt: new Date().toISOString()
+        });
+        console.log(`[INGEST] 3. Conversa criada: ${conversation.id}`);
+      } else {
+        console.log(`[INGEST] 3. Conversa ativa encontrada: ${conversation.id}`);
       }
 
-      // 5. Save Message
+      // 6. Salvar Mensagem
       const { data: newMessage, error: msgError } = await supabaseAdmin
         .from('Message')
         .insert([{
+          id: generateId(),
           conversationId: conversation.id,
           channelId: channel.id,
-          senderType: 'USER',
+          senderType,
           content: content,
           type: messageType || 'TEXT',
-          externalMessageId: externalMessageId,
+          externalMessageId: externalId,
         }])
         .select()
         .single()
 
       if (msgError) throw msgError
+      console.log(`[INGEST] 4. Mensagem salva com sucesso! (ID: ${newMessage.id})`);
 
-      // 6. Update Conversation lastActivity
-      await supabaseAdmin
-        .from('Conversation')
-        .update({ lastMessageAt: new Date().toISOString() })
-        .eq('id', conversation.id)
+      // 7. Atualizar lastMessageAt da Conversa
+      await ConversationRepository.update(conversation.id, { 
+        lastMessageAt: new Date().toISOString() 
+      });
 
-      // 7. Success & Realtime Notification
-      console.log(`Message from ${senderPhone} ingested successfully into conversation ${conversation.id}`);
-      
+      // 8. Notificação em Tempo Real
       const { RealtimeService } = await import('@/services/realtime.service');
       await RealtimeService.notifyNewMessage(conversation.id, newMessage);
 

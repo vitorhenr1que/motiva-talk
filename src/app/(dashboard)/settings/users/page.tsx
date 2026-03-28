@@ -22,11 +22,11 @@ export default function UsersManagementPage() {
       const res = await fetch('/api/users');
       if (!res.ok) throw new Error('Acesso negado');
       const data = await res.json();
-      setUsers(data);
+      setUsers(data.data || []);
 
       const chRes = await fetch('/api/channels');
       const chData = await chRes.json();
-      setChannels(chData);
+      setChannels(chData.data || []);
     } catch (error) {
        console.error('Failed to load users');
     } finally {

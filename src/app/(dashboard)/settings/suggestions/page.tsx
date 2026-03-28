@@ -26,12 +26,12 @@ export default function SuggestionConfigPage() {
       const q = new URLSearchParams(filters as any).toString();
       const res = await fetch(`/api/suggestions-config?${q}`);
       const data = await res.json();
-      setSuggestions(data);
+      setSuggestions(data.data || []);
 
       // Fetch channels for selector
       const chRes = await fetch('/api/channels');
       const chData = await chRes.json();
-      setChannels(chData);
+      setChannels(chData.data || []);
     } catch (error) {
       console.error('Failed to load suggestions');
     } finally {

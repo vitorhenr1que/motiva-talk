@@ -39,15 +39,19 @@ export const ChatWindow = () => {
     if (!activeConversation) return;
 
     const fetchMessages = async () => {
+      console.log(`[CHAT_DEBUG] Buscando mensagens para conversa: ${activeConversation.id}`);
       setLoadingMessages(true);
       try {
         const resp = await fetch(`/api/messages?conversationId=${activeConversation.id}`);
         if (resp.ok) {
           const data = await resp.json();
-          setMessages(data.data || []);
+          console.log(`[CHAT_DEBUG] Resposta da API:`, data);
+          const msgs = data.data || [];
+          console.log(`[CHAT_DEBUG] Quantidade de mensagens recebidas: ${msgs.length}`);
+          setMessages(msgs);
         }
       } catch (e) {
-        console.error('Fetch error');
+        console.error('[CHAT_DEBUG] Erro ao buscar mensagens:', e);
       } finally {
         setLoadingMessages(false);
       }
@@ -124,23 +128,25 @@ export const ChatWindow = () => {
           </div>
         ) : (
           <>
-            {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={cn(
-              "flex w-full group",
-              msg.senderType === 'AGENT' ? "justify-end" : "justify-start"
-            )}
-          >
-            <div
-              className={cn(
-                "relative max-w-[80%] md:max-w-[70%] rounded-2xl p-1.5 shadow-sm transition-all hover:shadow-md",
-                msg.senderType === 'AGENT' 
-                  ? "bg-[#d9fdd3] text-slate-800 rounded-tr-none" 
-                  : "bg-white text-slate-800 rounded-tl-none border border-slate-100"
-              )}
-            >
-              <div className="px-2.5 py-1">
+            {messages.map((msg) => {
+              const isSentByUs = msg.senderType === 'AGENT' || msg.senderType === 'SYSTEM';
+              return (
+                <div
+                  key={msg.id}
+                  className={cn(
+                    "flex w-full group",
+                    isSentByUs ? "justify-end" : "justify-start"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "relative max-w-[80%] md:max-w-[70%] rounded-2xl p-1.5 shadow-sm transition-all hover:shadow-md",
+                      isSentByUs 
+                        ? "bg-[#d9fdd3] text-slate-800 rounded-tr-none" 
+                        : "bg-white text-slate-800 rounded-tl-none border border-slate-100"
+                    )}
+                  >
+                    <div className="px-2.5 py-1">
                 {msg.type === 'TEXT' && (
                   <p className="whitespace-pre-wrap leading-relaxed text-[13px]">{msg.content}</p>
                 )}
@@ -179,7 +185,9 @@ export const ChatWindow = () => {
                 )}
 
                 <div className="mt-1 flex items-center justify-end gap-1">
-                  <span className="text-[9px] text-slate-400 font-bold opacity-60">12:45</span>
+                  <span className="text-[9px] text-slate-400 font-bold opacity-60">
+                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
                 </div>
               </div>
 
@@ -188,17 +196,18 @@ export const ChatWindow = () => {
                 onClick={() => handleDeleteMessage(msg.id)}
                 className={cn(
                   "absolute top-2 opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-lg bg-white/80 backdrop-blur shadow-sm hover:text-red-600 hover:bg-red-50",
-                  msg.senderType === 'AGENT' ? "-left-10" : "-right-10"
+                  isSentByUs ? "-left-10" : "-right-10"
                 )}
               >
                 <Trash2 size={14} />
               </button>
             </div>
           </div>
-          ))}
-        </>
-      )}
-      </div>
+        );
+      })}
+    </>
+  )}
+</div>
     </div>
   );
 };

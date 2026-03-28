@@ -141,9 +141,11 @@ export const Sidebar = () => {
                 <div className="flex flex-1 flex-col overflow-hidden">
                   <div className="flex items-center justify-between">
                     <span className="truncate text-sm font-bold text-slate-700">{conv.contact.name}</span>
-                    <span className="text-[9px] text-slate-400 font-medium">10 Min</span>
+                    <span className="text-[9px] text-slate-400 font-medium">
+                      {conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---'}
+                    </span>
                   </div>
-
+ 
                   {/* Tags Badges */}
                   <div className="flex flex-wrap gap-1 mt-1">
                     {conv.tags?.map((ct: any) => (
@@ -161,9 +163,11 @@ export const Sidebar = () => {
                       </span>
                     ))}
                   </div>
-
+ 
                   <div className="flex items-center justify-between mt-1">
-                    <p className="truncate text-[11px] text-slate-400">Mensagem pendente...</p>
+                    <p className="truncate text-[11px] text-slate-400">
+                      {conv.messages?.[0]?.content || 'Sem mensagens...'}
+                    </p>
                     <span className={cn(
                       "text-[9px] font-bold px-1.5 py-0.5 rounded-full",
                       conv.status === 'OPEN' ? "bg-amber-100 text-amber-600" : "bg-green-100 text-green-600"

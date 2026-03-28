@@ -35,7 +35,10 @@ export async function GET(req: Request) {
         .eq('userId', dbUser?.id)
       
       const allowedChannelIds = userChannels?.map(uc => uc.channelId) || []
-      where.assignedTo = dbUser?.id
+      
+      // Filtro Especial: Ver conversas atribuídas a mim OU abertas nos meus canais
+      where.allowedChannelIds = allowedChannelIds;
+      where.currentUserId = dbUser?.id;
     }
 
     const conversations = await ConversationService.listByFilter(where)

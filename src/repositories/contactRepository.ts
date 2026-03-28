@@ -36,4 +36,11 @@ export class ContactRepository {
     if (error) throw error
     return updatedContact
   }
+
+  static async findOrCreateByPhone(phone: string, name: string) {
+    const existing = await this.findByPhone(phone)
+    if (existing) return existing
+
+    return this.create({ phone, name })
+  }
 }

@@ -29,7 +29,7 @@ export const QuickReplyManagerModal = ({ onClose }: ManagerModalProps) => {
     try {
       const resp = await fetch('/api/quick-replies');
       const data = await resp.json();
-      setReplies(data);
+      setReplies(data.data || []);
     } catch (e) {
       console.error('Fetch error');
     } finally {
