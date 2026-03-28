@@ -42,13 +42,9 @@ export class EvolutionProvider implements WhatsAppProvider {
 
   /**
    * Instance name is based on the channel ID for uniqueness and consistency.
-   * Also ensures it follows valid naming conventions (alphanumeric).
    */
   public getInstanceName(channel: Channel): string {
-    // Priority 1: Use the ID already persisted in DB
     if (channel.providerSessionId) return channel.providerSessionId;
-    
-    // Priority 2: Generate based on channel.id
     return `${channel.id.replace(/[^a-zA-Z0-9]/g, '')}`;
   }
 
@@ -57,18 +53,15 @@ export class EvolutionProvider implements WhatsAppProvider {
     console.log(`[EVO_PROVIDER] Chamando createSession para: ${instanceName}`);
     
     try {
-      // 1. Criar instância (ou verificar se existe)
       let exists = false;
       try {
         await evolutionApi.getInstance(instanceName);
-        console.log(`[EVO_PROVIDER] Instância ${instanceName} já existe na Evolution API.`);
         exists = true;
       } catch (e: any) {
         if (e.message !== 'NOT_FOUND') throw e;
       }
 
       if (!exists) {
-        console.log(`[EVO_PROVIDER] Criando instância via API: ${instanceName}`);
         try {
           await evolutionApi.createInstance({
             instanceName,
@@ -78,75 +71,22 @@ export class EvolutionProvider implements WhatsAppProvider {
               enabled: true,
               webhookBase64: true,
               webhookByEvents: true,
-              events: [
-                'QRCODE_UPDATED',
-                'CONNECTION_UPDATE',
-                'MESSAGES_UPSERT'
-              ]
+              events: ['QRCODE_UPDATED', 'CONNECTION_UPDATE', 'MESSAGES_UPSERT']
             }
           });
         } catch (e: any) {
-          if (e.message?.toLowerCase().includes('already in use')) {
-            console.log(`[EVO_PROVIDER] Conflito resolvido: A API relata que "${instanceName}" já existe. Prosseguindo...`);
-          } else {
-            throw e;
-          }
+          if (!e.message?.toLowerCase().includes('already in use')) throw e;
         }
       }
 
-      // 2. Configurar webhook (imediatamente após criação ou para garantir consistência)
-      if (!process.env.EVOLUTION_WEBHOOK_URL) {
-        throw new Error('EVOLUTION_WEBHOOK_URL não definida');
-      }
-
-      console.log(`[EVO_PROVIDER] Configurando webhook obrigatório para: ${instanceName}`);
       await evolutionApi.setWebhook(instanceName, {
         enabled: true,
-        url: process.env.EVOLUTION_WEBHOOK_URL,
+        url: process.env.EVOLUTION_WEBHOOK_URL!,
         webhookByEvents: true,
         webhookBase64: true,
-        events: [
-          'QRCODE_UPDATED',
-          'CONNECTION_UPDATE',
-          'MESSAGES_UPSERT'
-        ]
+        events: ['QRCODE_UPDATED', 'CONNECTION_UPDATE', 'MESSAGES_UPSERT']
       });
 
-      // 3. Validar webhook automaticamente
-      const webhook = await evolutionApi.findWebhook(instanceName);
-      
-      // 4. Logar resposta completa se necessário (facilitado pelo debug do client, mas aqui reforçamos)
-      if (!webhook) {
-        console.error(`[EVO_DEBUG] Webhook não encontrado para ${instanceName}`);
-        throw new Error(`Falha crítica: Configuração de webhook não encontrada para ${instanceName}.`);
-      }
-
-      // 5. Validação rigorosa dos campos
-      const expectedUrl = process.env.EVOLUTION_WEBHOOK_URL;
-      const requiredEvents = ['QRCODE_UPDATED', 'CONNECTION_UPDATE', 'MESSAGES_UPSERT'];
-      
-      // Verificar enabled
-      if (webhook.enabled !== true) {
-        console.error('[EVO_DEBUG] Webhook inválido (desabilitado):', JSON.stringify(webhook, null, 2));
-        throw new Error(`Falha crítica: Webhook para ${instanceName} está desabilitado (enabled=false).`);
-      }
-
-      // Verificar URL
-      if (webhook.url !== expectedUrl) {
-        console.error('[EVO_DEBUG] Webhook com URL incorreta:', { esperada: expectedUrl, recebida: webhook.url });
-        throw new Error(`Falha crítica: URL do webhook incorreta para ${instanceName}.`);
-      }
-
-      // Verificar Eventos
-      const currentEvents = Array.isArray(webhook.events) ? webhook.events : [];
-      const missingEvents = requiredEvents.filter(event => !currentEvents.includes(event));
-      
-      if (missingEvents.length > 0) {
-        console.error('[EVO_DEBUG] Webhook com eventos faltando:', missingEvents);
-        throw new Error(`Falha crítica: Webhook de ${instanceName} não contém eventos obrigatórios: ${missingEvents.join(', ')}`);
-      }
-
-      console.log('[EVO_DEBUG] Webhook validado com sucesso');
       console.log(`[EVO_PROVIDER] Sessão e Webhook prontos para ${instanceName}`);
     } catch (error: any) {
       console.error(`[EVO_PROVIDER] Falha crítica em createSession (${instanceName}): ${error.message}`);
@@ -156,18 +96,10 @@ export class EvolutionProvider implements WhatsAppProvider {
 
   async getQrCode(channel: Channel): Promise<QrCodeData> {
     const instanceName = this.getInstanceName(channel);
-    console.log(`[EVO_PROVIDER] Chamando getQrCode para: ${instanceName}`);
-    
     try {
-      // Rule: getQrCode should NEVER create instance. 
       const data = await evolutionApi.getQrCode(instanceName);
-      if (!data?.base64) {
-        throw new Error('QR Code não retornado pela API. Verifique o status da instância.');
-      }
-      return {
-        base64: data.base64,
-        code: data.code || '',
-      };
+      if (!data?.base64) throw new Error('QR Code não retornado pela API.');
+      return { base64: data.base64, code: data.code || '' };
     } catch (error: any) {
       console.error(`[EVO_PROVIDER] Falha em getQrCode (${instanceName}): ${error.message}`);
       throw error;
@@ -176,56 +108,30 @@ export class EvolutionProvider implements WhatsAppProvider {
 
   async getSessionStatus(channel: Channel): Promise<SessionStatus> {
     const instanceName = this.getInstanceName(channel);
-    console.log(`[EVO_PROVIDER] getSessionStatus para: ${instanceName}`);
-    
     try {
       const state: any = await evolutionApi.getConnectionState(instanceName);
-      console.log(`[EVO_DEBUG] connectionState raw response:`, JSON.stringify(state));
-
-      // Robust field resolution for Evolution v1/v2/v2.1
-      const rawStatus = 
-        state.status || 
-        state.state || 
-        state.instance?.status || 
-        state.instance?.state || 
-        state.connection || 
-        'DISCONNECTED';
-      
-      const internalStatus = this.mapStatus(rawStatus);
-
-      console.log(`[EVO_DEBUG] Status Resolvido: Instance[${instanceName}] Raw[${rawStatus}] Int[${internalStatus}]`);
-
-      return {
-        status: internalStatus,
-      };
+      const rawStatus = state.status || state.state || state.instance?.status || state.instance?.state || state.connection || 'DISCONNECTED';
+      return { status: this.mapStatus(rawStatus) };
     } catch (e: any) {
-      console.warn(`[EVO_PROVIDER] Falha em getSessionStatus (${instanceName}): ${e.message}`);
-      return { 
-        status: 'DISCONNECTED', 
-        details: e.message || 'Instância não encontrada ou offline' 
-      };
+      return { status: 'DISCONNECTED', details: e.message || 'Instância não encontrada' };
     }
   }
 
   async disconnectSession(channel: Channel): Promise<void> {
     const instanceName = this.getInstanceName(channel);
-    console.log(`[EVO_PROVIDER] Chamando disconnectSession (Logout) para: ${instanceName}`);
-    
     try {
       await evolutionApi.logoutInstance(instanceName);
     } catch (e: any) {
-      console.error(`[EVO_PROVIDER] Falha em disconnectSession (${instanceName}): ${e.message}`);
+      console.error(`[EVO_PROVIDER] Falha em disconnectSession (${instanceName})`);
     }
   }
 
   async deleteSession(channel: Channel): Promise<void> {
     const instanceName = this.getInstanceName(channel);
-    console.log(`[EVO_PROVIDER] Chamando deleteSession (Permanent) para: ${instanceName}`);
-    
     try {
       await evolutionApi.deleteInstance(instanceName);
     } catch (e: any) {
-      console.error(`[EVO_PROVIDER] Falha em deleteSession (${instanceName}): ${e.message}`);
+      console.error(`[EVO_PROVIDER] Falha em deleteSession (${instanceName})`);
       throw e;
     }
   }
@@ -240,19 +146,12 @@ export class EvolutionProvider implements WhatsAppProvider {
     const instanceName = this.getInstanceName(channel);
     const cleanNumber = recipient.replace(/\D/g, '');
     
-    if (type !== 'TEXT') {
-       throw new Error(`Tipo de mensagem ${type} ainda não implementado no EvolutionProvider.`);
-    }
+    if (type !== 'TEXT') throw new Error(`Tipo de mensagem ${type} ainda não implementado.`);
 
-    const payload: any = {
-      number: cleanNumber,
-      text: content
-    };
+    const payload: any = { number: cleanNumber, text: content };
 
     if (quoted) {
-      // Constrói o objeto de mensagem citada de forma mais fiel para o preview no WhatsApp
       let quotedMessage: any = { conversation: quoted.content };
-      
       if (quoted.type === 'IMAGE') quotedMessage = { imageMessage: { caption: quoted.content } };
       else if (quoted.type === 'AUDIO') quotedMessage = { audioMessage: { caption: 'Áudio' } };
       else if (quoted.type === 'VIDEO') quotedMessage = { videoMessage: { caption: quoted.content } };
@@ -262,7 +161,7 @@ export class EvolutionProvider implements WhatsAppProvider {
         key: { 
           id: quoted.id,
           fromMe: quoted.fromMe,
-          remoteJid: cleanNumber.includes('@') ? cleanNumber : `${cleanNumber}@s.whatsapp.net`
+          remoteJid: `${cleanNumber}@s.whatsapp.net`
         },
         message: quotedMessage
       };
@@ -272,44 +171,64 @@ export class EvolutionProvider implements WhatsAppProvider {
   }
 
   /**
+   * Apaga uma mensagem para todos (via Evolution API)
+   */
+  async deleteMessage(channel: Channel, recipient: string, externalId: string, fromMe: boolean): Promise<void> {
+    const instanceName = this.getInstanceName(channel);
+    const cleanNumber = recipient.replace(/\D/g, '');
+    
+    console.log(`[EVO_PROVIDER] Apagando mensagem para todos: Inst[${instanceName}] MsgID[${externalId}]`);
+    
+    try {
+      await evolutionApi.deleteMessage(instanceName, {
+        number: cleanNumber,
+        id: externalId,
+        fromMe: fromMe
+      });
+    } catch (error: any) {
+      console.error(`[EVO_PROVIDER] Falha ao apagar mensagem via API: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Envia status de presença (digitando/parado)
+   */
+  async sendPresence(channel: Channel, recipient: string, presence: 'composing' | 'paused'): Promise<void> {
+    const instanceName = this.getInstanceName(channel);
+    const cleanNumber = recipient.replace(/\D/g, '');
+
+    try {
+      await evolutionApi.sendPresence(instanceName, {
+        number: cleanNumber,
+        presence: presence
+      });
+    } catch (error: any) {
+      // Silencioso para não poluir logs de UI se falhar presença
+    }
+  }
+
+  /**
    * Normaliza o payload bruto da Evolution API para um formato padronizado interno.
-   * Suporta Evolution v1, v2 e estruturas aninhadas do Baileys.
    */
   private normalizeIncomingEvolutionMessage(payload: any) {
     const data = payload.data || payload;
     const instanceName = payload.instance || data.instanceName || payload.instanceName || '';
-    
-    // Suporte para array de mensagens (Baileys padrão na Evolution) ou objeto único (v1)
     const rawMessage = data.messages?.[0] || data;
     const key = rawMessage.key || data.key;
     const message = rawMessage.message || data.message;
 
-    if (!key) {
-      console.warn('[EVO_PARSER] Falha: Campo "key" ausente no payload.');
-      return null;
-    }
+    if (!key || !message) return null;
 
-    if (!message) {
-      // Mensagens de sistema/status podem não ter "message"
-      console.warn('[EVO_PARSER] Aviso: Campo "message" ausente. Pode ser um evento de sistema ou mensagem deletada.');
-      return null;
-    }
-
-    // 1. Extração de Identificadores
     const externalMessageId = key.id;
     const fromMe = !!key.fromMe;
-    
-    // 2. Extração de Remetente
     const jid = key.remoteJid || key.participant || '';
     const senderPhone = jid.split('@')[0];
     const senderName = rawMessage.pushName || data.pushName || 'Contato WhatsApp';
 
-    // 3. Extração de Conteúdo (Extremamente robusto para Baileys)
-    // O conteúdo pode estar em múltiplos níveis e formatos
     const getMessageContent = (m: any): string => {
       if (!m) return '';
       if (typeof m === 'string') return m;
-      
       return (
         m.conversation || 
         m.extendedTextMessage?.text || 
@@ -317,80 +236,26 @@ export class EvolutionProvider implements WhatsAppProvider {
         m.videoMessage?.caption || 
         m.audioMessage?.caption ||
         m.documentMessage?.caption ||
-        m.buttonsResponseMessage?.selectedButtonId ||
-        m.listResponseMessage?.title ||
-        m.templateButtonReplyMessage?.selectedId ||
         ''
       );
     };
 
-    // Tenta extrair do nível principal ou de um sub-nível aninhado (comum no Baileys/Evo v2)
     let content = getMessageContent(message);
-    if (!content && message.message) {
-      content = getMessageContent(message.message);
-    }
+    if (!content && message.message) content = getMessageContent(message.message);
 
-    // 4. Tipo da Mensagem
     let type: MessageType = 'TEXT';
     const inner = message.message || message;
     if (inner.imageMessage) type = 'IMAGE';
     else if (inner.audioMessage) type = 'AUDIO';
-    else if (inner.videoMessage) type = 'IMAGE'; // Tratamos vídeo como imagem por enquanto ou adicione VIDEO se tiver no enum
     else if (inner.documentMessage) type = 'DOCUMENT';
 
-    // 5. Extração de Resposta (Quoted/Reply) - Genérica para qualquer tipo de mensagem
-    let contextInfo: any = null;
     let quotedMessageExternalId: string | null = null;
-    let fieldUsed: string = 'none';
+    const contextInfo = inner.contextInfo || (inner.imageMessage?.contextInfo) || (inner.audioMessage?.contextInfo) || (inner.documentMessage?.contextInfo);
+    if (contextInfo?.stanzaId) quotedMessageExternalId = contextInfo.stanzaId;
 
-    // 5.1 Busca por contextInfo em diferentes níveis
-    if (inner.contextInfo) {
-      contextInfo = inner.contextInfo;
-      fieldUsed = 'inner.contextInfo';
-    } else {
-      // Alguns tipos de mensagem aninham o contextInfo dentro da chave do tipo (ex: imageMessage.contextInfo)
-      for (const k in inner) {
-        if (inner[k] && typeof inner[k] === 'object' && (inner[k] as any).contextInfo) {
-          contextInfo = (inner[k] as any).contextInfo;
-          fieldUsed = `inner.${k}.contextInfo`;
-          break;
-        }
-      }
-    }
-
-    // 5.2 Se encontrou contextInfo, tenta extrair o stanzaId
-    if (contextInfo?.stanzaId) {
-      quotedMessageExternalId = contextInfo.stanzaId;
-    } 
-    
-    // 5.3 Se não encontrou no contextInfo, tenta messageContextInfo (comum em replies de bot ou v2)
-    if (!quotedMessageExternalId) {
-       const mci = payload.messageContextInfo || data.messageContextInfo || inner.messageContextInfo;
-       if (mci?.stanzaId) {
-         quotedMessageExternalId = mci.stanzaId;
-         fieldUsed = fieldUsed === 'none' ? 'messageContextInfo' : `${fieldUsed} + messageContextInfo`;
-       }
-    }
-    
-    let quoted: any = null;
-    if (quotedMessageExternalId) {
-      quoted = {
-        key: {
-          id: quotedMessageExternalId, // ID da mensagem original (importante para o vínculo)
-          participant: contextInfo?.participant,
-          fromMe: false // Se veio do webhook, geralmente estamos citando alguém
-        },
-        message: contextInfo?.quotedMessage || {}
-      };
-      console.log(`[EVO_PARSER] Reply detectado! Quoted ID: ${quotedMessageExternalId} via: ${fieldUsed}`);
-    } else {
-      console.log(`[EVO_PARSER] Mensagem normal (sem reply).`);
-    }
-
-    // 6. Timestamp
     const timestamp = (rawMessage.messageTimestamp || data.messageTimestamp || Date.now()) * 1000;
 
-    const result = {
+    return {
       instanceName,
       externalMessageId,
       senderPhone,
@@ -399,26 +264,18 @@ export class EvolutionProvider implements WhatsAppProvider {
       type,
       timestamp,
       fromMe,
-      quoted,
       quotedMessageExternalId,
       raw: payload
     };
-
-    console.log(`[EVO_PARSER] Sucesso: ID[${externalMessageId}] From[${senderPhone}] Type[${type}] Content[${result.content.substring(0, 15)}...]`);
-    return result;
   }
 
-
-  /**
-   * Parses various Evolution API events into our generic WebhookEvent format.
-   */
   async parseIncomingWebhook(payload: any): Promise<WebhookEvent> {
     const eventType = payload.event || payload.type;
     const data = payload.data || payload; 
     const instanceName = payload.instance || data.instanceName || payload.instanceName || '';
     
     const base: WebhookEvent = {
-      channelId: instanceName, // Usamos o nome da instância como o ID do canal para busca posterior
+      channelId: instanceName,
       timestamp: Date.now(),
       type: 'STATUS',
       metadata: data
@@ -429,7 +286,6 @@ export class EvolutionProvider implements WhatsAppProvider {
       case 'messages.upsert': {
         const normalized = this.normalizeIncomingEvolutionMessage(payload);
         if (!normalized) return base;
-
         return {
           ...base,
           type: 'MESSAGE',
@@ -441,53 +297,31 @@ export class EvolutionProvider implements WhatsAppProvider {
             ...normalized.raw, 
             externalId: normalized.externalMessageId,
             fromMe: normalized.fromMe,
-            quoted: normalized.quoted,
             quotedMessageExternalId: normalized.quotedMessageExternalId
           }
         };
       }
-
       case 'CONNECTION_UPDATE':
       case 'connection.update': {
         const state = data.state || data.status || data.connection;
-        return {
-          ...base,
-          type: 'CONNECTION',
-          metadata: { status: this.mapStatus(state) }
-        };
+        return { ...base, type: 'CONNECTION', metadata: { status: this.mapStatus(state) } };
       }
-
       case 'QRCODE_UPDATED':
       case 'qrcode.updated': {
         const qrcode = data.qrcode?.base64 || data.base64 || data.code;
-        return {
-          ...base,
-          type: 'STATUS',
-          metadata: { qrcode }
-        };
+        return { ...base, type: 'STATUS', metadata: { qrcode } };
       }
-
       default:
-        console.log(`[EVO_DEBUG] Evento ignorado: ${eventType}`);
         return base;
     }
   }
 
   async setWebhook(channel: Channel, url: string, events: string[]): Promise<void> {
     const instanceName = this.getInstanceName(channel);
-    console.log(`[EVO_PROVIDER] Configurando webhook para: ${instanceName} -> ${url}`);
-    
     try {
-      await evolutionApi.setWebhook(instanceName, {
-        url: url,
-        enabled: true,
-        webhookByEvents: true,
-        webhookBase64: true,
-        events: events
-      });
-      console.log(`[EVO_PROVIDER] Webhook configurado com sucesso para ${instanceName}`);
+      await evolutionApi.setWebhook(instanceName, { url, enabled: true, webhookByEvents: true, webhookBase64: true, events });
     } catch (error: any) {
-      console.error(`[EVO_PROVIDER] Erro ao configurar webhook para ${instanceName}: ${error.message}`);
+      console.error(`[EVO_PROVIDER] Erro ao configurar webhook para ${instanceName}`);
       throw error;
     }
   }

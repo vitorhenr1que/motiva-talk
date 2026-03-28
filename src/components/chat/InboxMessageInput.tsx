@@ -2,45 +2,149 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useChatStore } from '@/store/useChatStore';
-import { Send, Smile, Paperclip, Zap, Loader2, X } from 'lucide-react';
+import { Send, Smile, Paperclip, Zap, Loader2, X, Edit2, Check } from 'lucide-react';
+import { formatWhatsappText } from '@/lib/formatWhatsappText';
 import { QuickReplyMenu } from '@/components/quick-replies/Menu';
 import { QuickReplyManagerModal } from '@/components/quick-replies/ManagerModal';
 import { uploadFile } from '@/lib/supabase-utils';
+import { supabase } from '@/lib/supabase';
 
+/**
+ * Função utilitária para garantir primeira letra maiúscula
+ */
+const capitalize = (str: string) => {
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + str.slice(1);
+};
+
+/**
+ * InboxMessageInput Component
+ * Gerencia o campo de composição de mensagens, incluindo identificação do atendente,
+ * respostas rápidas (quick replies) e anexos de mídia.
+ */
 export const MessageInput = () => {
   const [content, setContent] = useState('');
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [repliesOpen, setRepliesOpen] = useState(false);
-  const [repliesSearch, setRepliesSearch] = useState('');
   const [managerOpen, setManagerOpen] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  
+  // Customização do nome do atendente
+  const [customName, setCustomName] = useState('');
+  const [isEditingName, setIsEditingName] = useState(false);
+
+  // Configurações globais
+  const [chatSettings, setChatSettings] = useState({
+    autoIdentifyAgent: true,
+    allowAgentNameEdit: false
+  });
+
   const { activeConversation, addMessage, upsertMessage, messages, replyToMessage, setReplyToMessage } = useChatStore();
+
+  // --- Lógica de Presence (Indicador de Digitando) ---
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
+
+  // Efeito para enviar status 'digitando' (composing)
+  useEffect(() => {
+    if (!activeConversation) return;
+
+    // Se começou a digitar e ainda não enviou 'composing'
+    if (content.length > 0 && !isTyping) {
+      setIsTyping(true);
+      sendPresence('composing');
+    }
+
+    // Se apagou tudo
+    if (content.length === 0 && isTyping) {
+      setIsTyping(false);
+      sendPresence('paused');
+    }
+
+    // Debounce para parar o indicador após 3 segundos de inatividade
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+
+    typingTimeoutRef.current = setTimeout(() => {
+      if (isTyping) {
+        setIsTyping(false);
+        sendPresence('paused');
+      }
+    }, 3000);
+
+    return () => {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    };
+  }, [content, activeConversation?.id]);
+
+  const sendPresence = async (presence: 'composing' | 'paused') => {
+    if (!activeConversation) return;
+    try {
+      fetch('/api/messages/presence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: activeConversation.id, presence })
+      }).catch(() => {}); // Falha silenciosa para presença
+    } catch (e) {}
+  };
+
+  // Resetar estados locais ao trocar de conversa ativa
+  useEffect(() => {
+    setRepliesOpen(false);
+    setContent('');
+    setSuggestions([]);
+    setIsTyping(false);
+  }, [activeConversation?.id]);
+
+  // Carregar dados de sessão e configurações globais
+  useEffect(() => {
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUser(session.user);
+        const fullName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Atendente';
+        const firstName = fullName.trim().split(' ')[0];
+        setCustomName(capitalize(firstName));
+      }
+
+      try {
+        const res = await fetch('/api/settings/chat');
+        const data = await res.json();
+        if (data.success) setChatSettings(data.data);
+      } catch (e) {}
+    };
+    init();
+  }, []);
 
   const handleSend = async () => {
     if (!content.trim() || !activeConversation) return;
+
+    const rawName = customName || user?.user_metadata?.full_name?.split(' ')[0] || 'Atendente';
+    const nameToUse = capitalize(rawName);
+    const finalContent = `*${nameToUse}:*\n\n${content.trim()}`;
 
     const replyToId = replyToMessage?.id;
     const tempId = `temp-${Date.now()}`;
 
     const newMsg = {
       id: tempId,
-      content,
+      content: finalContent,
       senderType: 'AGENT',
       type: 'TEXT',
+      status: 'sending',
       createdAt: new Date().toISOString(),
-      replyTo: replyToMessage // Preview local imediato
+      replyToMessage: replyToMessage 
     } as any;
     
-    // Adição otimista
     upsertMessage(newMsg);
     
-    // Limpeza de estado local
-    const currentContent = content; // Backup para caso de erro
     setContent('');
     setSuggestions([]);
     setRepliesOpen(false);
     setReplyToMessage(null);
+    setIsTyping(false);
+    sendPresence('paused'); // Para o digitando ao enviar
 
     try {
       const resp = await fetch('/api/messages', {
@@ -50,22 +154,17 @@ export const MessageInput = () => {
           conversationId: activeConversation.id,
           channelId: activeConversation.channel.id,
           senderType: 'AGENT',
-          content: currentContent,
+          content: finalContent,
           replyToMessageId: replyToId
         })
       });
 
       if (resp.ok) {
         const realMsg = await resp.json();
-        // Substitui a mensagem temporária pela real do banco (com ID UUID e relações carregadas)
         upsertMessage(realMsg.data, tempId);
-      } else {
-        throw new Error('Erro ao enviar mensagem');
       }
     } catch (error) {
-      console.error('API integration error:', error);
-      // Opcional: remover a mensagem temporária em caso de erro fatal
-      // useChatStore.getState().removeMessage(tempId);
+      console.error('[AGENT_ID] Erro:', error);
     }
   };
 
@@ -76,13 +175,10 @@ export const MessageInput = () => {
     setUploading(true);
     try {
       const publicUrl = await uploadFile(file);
-      
-      // Determinar o tipo de mensagem pelo tipo de arquivo
       let messageType: 'IMAGE' | 'AUDIO' | 'DOCUMENT' = 'DOCUMENT';
       if (file.type.startsWith('image/')) messageType = 'IMAGE';
       if (file.type.startsWith('audio/')) messageType = 'AUDIO';
 
-      // Criar a mensagem via API
       const resp = await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -99,173 +195,133 @@ export const MessageInput = () => {
         const realMsg = await resp.json();
         addMessage(realMsg.data);
       }
-    } catch (error: any) {
-      console.error('File upload failed:', error);
-      alert(`Erro ao enviar arquivo: ${error?.message || 'Erro desconhecido'}`);
+    } catch (error) {
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  const handleContentChange = (val: string) => {
-    setContent(val);
-    if (val.startsWith('/')) {
-      setRepliesOpen(true);
-      setRepliesSearch(val.slice(1));
-    } else {
-      setRepliesOpen(false);
-    }
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (repliesOpen && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter')) {
-      e.preventDefault();
-      return;
-    }
-
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !isEditingName) {
       e.preventDefault();
       handleSend();
     }
+    if (e.key === '/' && content === '' && !isEditingName) setRepliesOpen(true);
   };
 
   useEffect(() => {
-    const fetchSuggestions = async () => {
-      if (!activeConversation || messages.length === 0) {
-        setSuggestions([]);
-        return;
-      }
+    if (!activeConversation || !messages) return;
+    const lastMsg = messages.filter(m => m.senderType === 'USER').pop();
+    if (!lastMsg) { setSuggestions([]); return; }
 
-      // Encontrar a última mensagem enviada pelo contato (USER)
-      const lastUserMessage = [...messages]
-        .reverse()
-        .find(m => m.senderType === 'USER');
-
-      if (lastUserMessage && lastUserMessage.content) {
-        try {
-          const response = await fetch('/api/suggestions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              content: lastUserMessage.content,
-              channelId: activeConversation.channel.id
-            })
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            setSuggestions(data.data || []);
-          }
-        } catch (error) {
-          console.error('Failed to fetch suggestions:', error);
-        }
-      } else {
-        setSuggestions([]);
-      }
+    const fetchSug = async () => {
+      try {
+        const res = await fetch(`/api/suggestions?messageContent=${encodeURIComponent(lastMsg.content)}&channelId=${activeConversation.channel.id}`);
+        const data = await res.json();
+        setSuggestions(data.data || []);
+      } catch (e) {}
     };
-
-    fetchSuggestions();
+    fetchSug();
   }, [activeConversation, messages]);
 
   if (!activeConversation) return null;
 
   return (
-    <div className="border-t bg-white p-3 relative shadow-inner">
-      {/* Reply Preview Bar */}
+    <div className="relative border-t bg-white p-4">
+       {/* Preview e Sugestões */}
+       <div className="absolute bottom-full left-0 right-0 p-4 pointer-events-none flex flex-col gap-2">
+          {content.match(/[*_~`]|https?:\/\//) && (
+            <div className="bg-white/90 backdrop-blur-md rounded-2xl p-4 shadow-2xl border border-blue-100 self-start max-w-[80%] animate-in slide-in-from-bottom-2 duration-300">
+              <div className="flex items-center gap-2 mb-2 font-black uppercase tracking-widest text-blue-600/60 text-[10px]">
+                <div className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                Sintaxe WhatsApp Ativa
+              </div>
+              <div className="text-sm text-slate-700 whitespace-pre-wrap break-words leading-relaxed pointer-events-auto">
+                {formatWhatsappText(content)}
+              </div>
+            </div>
+          )}
+
+          {suggestions.length > 0 && !repliesOpen && (
+            <div className="flex flex-wrap gap-2 animate-in fade-in slide-in-from-left-4 duration-500 pointer-events-auto">
+              {suggestions.map((sug, i) => (
+                <button
+                  key={i}
+                  onClick={() => setContent(sug.response)}
+                  className="rounded-full bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-blue-200 ring-2 ring-white hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+                >
+                  <Zap size={14} fill="currentColor" />
+                  {sug.keyword}
+                </button>
+              ))}
+            </div>
+          )}
+       </div>
+
+      <div className="mb-3 flex items-center gap-2 group">
+        <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-100/80 rounded-full border border-slate-200/60 shadow-sm transition-all hover:bg-slate-200/80">
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">ID:</span>
+          {isEditingName ? (
+            <div className="flex items-center gap-1 animate-in fade-in duration-200">
+              <input autoFocus type="text" value={customName} onChange={(e) => setCustomName(e.target.value)} onBlur={() => setIsEditingName(false)} onKeyDown={(e) => e.key === 'Enter' && setIsEditingName(false)} className="bg-white border-b border-blue-400 px-1 py-0 text-[11px] font-bold text-slate-800 focus:outline-none w-24" />
+              <button onClick={() => setIsEditingName(false)} className="text-blue-600 hover:text-blue-700"><Check size={12} /></button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-extrabold text-slate-800 leading-none">*{customName}:*</span>
+              {chatSettings.allowAgentNameEdit && (
+                <button onClick={() => setIsEditingName(true)} className="text-slate-400 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100 ml-0.5"><Edit2 size={11} /></button>
+              )}
+            </div>
+          )}
+        </div>
+        {!isEditingName && <span className="text-[10px] font-medium text-slate-400 italic">Incluído no cabeçalho</span>}
+      </div>
+
       {replyToMessage && (
-        <div className="mb-2 flex items-center justify-between gap-3 bg-slate-50 p-2.5 rounded-xl border-l-4 border-blue-500 animate-in slide-in-from-bottom-2 duration-200">
-          <div className="flex-1 min-w-0">
-            <span className="block text-[10px] font-bold text-blue-600 uppercase tracking-widest">Respondendo a</span>
-            <span className="block text-xs text-slate-600 truncate">{replyToMessage.content}</span>
+        <div className="mb-4 flex items-start gap-3 rounded-2xl bg-slate-50 p-4 border border-slate-200 animate-in slide-in-from-bottom-2 duration-300 relative group overflow-hidden">
+          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-blue-600" />
+          <div className="flex-1 overflow-hidden">
+            <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-1">Respondendo para</p>
+            <p className="truncate text-sm font-bold text-slate-700">{replyToMessage.senderType === 'USER' ? activeConversation?.contact?.name : 'Você'}</p>
+            <p className="truncate text-xs text-slate-500 italic mt-0.5">{formatWhatsappText(replyToMessage.content)}</p>
           </div>
-          <button 
-            onClick={() => setReplyToMessage(null)} 
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600 transition-all"
-          >
-            <X size={16} />
-          </button>
+          <button onClick={() => setReplyToMessage(null)} className="rounded-xl p-1.5 text-slate-400 hover:bg-white hover:text-red-500 hover:shadow-sm transition-all"><X size={18} /></button>
         </div>
       )}
 
-      {/* Quick Reply Context Menu */}
-      {repliesOpen && (
-        <QuickReplyMenu
-          search={repliesSearch}
-          onSelect={(val) => { setContent(val); setRepliesOpen(false); }}
-          onClose={() => setRepliesOpen(false)}
-        />
-      )}
-
-      {/* Suggestion Bar */}
-      {suggestions.length > 0 && (
-        <div className="mb-3 flex items-center gap-3 overflow-x-auto pb-1 scrollbar-none animate-in slide-in-from-bottom-2 fade-in duration-300">
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
-             <Smile size={14} className="animate-pulse" />
-          </div>
-          <div className="flex gap-2 shrink-0">
-            {suggestions.map((sug) => (
-              <button
-                key={sug.id}
-                onClick={() => setContent(sug.response)}
-                className="group flex flex-col items-start rounded-xl border border-blue-100 bg-blue-50/50 px-3 py-1.5 transition-all hover:bg-blue-600 hover:border-blue-600 shadow-sm"
-              >
-                <span className="text-[9px] font-bold uppercase tracking-wider text-blue-400 group-hover:text-blue-200">{sug.category || 'Sugestão'}</span>
-                <span className="text-xs font-bold text-blue-700 group-hover:text-white">{sug.keyword}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="flex items-center gap-3">
-        <div className="flex gap-1">
-          <input 
-            type="file" 
-            className="hidden" 
-            ref={fileInputRef} 
-            onChange={handleFileUpload}
-            accept="image/*,audio/*,application/pdf"
-          />
-          <button className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 transition-colors">
-            <Smile size={24} />
-          </button>
-          <button 
-            disabled={uploading}
-            onClick={() => fileInputRef.current?.click()}
-            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 transition-colors disabled:opacity-30"
-          >
-            {uploading ? <Loader2 size={24} className="animate-spin text-blue-500" /> : <Paperclip size={24} />}
-          </button>
-          <button 
-            onClick={() => setManagerOpen(true)}
-            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 transition-colors"
-          >
-            <Zap size={22} className="fill-current opacity-40 hover:opacity-100 transition-opacity" />
-          </button>
+      <div className="flex items-end gap-3 max-w-[1200px] mx-auto">
+        <div className="flex items-center gap-1 pb-1">
+          <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-xl p-2.5 text-slate-400 hover:bg-slate-50 hover:text-blue-600 transition-all active:scale-90"><Paperclip size={22} /></button>
+          <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+          <button type="button" onClick={() => setRepliesOpen(true)} className="rounded-xl p-2.5 text-slate-400 hover:bg-slate-50 hover:text-blue-600 transition-all active:scale-90"><Zap size={22} /></button>
         </div>
 
-        <div className="flex-1">
+        <div className="relative flex-1 group">
           <textarea
             value={content}
-            onChange={(e) => handleContentChange(e.target.value)}
+            onFocus={() => { if (content.length > 0) sendPresence('composing'); }}
+            onChange={(e) => setContent(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Digite uma mensagem... (use '/' para atalhos)"
-            className="w-full resize-none rounded-lg border-none bg-slate-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-slate-300 max-h-32"
+            placeholder="Digite sua mensagem profissional..."
+            className="block w-full resize-none rounded-2xl border-slate-200 bg-slate-50 py-3.5 pl-5 pr-12 text-sm font-medium text-slate-800 shadow-inner focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 outline-none transition-all placeholder:text-slate-400 min-h-[52px] max-h-40"
             rows={1}
           />
+          <button className="absolute right-4 bottom-3 text-slate-300 hover:text-blue-500 transition-colors"><Smile size={20} /></button>
         </div>
 
         <button
           onClick={handleSend}
-          disabled={!content.trim()}
-          className="rounded-lg bg-blue-600 p-2.5 text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition-all hover:scale-105 active:scale-95"
+          disabled={!content.trim() || uploading || isEditingName}
+          className="flex h-[52px] w-[52px] items-center justify-center rounded-2xl bg-slate-900 text-white shadow-xl shadow-slate-200 transition-all hover:bg-black hover:scale-105 active:scale-95 disabled:opacity-30 disabled:hover:scale-100"
         >
-          <Send size={20} />
+          {uploading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} className="ml-0.5" />}
         </button>
-
-        {managerOpen && <QuickReplyManagerModal onClose={() => setManagerOpen(false)} />}
       </div>
+
+      {repliesOpen && <QuickReplyMenu search={content.startsWith('/') ? content.slice(1) : content} onSelect={(replyContent) => { setContent(replyContent); setRepliesOpen(false); }} onClose={() => setRepliesOpen(false)} />}
+      {managerOpen && <QuickReplyManagerModal onClose={() => setManagerOpen(false)} />}
     </div>
   );
 };

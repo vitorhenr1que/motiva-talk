@@ -40,6 +40,21 @@ export class MessageRepository {
     return newMessage
   }
 
+  /**
+   * Atualiza uma mensagem pelo ID
+   */
+  static async update(id: string, data: any) {
+    const { data: updated, error } = await supabaseAdmin
+      .from('Message')
+      .update(data)
+      .eq('id', id)
+      .select()
+      .single()
+    
+    if (error) throw error
+    return updated
+  }
+
   static async delete(id: string) {
     const { error } = await supabaseAdmin.from('Message').delete().eq('id', id)
     if (error) throw error

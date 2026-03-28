@@ -75,7 +75,7 @@ class EvolutionApiClient {
       console.log(`[EVO_DEBUG] Response Status: ${response.status} ${response.statusText}`);
 
       const responseText = await response.text();
-      console.log(`[EVO_DEBUG] Response Body:`, responseText);
+      // console.log(`[EVO_DEBUG] Response Body:`, responseText);
 
       let responseData: any = {};
       try {
@@ -85,7 +85,6 @@ class EvolutionApiClient {
       }
 
       if (!response.ok) {
-        // Log deep error information for 400 and 403
         if (response.status === 403) {
           console.error('[EVO_DEBUG] Error 403: Forbidden. Check API Key or Admin permissions.');
         } else if (response.status === 400) {
@@ -96,7 +95,6 @@ class EvolutionApiClient {
           throw new Error('NOT_FOUND');
         }
 
-        // Throw with the actual message from the API if available
         throw new Error(
           responseData.message || 
           responseData.error || 
@@ -144,16 +142,11 @@ class EvolutionApiClient {
     });
   }
 
-  /**
-   * Fetches internal details of a specific instance.
-   * FIX: Changed from /fetch/ to /fetchInstance/
-   */
   async getInstance(instanceName: string) {
     const instances = await this.request<any[]>('/instance/fetchInstances', {
       method: 'GET',
     });
     
-    console.log(`[EVO_DEBUG] getInstance (${instanceName}): Total instâncias: ${instances.length}`);
     const instance = instances.find(i => 
       i.instanceName === instanceName || 
       i.name === instanceName || 
@@ -167,45 +160,30 @@ class EvolutionApiClient {
     return instance as Instance;
   }
 
-  /**
-   * Returns a list of all instances.
-   */
   async listInstances() {
     return this.request<any[]>('/instance/fetchInstances', {
       method: 'GET',
     });
   }
 
-  /**
-   * Connects and returns the QR Code.
-   */
   async getQrCode(instanceName: string) {
     return this.request<QrCodeResponse>(`/instance/connect/${instanceName}`, {
       method: 'GET',
     });
   }
 
-  /**
-   * Checks the connection state (open, close, connecting, etc.)
-   */
   async getConnectionState(instanceName: string) {
     return this.request<ConnectionState>(`/instance/connectionState/${instanceName}`, {
       method: 'GET',
     });
   }
 
-  /**
-   * Completely deletes the instance from the server.
-   */
   async deleteInstance(instanceName: string) {
     return this.request<any>(`/instance/delete/${instanceName}`, {
       method: 'DELETE',
     });
   }
 
-  /**
-   * Logs out from the WhatsApp account without deleting the instance.
-   */
   async logoutInstance(instanceName: string) {
     return this.request<any>(`/instance/logout/${instanceName}`, {
       method: 'DELETE',
@@ -216,6 +194,22 @@ class EvolutionApiClient {
 
   async sendMessage(instanceName: string, payload: SendMessagePayload) {
     return this.request<any>(`/message/sendText/${instanceName}`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // --- Chat Advanced ---
+
+  async deleteMessage(instanceName: string, payload: { number: string; id: string; fromMe: boolean }) {
+    return this.request<any>(`/chat/deleteMessage/${instanceName}`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async sendPresence(instanceName: string, payload: { number: string; presence: 'composing' | 'paused' }) {
+    return this.request<any>(`/chat/presence/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
@@ -237,9 +231,6 @@ class EvolutionApiClient {
     webhookByStatus?: boolean;
     events: string[];
   }) {
-    console.log(`[EVO_DEBUG] Calling setWebhook for instance: ${instanceName}`);
-    
-    // Evolution API v2 requires the payload to be wrapped in a "webhook" property
     const payload = {
       webhook: {
         ...data,

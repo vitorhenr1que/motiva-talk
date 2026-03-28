@@ -1,4 +1,5 @@
 import { MessageRepository } from '@/repositories/messageRepository'
+import { Channel } from '@/types/chat';
 
 export interface CreateMessageData {
   conversationId: string;
@@ -11,10 +12,13 @@ export interface CreateMessageData {
 
 export class MessageService {
   /**
-   * Lista histórico de mensagens paginado (simplificado)
+   * Lista histórico de mensagens paginado
+   * Filtra mensagens apagadas (me/todos)
    */
   static async listByConversation(conversationId: string) {
-    return await MessageRepository.findMany({ conversationId })
+    const messages = await MessageRepository.findMany({ conversationId })
+    // Filtro básico na camada de serviço (podemos mover para o Repo depois se necessário)
+    return messages.filter((m: any) => !m.deletedForMe)
   }
 
   /**
@@ -26,9 +30,7 @@ export class MessageService {
     let externalMessageId: string | undefined = data.externalMessageId
     let quoted: { id: string, content: string, fromMe: boolean, type?: string } | undefined = undefined;
 
-    // Se houver uma resposta, precisamos buscar os dados da mensagem original para a Evolution API
     if (replyToMessageId) {
-      const { MessageRepository } = await import('@/repositories/messageRepository');
       const originalMsg = await MessageRepository.findById(replyToMessageId);
       if (originalMsg && originalMsg.externalMessageId) {
         quoted = {
@@ -37,43 +39,33 @@ export class MessageService {
           fromMe: originalMsg.senderType === 'AGENT' || originalMsg.senderType === 'SYSTEM',
           type: originalMsg.type
         };
-        console.log(`[MSG_SERVICE] Preparando resposta para mensagem: ${quoted.id}`);
       }
     }
 
-    // Se a mensagem for do atendente, PRECISAMOS enviar para a Evolution API
     if (senderType === 'AGENT') {
       try {
         const { ConversationRepository } = await import('@/repositories/conversationRepository')
         const { evolutionProvider } = await import('@/services/whatsapp/evolution-provider')
         
-        console.log(`[MSG_SERVICE] Enviando mensagem via Provider: Conv[${conversationId}] Content[${content.substring(0, 15)}...]`);
-        
-        // 1. Obter conversa com contato e canal
         const conversation = await ConversationRepository.findById(conversationId)
         if (!conversation || !conversation.contact || !conversation.channel) {
-          throw new Error('Conversa, contato ou canal não encontrados para envio.')
+          throw new Error('Conversa, contato ou canal não encontrados.')
         }
 
-        // 2. Enviar via Provider (Passando o quoted se existir)
-        const phone = conversation.contact.phone
         const result = await evolutionProvider.sendMessage(
           conversation.channel,
-          phone,
+          conversation.contact.phone,
           content,
           (type as any) || 'TEXT',
           quoted
         )
 
-        // 3. Pegar ID externo retornado
         externalMessageId = result?.key?.id || result?.message?.key?.id
-        console.log(`[MSG_SERVICE] Enviado com sucesso! ExtID[${externalMessageId}]`);
       } catch (error) {
-        console.error('[MSG_SERVICE] Erro ao enviar mensagem via Evolution API:', error)
+        console.error('[MSG_SERVICE] Erro ao enviar mensagem:', error)
       }
     }
 
-    const { MessageRepository } = await import('@/repositories/messageRepository')
     const newMessage = await MessageRepository.create({
       conversationId,
       channelId,
@@ -84,10 +76,8 @@ export class MessageService {
       replyToMessageId
     })
 
-    // Se o atendente enviou mensagem, marcamos a conversa como "lida" (unreadCount = 0)
     if (senderType === 'AGENT') {
       const { ConversationRepository } = await import('@/repositories/conversationRepository')
-      console.log(`[UNREAD_DEBUG] Atendente enviou mensagem. Resetando unreadCount para conversa ${conversationId}`);
       await ConversationRepository.update(conversationId, { 
         lastMessageAt: new Date().toISOString(),
         unreadCount: 0 
@@ -98,22 +88,71 @@ export class MessageService {
   }
 
   /**
-   * Obtém uma mensagem específica pelo ID
+   * Apaga mensagem apenas para o atendente (localmente)
    */
+  static async deleteForMe(id: string) {
+    return await MessageRepository.update(id, { deletedForMe: true })
+  }
+
+  /**
+   * Apaga mensagem para todos (Evolution API + Banco)
+   */
+  static async deleteForEveryone(id: string) {
+    const message = await MessageRepository.findById(id);
+    if (!message) throw new Error('Mensagem não encontrada');
+
+    // 1. Apagar no WhatsApp via Evolution API se tiver ID externo
+    if (message.externalMessageId) {
+      try {
+        const { ConversationRepository } = await import('@/repositories/conversationRepository');
+        const { evolutionProvider } = await import('@/services/whatsapp/evolution-provider');
+        
+        const conversation = await ConversationRepository.findById(message.conversationId);
+        if (conversation && conversation.contact && conversation.channel) {
+           await evolutionProvider.deleteMessage(
+             conversation.channel, 
+             conversation.contact.phone, 
+             message.externalMessageId,
+             message.senderType === 'AGENT'
+           );
+        }
+      } catch (error) {
+        console.error('[MSG_SERVICE] Erro ao apagar no WhatsApp:', error);
+      }
+    }
+
+    // 2. Atualizar no Banco (Marcamos como deletada para todos)
+    return await MessageRepository.update(id, { 
+      deletedForEveryone: true,
+      content: '🚫 Mensagem apagada' 
+    });
+  }
+
+  /**
+   * Envia status de presença (digitando) para o contato
+   */
+  static async sendPresence(conversationId: string, presence: 'composing' | 'paused') {
+    const { ConversationRepository } = await import('@/repositories/conversationRepository');
+    const { evolutionProvider } = await import('@/services/whatsapp/evolution-provider');
+
+    const conversation = await ConversationRepository.findById(conversationId);
+    if (conversation && conversation.contact && conversation.channel) {
+      await evolutionProvider.sendPresence(
+        conversation.channel,
+        conversation.contact.phone,
+        presence
+      );
+    }
+  }
+
   static async getMessageById(id: string) {
     return await MessageRepository.findById(id)
   }
 
-  /**
-   * Exclui uma mensagem do banco
-   */
   static async deleteMessage(id: string) {
     return await MessageRepository.delete(id)
   }
 
-  /**
-   * Obtém a última mensagem enviada em uma conversa
-   */
   static async getLastMessage(conversationId: string) {
     return await MessageRepository.findLastByConversation(conversationId)
   }

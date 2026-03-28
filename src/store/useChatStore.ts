@@ -21,10 +21,14 @@ interface ChatState {
   addMessage: (message: any) => void;
   upsertMessage: (message: any, tempId?: string) => void;
   removeMessage: (id: string) => void;
+  
+  // Ações de Exclusão de Mensagem
+  deleteMessageLocally: (id: string, mode: 'me' | 'everyone') => void;
+  
   setChannels: (channels: any[]) => void;
-  setTags: (tags: any[]) => void; // Novo
+  setTags: (tags: any[]) => void;
   setSelectedChannelId: (id: string | null) => void
-  setSelectedTagId: (id: string | null) => void // Novo
+  setSelectedTagId: (id: string | null) => void
   setLoadingConversations: (loading: boolean) => void
   setLoadingMessages: (loading: boolean) => void
   markAsRead: (conversationId: string) => void
@@ -45,16 +49,12 @@ export const useChatStore = create<ChatState>((set) => ({
 
   setConversations: (conversations) => {
     const activeId = useChatStore.getState().activeConversation?.id;
-    
-    // Deduplicação por ID para evitar erro de chaves duplicadas no React
     const uniqueMap = new Map();
     conversations.forEach(c => uniqueMap.set(c.id, c));
     const uniqueList = Array.from(uniqueMap.values());
 
     const sorted = uniqueList.map(conv => {
-      // Regra de Ouro: Se eu estou na conversa, ela deve aparecer com 0 no meu inbox local
       if (conv.id === activeId && (conv.unreadCount || 0) > 0) {
-        console.log(`[UNREAD_DEBUG] Sincronização: Forçando 0 não lidas para conversa ATIVA ${conv.id}`);
         return { ...conv, unreadCount: 0 };
       }
       return conv;
@@ -62,10 +62,6 @@ export const useChatStore = create<ChatState>((set) => ({
       new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
     );
     
-    if (uniqueList.length < conversations.length) {
-      console.warn(`[UNREAD_DEBUG] Deduplicação aplicada: ${conversations.length} -> ${uniqueList.length} conversas.`);
-    }
-
     set({ conversations: sorted });
   },
   setActiveConversation: (conversation) => {
@@ -76,7 +72,6 @@ export const useChatStore = create<ChatState>((set) => ({
   },
   setReplyToMessage: (message) => set({ replyToMessage: message }),
   setMessages: (messages) => {
-    // Deduplicação de Mensagens por ID
     const uniqueMap = new Map();
     messages.forEach(m => uniqueMap.set(m.id, m));
     set({ messages: Array.from(uniqueMap.values()) });
@@ -84,49 +79,37 @@ export const useChatStore = create<ChatState>((set) => ({
   addMessage: (message) => set((state) => {
     if (!message || !message.id) return state
     
-    // 1. Evitar Duplicação nas Mensagens (ChatArea)
+    // Evitar Duplicação
     const isDuplicate = state.messages.some(m => m.id === message.id)
-    if (isDuplicate) {
-      console.warn(`[UNREAD_DEBUG] Mensagem duplicada ignorada: ${message.id}`);
-      return state
-    }
+    if (isDuplicate) return state
     
-    // 1.1 Sincronização Inteligente: Se for AGENT e tiver uma temp com MESMO CONTEÚDO, substituir
+    // Substituir temporária se houver
     let tempMessageToReplace = null;
     if (message.senderType === 'AGENT') {
       tempMessageToReplace = state.messages.find(m => 
         m.id.startsWith('temp-') && 
-        m.content === message.content && 
+        (m.content.trim() === message.content.trim()) && 
         m.conversationId === message.conversationId
       );
     }
 
     let nextMessages = [...state.messages];
     if (tempMessageToReplace) {
-      console.log(`[UNREAD_DEBUG] Realtime: Substituindo mensagem temporária ${tempMessageToReplace.id} pela real ${message.id}`);
       nextMessages = state.messages.map(m => m.id === tempMessageToReplace!.id ? message : m);
     } else {
-      // Só adicionar se realmente for da conversa ativa
-      const shouldAddGlobal = state.activeConversation?.id === message.conversationId;
-      if (shouldAddGlobal) {
+      if (state.activeConversation?.id === message.conversationId) {
         nextMessages = [...state.messages, message];
       }
     }
     
-    // 2. Atualizar lista de conversas (Deduplicando e reordenando)
+    // Atualizar conversa
     const existingConvMap = new Map();
     state.conversations.forEach(c => existingConvMap.set(c.id, c));
-    
     const conv = existingConvMap.get(message.conversationId);
     if (conv) {
       const isFromUser = message.senderType === 'USER';
       const isNotActive = state.activeConversation?.id === conv.id ? false : true;
       const newUnread = (isFromUser && isNotActive) ? (conv.unreadCount || 0) + 1 : 0;
-      
-      if (isFromUser && !isNotActive) {
-        console.log(`[UNREAD_DEBUG] Mensagem na ativa. Sincronizando markAsRead...`);
-        useChatStore.getState().markAsRead(conv.id);
-      }
       
       existingConvMap.set(conv.id, {
         ...conv,
@@ -136,25 +119,16 @@ export const useChatStore = create<ChatState>((set) => ({
       });
     }
 
-    const updatedConversations = Array.from(existingConvMap.values())
-      .sort((a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime());
-
     return { 
       messages: nextMessages,
-      conversations: updatedConversations
+      conversations: Array.from(existingConvMap.values()).sort((a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime())
     }
   }),
   upsertMessage: (message, tempId) => set((state) => {
     if (!message || !message.id) return state
-    
-    // 1. Filtrar QUALQUER cópia (pelo ID real OU pelo ID temporário)
-    const otherMessages = state.messages.filter(m => 
-       m.id !== message.id && (!tempId || m.id !== tempId)
-    );
-    
-    const newMessages = [...otherMessages, message];
+    const otherMessages = state.messages.filter(m => m.id !== message.id && (!tempId || m.id !== tempId));
+    const newMessages = [...otherMessages, message].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
-    // 2. Ordenar conversas
     const updatedConversations = state.conversations.map(conv => {
       if (conv.id === message.conversationId) {
         return { ...conv, lastMessageAt: new Date().toISOString(), messages: [message] };
@@ -162,14 +136,28 @@ export const useChatStore = create<ChatState>((set) => ({
       return conv;
     }).sort((a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime());
 
-    return { 
-      messages: newMessages,
-      conversations: updatedConversations
-    }
+    return { messages: newMessages, conversations: updatedConversations }
   }),
   removeMessage: (id) => set((state) => ({
     messages: state.messages.filter(m => m.id !== id)
   })),
+
+  /**
+   * Atualiza o estado visual da mensagem após exclusão (Me ou Everyone)
+   */
+  deleteMessageLocally: (id, mode) => set((state) => {
+    if (mode === 'me') {
+      return { messages: state.messages.filter(m => m.id !== id) };
+    } else {
+      // everyone: Mantém o balão mas altera o texto
+      return { 
+        messages: state.messages.map(m => 
+          m.id === id ? { ...m, content: '🚫 Mensagem apagada', deletedForEveryone: true } : m
+        )
+      };
+    }
+  }),
+
   setChannels: (channels) => set({ channels }),
   setTags: (tags) => set({ tags }),
   setSelectedChannelId: (id) => set({ selectedChannelId: id }),
@@ -180,9 +168,9 @@ export const useChatStore = create<ChatState>((set) => ({
   markAsRead: (conversationId) => set((state) => {
     const conv = state.conversations.find(c => c.id === conversationId);
     if (conv && (conv.unreadCount || 0) > 0) {
-      console.log(`[UNREAD_DEBUG] Zerando não lidas para conversa: ${conversationId}`);
       fetch(`/api/conversations/${conversationId}`, {
         method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ unreadCount: 0 })
       }).catch(console.error);
       
@@ -196,9 +184,9 @@ export const useChatStore = create<ChatState>((set) => ({
   }),
 
   markAsUnread: (conversationId) => set((state) => {
-    console.log(`[UNREAD_DEBUG] Marcando manualmente como NÃO LIDA: ${conversationId}`);
     fetch(`/api/conversations/${conversationId}`, {
       method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ unreadCount: 1 })
     }).catch(console.error);
 
