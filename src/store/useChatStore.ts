@@ -84,11 +84,33 @@ export const useChatStore = create<ChatState>((set) => ({
   addMessage: (message) => set((state) => {
     if (!message || !message.id) return state
     
-    // 1. Evitar Duplicação nas Mensagens (Chat)
+    // 1. Evitar Duplicação nas Mensagens (ChatArea)
     const isDuplicate = state.messages.some(m => m.id === message.id)
     if (isDuplicate) {
       console.warn(`[UNREAD_DEBUG] Mensagem duplicada ignorada: ${message.id}`);
       return state
+    }
+    
+    // 1.1 Sincronização Inteligente: Se for AGENT e tiver uma temp com MESMO CONTEÚDO, substituir
+    let tempMessageToReplace = null;
+    if (message.senderType === 'AGENT') {
+      tempMessageToReplace = state.messages.find(m => 
+        m.id.startsWith('temp-') && 
+        m.content === message.content && 
+        m.conversationId === message.conversationId
+      );
+    }
+
+    let nextMessages = [...state.messages];
+    if (tempMessageToReplace) {
+      console.log(`[UNREAD_DEBUG] Realtime: Substituindo mensagem temporária ${tempMessageToReplace.id} pela real ${message.id}`);
+      nextMessages = state.messages.map(m => m.id === tempMessageToReplace!.id ? message : m);
+    } else {
+      // Só adicionar se realmente for da conversa ativa
+      const shouldAddGlobal = state.activeConversation?.id === message.conversationId;
+      if (shouldAddGlobal) {
+        nextMessages = [...state.messages, message];
+      }
     }
     
     // 2. Atualizar lista de conversas (Deduplicando e reordenando)
@@ -117,31 +139,25 @@ export const useChatStore = create<ChatState>((set) => ({
     const updatedConversations = Array.from(existingConvMap.values())
       .sort((a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime());
 
-    // 3. Só adicionar no array global de mensagens SE for da conversa ativa
-    const shouldAddGlobal = state.activeConversation?.id === message.conversationId;
-    const newMessages = shouldAddGlobal ? [...state.messages, message] : state.messages;
-
     return { 
-      messages: newMessages,
+      messages: nextMessages,
       conversations: updatedConversations
     }
   }),
   upsertMessage: (message, tempId) => set((state) => {
     if (!message || !message.id) return state
     
-    let newMessages = [...state.messages];
-    const exists = state.messages.some(m => (tempId && m.id === tempId) || m.id === message.id);
+    // 1. Filtrar QUALQUER cópia (pelo ID real OU pelo ID temporário)
+    const otherMessages = state.messages.filter(m => 
+       m.id !== message.id && (!tempId || m.id !== tempId)
+    );
     
-    if (exists) {
-      newMessages = state.messages.map(m => ((tempId && m.id === tempId) || m.id === message.id) ? message : m);
-    } else {
-      newMessages.push(message);
-    }
+    const newMessages = [...otherMessages, message];
 
-    // Ordenar conversas
+    // 2. Ordenar conversas
     const updatedConversations = state.conversations.map(conv => {
       if (conv.id === message.conversationId) {
-        return { ...conv, lastMessageAt: new Date().toISOString() };
+        return { ...conv, lastMessageAt: new Date().toISOString(), messages: [message] };
       }
       return conv;
     }).sort((a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime());
