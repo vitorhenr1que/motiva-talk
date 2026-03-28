@@ -11,7 +11,11 @@ export async function middleware(req: NextRequest) {
 
   // Rotas que não precisam de autenticação
   const publicRoutes = ['/login', '/api/auth/session']
-  const isPublicRoute = publicRoutes.some(route => pathname === route) || pathname.startsWith('/_next') || pathname.includes('.')
+  const isPublicRoute = 
+    publicRoutes.some(route => pathname === route) || 
+    pathname.startsWith('/api/webhooks') || 
+    pathname.startsWith('/_next') || 
+    pathname.includes('.')
 
   if (isPublicRoute) {
     return res
