@@ -25,7 +25,7 @@ export const useRealtimeInbox = () => {
       const res = await fetch(`/api/conversations?channelId=${channelId}`);
       if (res.ok) {
         const data = await res.json();
-        setConversations(data);
+        setConversations(data.data || []);
       }
     } catch (e) {
       console.error('Realtime: Error refreshing conversations');

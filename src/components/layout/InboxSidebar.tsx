@@ -31,7 +31,7 @@ export const Sidebar = () => {
     const fetchTags = async () => {
       const res = await fetch('/api/tags');
       const data = await res.json();
-      setTags(data);
+      setTags(data.data || []);
     };
     fetchTags();
   }, [setTags]);
@@ -47,7 +47,7 @@ export const Sidebar = () => {
         
         const res = await fetch(url);
         const data = await res.json();
-        setConversations(data);
+        setConversations(data.data || []);
       } catch (error) {
         console.error('Failed to fetch conversations:', error);
       } finally {

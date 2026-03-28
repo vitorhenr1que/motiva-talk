@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 import { QuickReplyService } from '@/services/quick-replies'
+import { handleApiError, validateBody } from '@/lib/api-errors'
 
 export const dynamic = 'force-dynamic';
+
+const ROUTE = '/api/quick-replies';
 
 export async function GET(req: Request) {
   try {
@@ -9,26 +12,23 @@ export async function GET(req: Request) {
     const channelId = searchParams.get('channelId') || undefined
 
     const replies = await QuickReplyService.listAvailable(channelId)
-    return NextResponse.json(replies)
+    return NextResponse.json({ success: true, data: replies })
   } catch (error) {
-    console.error('API Error (Quick Replies GET):', error)
-    return NextResponse.json({ error: 'Erro ao buscar respostas rápidas' }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json()
+    console.log(`[API] ${req.method} ${ROUTE}:`, body);
+
+    validateBody(body, ['title', 'content', 'category'])
     const { title, content, category, channelId } = body
 
-    if (!title || !content || !category) {
-      return NextResponse.json({ error: 'Título, conteúdo e categoria são obrigatórios' }, { status: 400 })
-    }
-
     const reply = await QuickReplyService.addReply({ title, content, category, channelId })
-    return NextResponse.json(reply, { status: 201 })
+    return NextResponse.json({ success: true, data: reply }, { status: 201 })
   } catch (error) {
-    console.error('API Error (Quick Replies POST):', error)
-    return NextResponse.json({ error: 'Erro ao criar resposta rápida' }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }

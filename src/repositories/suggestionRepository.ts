@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { generateId } from '@/lib/utils'
 
 export class SuggestionRepository {
   static async findMany(where?: any) {
@@ -18,7 +19,11 @@ export class SuggestionRepository {
   }
 
   static async create(data: any) {
-    const { data: newSuggestion, error } = await supabaseAdmin.from('KeywordSuggestion').insert([data]).select().single()
+    const { data: newSuggestion, error } = await supabaseAdmin
+      .from('KeywordSuggestion')
+      .insert([{ id: generateId(), ...data }])
+      .select()
+      .single()
     if (error) throw error
     return newSuggestion
   }

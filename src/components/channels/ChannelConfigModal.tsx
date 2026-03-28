@@ -66,7 +66,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
         if (action === 'delete') onClose();
         if (action === 'reset') handleReconnect();
       } else {
-        alert('Falha na ação: ' + (data.error || 'Erro desconhecido'));
+        alert('Falha na ação: ' + (data.message || data.error || 'Erro desconhecido'));
       }
     } catch (err) {
       alert('Falha crítica na comunicação com o servidor. Tente novamente.');

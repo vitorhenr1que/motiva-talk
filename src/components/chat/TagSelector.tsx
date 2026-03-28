@@ -31,7 +31,7 @@ export const TagSelector = ({ conversationId, currentTags, onUpdate }: TagSelect
   const fetchTags = async () => {
     const res = await fetch('/api/tags');
     const data = await res.json();
-    setTags(data);
+    setTags(data.data || []);
   };
 
   useEffect(() => {

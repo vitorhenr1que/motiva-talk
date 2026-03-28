@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 import { MessageService } from '@/services/messages'
+import { handleApiError, validateBody, AppError } from '@/lib/api-errors'
 
 export const dynamic = 'force-dynamic';
+
+const ROUTE = '/api/messages';
 
 export async function GET(req: Request) {
   try {
@@ -9,25 +12,23 @@ export async function GET(req: Request) {
     const conversationId = searchParams.get('conversationId')
     
     if (!conversationId) {
-      return NextResponse.json({ error: 'conversationId é obrigatório' }, { status: 400 })
+      throw new AppError('conversationId é obrigatório', 400, 'VALIDATION_ERROR');
     }
 
     const messages = await MessageService.listByConversation(conversationId)
-    return NextResponse.json(messages)
+    return NextResponse.json({ success: true, data: messages })
   } catch (error) {
-    console.error('API Error (Messages GET):', error)
-    return NextResponse.json({ error: 'Erro ao buscar mensagens' }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { conversationId, channelId, senderType, content, type } = body
+    console.log(`[API] ${req.method} ${ROUTE}:`, body);
 
-    if (!conversationId || !channelId || !senderType || !content) {
-      return NextResponse.json({ error: 'Campos obrigatórios ausentes' }, { status: 400 })
-    }
+    validateBody(body, ['conversationId', 'channelId', 'senderType', 'content'])
+    const { conversationId, channelId, senderType, content, type } = body
 
     const message = await MessageService.createMessage({
       conversationId,
@@ -37,9 +38,8 @@ export async function POST(req: Request) {
       type
     })
 
-    return NextResponse.json(message, { status: 201 })
+    return NextResponse.json({ success: true, data: message }, { status: 201 })
   } catch (error) {
-    console.error('API Error (Messages POST):', error)
-    return NextResponse.json({ error: 'Erro ao enviar mensagem' }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }

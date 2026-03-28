@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { ChannelConnectionService } from '@/services/channels/channel-connection.service';
+import { handleApiError } from '@/lib/api-errors';
 
 export const dynamic = 'force-dynamic';
+
+const ROUTE = '/api/channels/[id]';
 
 /**
  * Handle individual channel operations like DELETE
@@ -12,9 +15,10 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    console.log(`[API] ${req.method} ${ROUTE}:`, { id });
     
     if (!id) {
-      return NextResponse.json({ error: 'ID do canal é obrigatório' }, { status: 400 });
+      return NextResponse.json({ success: false, message: 'ID do canal é obrigatório' }, { status: 400 });
     }
 
     await ChannelConnectionService.deleteChannel(id);
@@ -23,10 +27,7 @@ export async function DELETE(
       success: true,
       message: 'Canal e instância removidos com sucesso'
     });
-  } catch (error: any) {
-    console.error('API Error (Delete Channel):', error);
-    return NextResponse.json({ 
-      error: error.message || 'Erro ao remover canal' 
-    }, { status: 500 });
+  } catch (error) {
+    return handleApiError(error, req, { route: ROUTE });
   }
 }

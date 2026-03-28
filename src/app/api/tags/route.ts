@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server'
 import { TagService } from '@/services/tags'
+import { handleApiError } from '@/lib/api-errors'
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+const ROUTE = '/api/tags';
+
+export async function GET(req: Request) {
   try {
     const tags = await TagService.getAll()
-    return NextResponse.json(tags)
+    return NextResponse.json({ success: true, data: tags })
   } catch (error) {
-    return NextResponse.json({ error: 'Erro ao buscar etiquetas' }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }

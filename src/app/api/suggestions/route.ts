@@ -1,19 +1,22 @@
 import { NextResponse } from 'next/server'
 import { SuggestionService } from '@/services/suggestions'
+import { handleApiError, validateBody } from '@/lib/api-errors'
 
 export const dynamic = 'force-dynamic';
+
+const ROUTE = '/api/suggestions';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json()
+    console.log(`[API] ${req.method} ${ROUTE}:`, body);
+
+    validateBody(body, ['content'])
     const { content, channelId } = body
-    
-    if (!content) return NextResponse.json({ error: 'Conteúdo necessário' }, { status: 400 })
 
     const suggestions = await SuggestionService.findSuggestions(content, channelId)
-    return NextResponse.json(suggestions)
+    return NextResponse.json({ success: true, data: suggestions })
   } catch (error) {
-    console.error('API Error (Suggestions POST):', error)
-    return NextResponse.json({ error: 'Erro ao buscar sugestões' }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }

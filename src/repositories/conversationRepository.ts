@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { generateId } from '@/lib/utils'
 
 export class ConversationRepository {
   static async findMany(where: any) {
@@ -46,7 +47,7 @@ export class ConversationRepository {
   static async create(data: any) {
     const { data: newConversation, error } = await supabaseAdmin
       .from('Conversation')
-      .insert([data])
+      .insert([{ id: generateId(), ...data }])
       .select()
       .single()
 

@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { ChannelConnectionService } from '@/services/channels/channel-connection.service';
+import { handleApiError } from '@/lib/api-errors';
 
 export const dynamic = 'force-dynamic';
+
+const ROUTE = '/api/channels/[id]/reset';
 
 /**
  * Handle manual channel reset
@@ -13,10 +16,10 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    console.log(`[API] POST /reset para ID: ${id}`);
+    console.log(`[API] ${req.method} ${ROUTE}:`, { id });
     
     if (!id) {
-      return NextResponse.json({ error: 'ID do canal é obrigatório' }, { status: 400 });
+      return NextResponse.json({ success: false, message: 'ID do canal é obrigatório' }, { status: 400 });
     }
 
     const resetResult = await ChannelConnectionService.resetChannel(id);
@@ -24,12 +27,9 @@ export async function POST(
     return NextResponse.json({
       success: true,
       message: 'Canal resetado com sucesso. Proceda com a geração do QR Code.',
-      channel: resetResult
+      data: resetResult
     });
-  } catch (error: any) {
-    console.error('API Error (Reset Channel):', error);
-    return NextResponse.json({ 
-      error: error.message || 'Erro ao resetar canal' 
-    }, { status: 500 });
+  } catch (error) {
+    return handleApiError(error, req, { route: ROUTE });
   }
 }

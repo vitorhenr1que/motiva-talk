@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { generateId } from '@/lib/utils'
 
 export class MessageRepository {
   static async findMany(where: any) {
@@ -21,7 +22,11 @@ export class MessageRepository {
   }
 
   static async create(data: any) {
-    const { data: newMessage, error } = await supabaseAdmin.from('Message').insert([data]).select().single()
+    const { data: newMessage, error } = await supabaseAdmin
+      .from('Message')
+      .insert([{ id: generateId(), ...data }])
+      .select()
+      .single()
     if (error) throw error
     return newMessage
   }

@@ -47,9 +47,8 @@ export const MessageInput = () => {
 
       if (resp.ok) {
         const realMsg = await resp.json();
-        // O Realtime também vai receber essa mensagem, mas a store vai dedup pelo ID se usarmos o ID real retornado.
-        // Se a store for atualizada antes do Realtime, ótimo.
-        addMessage(realMsg);
+        // Access nested data property
+        addMessage(realMsg.data);
       }
     } catch (error) {
       console.error('API integration error:', error);
@@ -84,7 +83,7 @@ export const MessageInput = () => {
 
       if (resp.ok) {
         const realMsg = await resp.json();
-        addMessage(realMsg);
+        addMessage(realMsg.data);
       }
     } catch (error: any) {
       console.error('File upload failed:', error);
@@ -142,7 +141,7 @@ export const MessageInput = () => {
           
           if (response.ok) {
             const data = await response.json();
-            setSuggestions(data);
+            setSuggestions(data.data || []);
           }
         } catch (error) {
           console.error('Failed to fetch suggestions:', error);

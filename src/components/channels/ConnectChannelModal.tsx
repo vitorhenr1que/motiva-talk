@@ -26,7 +26,7 @@ export const ConnectChannelModal: React.FC<ConnectChannelModalProps> = ({
       const res = await fetch(`/api/channels/${channelId}/status`);
       const data = await res.json();
       
-      if (data.success && data.status === 'CONNECTED') {
+      if (data.success && data.data?.status === 'CONNECTED') {
         setStatus('CONNECTED');
         // Stop polling
         return true;
@@ -53,11 +53,11 @@ export const ConnectChannelModal: React.FC<ConnectChannelModalProps> = ({
       const qrRes = await fetch(`/api/channels/${channelId}/qrcode`);
       const data = await qrRes.json();
       
-      if (data.success) {
-        setQrCodeData({ base64: data.qrcode, code: data.code });
+      if (data.success && data.data) {
+        setQrCodeData({ base64: data.data.qrcode, code: data.data.code });
         setStatus('PENDING');
       } else {
-        throw new Error(data.error || 'QR Code ainda não gerado. Aguarde...');
+        throw new Error(data.message || 'QR Code ainda não gerado. Aguarde...');
       }
     } catch (err: any) {
       setError(err.message);

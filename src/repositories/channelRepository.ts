@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { generateId } from '@/lib/utils'
 
 export class ChannelRepository {
   static async findMany(where?: any) {
@@ -19,7 +20,11 @@ export class ChannelRepository {
   }
 
   static async create(data: any) {
-    const { data: newChannel, error } = await supabaseAdmin.from('Channel').insert([data]).select().single()
+    const { data: newChannel, error } = await supabaseAdmin
+      .from('Channel')
+      .insert([{ id: generateId(), ...data }])
+      .select()
+      .single()
     if (error) throw error
     return newChannel
   }

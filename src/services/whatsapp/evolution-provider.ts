@@ -61,7 +61,18 @@ export class EvolutionProvider implements WhatsAppProvider {
         console.log(`[EVO_PROVIDER] Criando instância via API: ${instanceName}`);
         await evolutionApi.createInstance({
           instanceName,
-          token: instanceName, 
+          token: instanceName,
+          webhook: {
+            url: process.env.EVOLUTION_WEBHOOK_URL!,
+            enabled: true,
+            webhookBase64: true,
+            webhookByEvents: true,
+            events: [
+              'QRCODE_UPDATED',
+              'CONNECTION_UPDATE',
+              'MESSAGES_UPSERT'
+            ]
+          }
         });
       }
 

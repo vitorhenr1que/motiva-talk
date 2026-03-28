@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { ChannelConnectionService } from '@/services/channels/channel-connection.service';
+import { handleApiError } from '@/lib/api-errors';
 
 export const dynamic = 'force-dynamic';
+
+const ROUTE = '/api/channels/[id]/connect';
 
 export async function POST(
   req: Request,
@@ -9,22 +12,19 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    console.log(`[API] POST /connect para ID: ${id}`);
+    console.log(`[API] ${req.method} ${ROUTE}:`, { id });
     
     if (!id) {
-      return NextResponse.json({ error: 'ID do canal é obrigatório' }, { status: 400 });
+      return NextResponse.json({ success: false, message: 'ID do canal é obrigatório' }, { status: 400 });
     }
 
     const updatedChannel = await ChannelConnectionService.connectChannel(id);
     
     return NextResponse.json({
       success: true,
-      channel: updatedChannel
+      data: updatedChannel
     });
-  } catch (error: any) {
-    console.error('API Error (Connect Channel):', error);
-    return NextResponse.json({ 
-      error: error.message || 'Erro ao conectar canal' 
-    }, { status: 500 });
+  } catch (error) {
+    return handleApiError(error, req, { route: ROUTE });
   }
 }

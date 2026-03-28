@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { TagService } from '@/services/tags'
+import { handleApiError, AppError } from '@/lib/api-errors'
 
 export const dynamic = 'force-dynamic';
+
+const ROUTE = '/api/conversations/[id]/tags';
 
 export async function POST(
   req: NextRequest,
@@ -9,10 +12,13 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    const { tags, newTagMeta } = await req.json() 
+    const body = await req.json()
+    console.log(`[API] ${req.method} ${ROUTE}:`, { id, body });
+
+    const { tags, newTagMeta } = body
 
     if (!Array.isArray(tags)) {
-      return NextResponse.json({ error: 'Formato inválido' }, { status: 400 })
+      throw new AppError('Tags deve ser um array', 400, 'VALIDATION_ERROR');
     }
 
     // Se houver metadados de uma nova tag, criamos ela primeiro no banco
@@ -24,7 +30,6 @@ export async function POST(
     await TagService.syncConversationTags(id, tags)
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('API Error (Conversation Tags):', error)
-    return NextResponse.json({ error: 'Erro ao atualizar etiquetas' }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }

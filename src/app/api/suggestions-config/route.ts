@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 import { SuggestionService } from '@/services/suggestions'
+import { handleApiError, validateBody } from '@/lib/api-errors'
 
 export const dynamic = 'force-dynamic';
+
+const ROUTE = '/api/suggestions-config';
 
 export async function GET(req: Request) {
   try {
@@ -19,24 +22,19 @@ export async function GET(req: Request) {
       isActive
     })
     
-    return NextResponse.json(suggestions)
+    return NextResponse.json({ success: true, data: suggestions })
   } catch (error: any) {
-    console.error('API Error (Suggestions Config GET):', error)
-    return NextResponse.json({ 
-      error: 'Erro ao buscar configurações de sugestões',
-      details: error?.message || 'Erro desconhecido'
-    }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { keyword, triggers, response, category, channelId, isActive } = body
+    console.log(`[API] ${req.method} ${ROUTE}:`, body);
 
-    if (!keyword || !triggers || !response || !category) {
-      return NextResponse.json({ error: 'Campos obrigatórios ausentes' }, { status: 400 })
-    }
+    validateBody(body, ['keyword', 'triggers', 'response', 'category'])
+    const { keyword, triggers, response, category, channelId, isActive } = body
 
     const suggestion = await SuggestionService.createSuggestion({
       keyword,
@@ -47,9 +45,8 @@ export async function POST(req: Request) {
       isActive
     })
 
-    return NextResponse.json(suggestion, { status: 201 })
+    return NextResponse.json({ success: true, data: suggestion }, { status: 201 })
   } catch (error) {
-    console.error('API Error (Suggestions Config POST):', error)
-    return NextResponse.json({ error: 'Erro ao criar sugestão' }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }

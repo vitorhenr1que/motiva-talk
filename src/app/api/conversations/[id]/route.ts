@@ -1,18 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ConversationService } from '@/services/conversations'
+import { handleApiError, AppError } from '@/lib/api-errors'
 
 export const dynamic = 'force-dynamic';
+
+const ROUTE = '/api/conversations/[id]';
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const body = await req.json()
-    const { status, assignedTo } = body
     const { id } = await params
+    const body = await req.json()
+    console.log(`[API] ${req.method} ${ROUTE}:`, { id, body });
 
-    if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 })
+    const { status, assignedTo } = body
+
+    if (!id) throw new AppError('ID obrigatório', 400, 'VALIDATION_ERROR');
 
     let updated;
     
@@ -21,12 +26,11 @@ export async function PATCH(
     } else if (status) {
       updated = await ConversationService.updateStatus(id, status)
     } else {
-      return NextResponse.json({ error: 'Status ou assignedTo é necessário' }, { status: 400 })
+      throw new AppError('Status ou assignedTo é necessário', 400, 'VALIDATION_ERROR');
     }
 
-    return NextResponse.json(updated)
+    return NextResponse.json({ success: true, data: updated })
   } catch (error) {
-    console.error('API Error (Conversations PATCH):', error)
-    return NextResponse.json({ error: 'Erro ao atualizar conversa' }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }

@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MessageService } from '@/services/messages'
 import { deleteFile } from '@/lib/supabase-utils'
+import { handleApiError, AppError } from '@/lib/api-errors'
 
 export const dynamic = 'force-dynamic';
+
+const ROUTE = '/api/messages/[id]';
 
 export async function DELETE(
   req: NextRequest,
@@ -10,7 +13,9 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    if (!id) return NextResponse.json({ error: 'ID da mensagem obrigatório' }, { status: 400 })
+    console.log(`[API] ${req.method} ${ROUTE}:`, { id });
+
+    if (!id) throw new AppError('ID da mensagem obrigatório', 400, 'VALIDATION_ERROR');
 
     // 1. Buscar a mensagem antes de deletar para pegar a URL do arquivo no Storage
     const message = await MessageService.getMessageById(id)
@@ -20,17 +25,16 @@ export async function DELETE(
         // 2. Tentar deletar o arquivo do Storage se não for texto
         await deleteFile(message.content)
       } catch (storageError) {
-        console.warn('Falha ao deletar arquivo do storage:', storageError)
+        console.warn('[API] Falha ao deletar arquivo do storage:', storageError)
         // Continuamos para deletar o registro no banco mesmo se o storage falhar
       }
     }
 
-    // 3. Deletar do banco de dados via Prisma
+    // 3. Deletar do banco de dados
     await MessageService.deleteMessage(id)
     
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, message: 'Mensagem excluída com sucesso' })
   } catch (error) {
-    console.error('API Error (Messages DELETE):', error)
-    return NextResponse.json({ error: 'Erro ao excluir mensagem' }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }

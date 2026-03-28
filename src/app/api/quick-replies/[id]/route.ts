@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { QuickReplyService } from '@/services/quick-replies'
+import { handleApiError, AppError } from '@/lib/api-errors'
 
 export const dynamic = 'force-dynamic';
+
+const ROUTE = '/api/quick-replies/[id]';
 
 export async function PATCH(
   req: NextRequest,
@@ -10,14 +13,14 @@ export async function PATCH(
   try {
     const { id } = await params
     const body = await req.json()
+    console.log(`[API] ${req.method} ${ROUTE}:`, { id, body });
     
-    if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 })
+    if (!id) throw new AppError('ID obrigatório', 400, 'VALIDATION_ERROR');
     
     const updated = await QuickReplyService.updateReply(id, body)
-    return NextResponse.json(updated)
+    return NextResponse.json({ success: true, data: updated })
   } catch (error) {
-    console.error('API Error (Quick Replies PATCH):', error)
-    return NextResponse.json({ error: 'Erro ao atualizar resposta rápida' }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }
 
@@ -27,12 +30,13 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 })
+    console.log(`[API] ${req.method} ${ROUTE}:`, { id });
+
+    if (!id) throw new AppError('ID obrigatório', 400, 'VALIDATION_ERROR');
 
     await QuickReplyService.deleteReply(id)
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, message: 'Resposta rápida excluída com sucesso' })
   } catch (error) {
-    console.error('API Error (Quick Replies DELETE):', error)
-    return NextResponse.json({ error: 'Erro ao excluir resposta rápida' }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }

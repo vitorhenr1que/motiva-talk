@@ -44,7 +44,7 @@ export const ChatWindow = () => {
         const resp = await fetch(`/api/messages?conversationId=${activeConversation.id}`);
         if (resp.ok) {
           const data = await resp.json();
-          setMessages(data);
+          setMessages(data.data || []);
         }
       } catch (e) {
         console.error('Fetch error');
@@ -67,9 +67,10 @@ export const ChatWindow = () => {
     try {
       const res = await fetch(`/api/conversations?channelId=${activeConversation.channelId}`);
       const data = await res.json();
-      useChatStore.getState().setConversations(data);
+      const conversations = data.data || [];
+      useChatStore.getState().setConversations(conversations);
       // Atualizar a conversa atual também para refletir as novas tags
-      const updated = data.find((c: any) => c.id === activeConversation.id);
+      const updated = conversations.find((c: any) => c.id === activeConversation.id);
       if (updated) useChatStore.getState().setActiveConversation(updated);
     } catch (e) {}
   };

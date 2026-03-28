@@ -101,7 +101,7 @@ class EvolutionApiClient {
         );
       }
 
-      return responseData as T;
+      return (responseData.response !== undefined ? responseData.response : responseData) as T;
     } catch (error: any) {
       if (error.message !== 'NOT_FOUND') {
         console.error(`[EVO_DEBUG] Request failed (${path}):`, error.message);
@@ -112,14 +112,30 @@ class EvolutionApiClient {
 
   // --- Instance Management ---
 
-  async createInstance(data: { instanceName: string; token?: string; number?: string }) {
+  async createInstance(data: { 
+    instanceName: string; 
+    token?: string; 
+    number?: string;
+    webhook?: {
+      url: string;
+      enabled: boolean;
+      webhookByEvents?: boolean;
+      webhookBase64?: boolean;
+      events: string[];
+    }
+  }) {
     return this.request<any>('/instance/create', {
       method: 'POST',
       body: JSON.stringify({
         instanceName: data.instanceName,
         token: data.token || data.instanceName,
         qrcode: true,
-        integration: 'WHATSAPP-BAILEYS'
+        integration: 'WHATSAPP-BAILEYS',
+        webhook: data.webhook ? {
+          ...data.webhook,
+          webhookByEvents: data.webhook.webhookByEvents ?? true,
+          webhookBase64: data.webhook.webhookBase64 ?? true
+        } : undefined
       }),
     });
   }
@@ -205,10 +221,14 @@ class EvolutionApiClient {
     events: string[];
   }) {
     console.log(`[EVO_DEBUG] Calling setWebhook for instance: ${instanceName}`);
+    
+    // Evolution API v2 requires the payload to be wrapped in a "webhook" property
     const payload = {
-      ...data,
-      webhookByEvents: data.webhookByEvents ?? true,
-      webhookBase64: data.webhookBase64 ?? true
+      webhook: {
+        ...data,
+        webhookByEvents: data.webhookByEvents ?? true,
+        webhookBase64: data.webhookBase64 ?? true
+      }
     };
     
     return this.request<any>(`/webhook/set/${instanceName}`, {

@@ -1,15 +1,21 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
+import { handleApiError, AppError } from '@/lib/api-errors'
 
 export const dynamic = 'force-dynamic';
 
+const ROUTE = '/api/auth/session';
+
 export async function POST(req: Request) {
   try {
-    const { session } = await req.json()
+    const body = await req.json()
+    console.log(`[API] ${req.method} ${ROUTE}:`, body);
+
+    const { session } = body
     const cookieStore = await cookies()
 
     if (!session?.access_token) {
-      return NextResponse.json({ error: 'Sessão inválida' }, { status: 400 })
+      throw new AppError('Sessão inválida', 400, 'VALIDATION_ERROR');
     }
 
     // Configurar cookie de acesso
@@ -21,14 +27,18 @@ export async function POST(req: Request) {
       path: '/'
     })
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, message: 'Sessão iniciada com sucesso' })
   } catch (error) {
-    return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }
 
-export async function DELETE() {
-  const cookieStore = await cookies()
-  cookieStore.delete('sb-access-token')
-  return NextResponse.json({ success: true })
+export async function DELETE(req: Request) {
+  try {
+    const cookieStore = await cookies()
+    cookieStore.delete('sb-access-token')
+    return NextResponse.json({ success: true, message: 'Sessão encerrada com sucesso' })
+  } catch (error) {
+    return handleApiError(error, req, { route: ROUTE })
+  }
 }

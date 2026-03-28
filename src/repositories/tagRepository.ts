@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { generateId } from '@/lib/utils'
 
 export class TagRepository {
   static async findMany() {
@@ -19,6 +20,7 @@ export class TagRepository {
     const { data: newTag, error: createError } = await supabaseAdmin
       .from('Tag')
       .insert([{
+        id: generateId(),
         name,
         color: color || '#3b82f6',
         emoji: emoji || '🏷️'

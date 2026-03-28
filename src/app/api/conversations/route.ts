@@ -2,15 +2,17 @@ import { NextResponse } from 'next/server'
 import { ConversationService } from '@/services/conversations'
 import { UserRepository } from '@/repositories/userRepository'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { handleApiError, validateBody, AppError } from '@/lib/api-errors'
+import { getServerSession, getUserRole } from '@/lib/auth-server'
 
 export const dynamic = 'force-dynamic';
 
-import { getServerSession, getUserRole } from '@/lib/auth-server'
+const ROUTE = '/api/conversations';
 
 export async function GET(req: Request) {
   try {
     const user = await getServerSession()
-    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+    if (!user) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
     
     const role = await getUserRole(user.email!)
     const { searchParams } = new URL(req.url)
@@ -27,41 +29,32 @@ export async function GET(req: Request) {
 
     // Lógica de Filtro por Role (Segurança)
     if (role !== 'ADMIN' && role !== 'SUPERVISOR') {
-      // AGENT: Restrição de Canais e Atribuição
       const { data: userChannels } = await supabaseAdmin
         .from('UserChannel')
         .select('channelId')
         .eq('userId', dbUser?.id)
       
       const allowedChannelIds = userChannels?.map(uc => uc.channelId) || []
-
-      // In the new repository we might need to handle this more explicitly 
-      // but for now we'll pass the constraints
       where.assignedTo = dbUser?.id
-      // (Advanced filtering like OR would need custom implementation in repository)
     }
 
     const conversations = await ConversationService.listByFilter(where)
-    return NextResponse.json(conversations)
+    return NextResponse.json({ success: true, data: conversations })
   } catch (error) {
-    console.error('API Error (Conversations GET):', error)
-    return NextResponse.json({ error: 'Erro ao listar conversas' }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { contactId, channelId } = body
+    console.log(`[API] ${req.method} ${ROUTE}:`, body);
+    
+    validateBody(body, ['contactId', 'channelId'])
 
-    if (!contactId || !channelId) {
-      return NextResponse.json({ error: 'contactId e channelId são obrigatórios' }, { status: 400 })
-    }
-
-    const conversation = await ConversationService.startConversation(contactId, channelId)
-    return NextResponse.json(conversation, { status: 201 })
+    const conversation = await ConversationService.startConversation(body.contactId, body.channelId)
+    return NextResponse.json({ success: true, data: conversation }, { status: 201 })
   } catch (error) {
-    console.error('API Error (Conversations POST):', error)
-    return NextResponse.json({ error: 'Erro ao iniciar conversa' }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }

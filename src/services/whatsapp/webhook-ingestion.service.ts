@@ -15,12 +15,16 @@ export class WebhookIngestionService {
     }
 
     try {
-      // 1. Identify Channel
-      const { data: channel } = await supabaseAdmin
+      // 1. Identify Channel (handles UUID dash differences)
+      const { data: channels } = await supabaseAdmin
         .from('Channel')
         .select('*')
-        .or(`id.eq.${channelId},providerSessionId.eq.${channelId}`)
-        .single()
+
+      const channel = channels?.find(c => 
+        c.id === channelId || 
+        c.id.replace(/-/g, '') === channelId ||
+        c.providerSessionId === channelId
+      );
 
       if (!channel) {
         console.error(`Channel with ID ${channelId} not found for message ingestion.`);

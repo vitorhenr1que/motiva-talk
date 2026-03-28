@@ -32,7 +32,7 @@ export default function ChannelsPage() {
     try {
       const res = await fetch('/api/channels');
       const data = await res.json();
-      setChannels(data);
+      setChannels(data.data || []);
     } catch (error) {
       console.error('Failed to fetch channels:', error);
     } finally {

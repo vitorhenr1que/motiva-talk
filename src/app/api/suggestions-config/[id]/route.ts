@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SuggestionService } from '@/services/suggestions'
+import { handleApiError, AppError } from '@/lib/api-errors'
 
 export const dynamic = 'force-dynamic';
+
+const ROUTE = '/api/suggestions-config/[id]';
 
 export async function PATCH(
   req: NextRequest,
@@ -10,14 +13,14 @@ export async function PATCH(
   try {
     const { id } = await params
     const body = await req.json()
+    console.log(`[API] ${req.method} ${ROUTE}:`, { id, body });
     
-    if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 })
+    if (!id) throw new AppError('ID obrigatório', 400, 'VALIDATION_ERROR');
 
     const updated = await SuggestionService.updateSuggestion(id, body)
-    return NextResponse.json(updated)
+    return NextResponse.json({ success: true, data: updated })
   } catch (error) {
-    console.error('API Error (Suggestions Config PATCH):', error)
-    return NextResponse.json({ error: 'Erro ao atualizar sugestão' }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }
 
@@ -27,12 +30,13 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 })
+    console.log(`[API] ${req.method} ${ROUTE}:`, { id });
+
+    if (!id) throw new AppError('ID obrigatório', 400, 'VALIDATION_ERROR');
 
     await SuggestionService.remove(id)
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, message: 'Sugestão excluída com sucesso' })
   } catch (error) {
-    console.error('API Error (Suggestions Config DELETE):', error)
-    return NextResponse.json({ error: 'Erro ao excluir sugestão' }, { status: 500 })
+    return handleApiError(error, req, { route: ROUTE })
   }
 }

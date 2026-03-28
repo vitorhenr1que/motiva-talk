@@ -33,18 +33,27 @@ export class WebhookService {
 
     console.log(`Updating connection status for ${event.channelId} to ${status}`);
     
-    // Find channel by ID or providerSessionId
-    const { data: channel } = await supabaseAdmin
+    // Find channel by ID or providerSessionId (handles UUID dash differences)
+    const { data: channels } = await supabaseAdmin
       .from('Channel')
-      .select('id')
-      .or(`id.eq.${event.channelId},providerSessionId.eq.${event.channelId}`)
-      .single()
+      .select('id, providerSessionId')
+
+    const channel = channels?.find(c => 
+      c.id === event.channelId || 
+      c.id.replace(/-/g, '') === event.channelId ||
+      c.providerSessionId === event.channelId
+    );
 
     if (channel) {
-      await supabaseAdmin
+      console.log(`Canal encontrado! Atualizando ID ${channel.id} para status ${status}`);
+      const { error } = await supabaseAdmin
         .from('Channel')
         .update({ connectionStatus: status })
         .eq('id', channel.id)
+      
+      if (error) console.error(`Erro ao atualizar banco: ${error.message}`);
+    } else {
+      console.error(`Canal NÃO encontrado para o ID de evento: ${event.channelId}`);
     }
   }
 

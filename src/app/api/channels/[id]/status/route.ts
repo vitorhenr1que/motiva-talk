@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { ChannelConnectionService } from '@/services/channels/channel-connection.service';
+import { handleApiError } from '@/lib/api-errors';
 
 export const dynamic = 'force-dynamic';
+
+const ROUTE = '/api/channels/[id]/status';
 
 export async function GET(
   req: Request,
@@ -9,22 +12,19 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    console.log(`[API] GET /status para ID: ${id}`);
+    console.log(`[API] ${req.method} ${ROUTE}:`, { id });
 
     if (!id) {
-      return NextResponse.json({ error: 'ID do canal é obrigatório' }, { status: 400 });
+      return NextResponse.json({ success: false, message: 'ID do canal é obrigatório' }, { status: 400 });
     }
 
     const sessionStatus = await ChannelConnectionService.getChannelStatus(id);
 
     return NextResponse.json({
       success: true,
-      status: sessionStatus.status
+      data: { status: sessionStatus.status }
     });
-  } catch (error: any) {
-    console.error('API Error (Get Channel Status):', error);
-    return NextResponse.json({ 
-      error: error.message || 'Erro ao obter status do canal' 
-    }, { status: 500 });
+  } catch (error) {
+    return handleApiError(error, req, { route: ROUTE });
   }
 }

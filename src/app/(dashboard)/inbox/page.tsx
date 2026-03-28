@@ -18,9 +18,10 @@ export default function InboxPage() {
       try {
         const res = await fetch('/api/channels');
         const data = await res.json();
-        setChannels(data);
-        if (data.length > 0 && !selectedChannelId) {
-          setSelectedChannelId(data[0].id);
+        const channels = data.data || [];
+        setChannels(channels);
+        if (channels.length > 0 && !selectedChannelId) {
+          setSelectedChannelId(channels[0].id);
         }
       } catch (error) {
         console.error('Failed to fetch channels:', error);

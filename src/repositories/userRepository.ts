@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { generateId } from '@/lib/utils'
 
 export class UserRepository {
   static async findMany(where?: any) {
@@ -30,7 +31,7 @@ export class UserRepository {
   static async create(data: any) {
     const { data: newUser, error } = await supabaseAdmin
       .from('User')
-      .insert([data])
+      .insert([{ id: generateId(), ...data }])
       .select()
       .single()
 
