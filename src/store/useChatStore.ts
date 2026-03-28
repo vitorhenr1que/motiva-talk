@@ -44,10 +44,28 @@ export const useChatStore = create<ChatState>((set) => ({
   loadingMessages: false,
 
   setConversations: (conversations) => {
-    const sorted = [...conversations].sort((a, b) => 
+    const activeId = useChatStore.getState().activeConversation?.id;
+    
+    // Deduplicação por ID para evitar erro de chaves duplicadas no React
+    const uniqueMap = new Map();
+    conversations.forEach(c => uniqueMap.set(c.id, c));
+    const uniqueList = Array.from(uniqueMap.values());
+
+    const sorted = uniqueList.map(conv => {
+      // Regra de Ouro: Se eu estou na conversa, ela deve aparecer com 0 no meu inbox local
+      if (conv.id === activeId && (conv.unreadCount || 0) > 0) {
+        console.log(`[UNREAD_DEBUG] Sincronização: Forçando 0 não lidas para conversa ATIVA ${conv.id}`);
+        return { ...conv, unreadCount: 0 };
+      }
+      return conv;
+    }).sort((a, b) => 
       new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
     );
-    console.log(`[UNREAD_DEBUG] Inbox reordenado! (${sorted.length} conversas exibidas)`);
+    
+    if (uniqueList.length < conversations.length) {
+      console.warn(`[UNREAD_DEBUG] Deduplicação aplicada: ${conversations.length} -> ${uniqueList.length} conversas.`);
+    }
+
     set({ conversations: sorted });
   },
   setActiveConversation: (conversation) => {
@@ -68,9 +86,17 @@ export const useChatStore = create<ChatState>((set) => ({
       if (conv.id === message.conversationId) {
         const isFromUser = message.senderType === 'USER';
         const isNotActive = state.activeConversation?.id !== conv.id;
-        const newUnread = (isFromUser && isNotActive) ? (conv.unreadCount || 0) + 1 : conv.unreadCount;
         
-        console.log(`[UNREAD_DEBUG] Conversa ${conv.id} movida para o topo via Mensagem. Unread: ${conv.unreadCount} -> ${newUnread}`);
+        // Se estiver ativa, forçamos o valor para 0 para não incomodar o atendente
+        const newUnread = (isFromUser && isNotActive) ? (conv.unreadCount || 0) + 1 : 0;
+        
+        if (isFromUser && !isNotActive) {
+          console.log(`[UNREAD_DEBUG] Mensagem recebida na conversa ATIVA. Mantendo unreadCount em 0.`);
+          // Opcionalmente: disparar markAsRead para o servidor aqui para sincronizar o DB
+          useChatStore.getState().markAsRead(conv.id);
+        } else if (isFromUser) {
+          console.log(`[UNREAD_DEBUG] Conversa ${conv.id} movida para o topo via Mensagem. Unread: ${conv.unreadCount} -> ${newUnread}`);
+        }
         
         return {
           ...conv,
