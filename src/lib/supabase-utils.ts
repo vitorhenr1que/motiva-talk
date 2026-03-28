@@ -40,3 +40,25 @@ export const deleteFile = async (
     throw error;
   }
 };
+
+/**
+ * Subscribes to new messages for a specific conversation using Supabase Realtime.
+ */
+export const subscribeToMessages = (
+  conversationId: string, 
+  callback: (payload: any) => void
+) => {
+  return supabase
+    .channel(`messages-conv-${conversationId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'Message',
+        filter: `conversationId=eq.${conversationId}`,
+      },
+      callback
+    )
+    .subscribe();
+};
