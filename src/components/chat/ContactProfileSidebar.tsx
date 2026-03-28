@@ -15,6 +15,7 @@ import { SalesFunnel } from './SalesFunnel';
 import { FunnelManagerModal } from './FunnelManagerModal';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { formatPhone } from '@/lib/utils';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -160,7 +161,7 @@ export const ContactProfileSidebar = () => {
         </div>
         
         <p className="text-[11px] font-bold text-slate-400 font-mono tracking-tighter mb-4 opacity-70">
-          {contact.phone}
+          {formatPhone(contact.phone)}
         </p>
 
         {/* Observation / Pinned Note Field (System Logic Integrated) */}

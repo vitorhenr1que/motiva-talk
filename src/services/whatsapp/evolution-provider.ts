@@ -254,6 +254,7 @@ export class EvolutionProvider implements WhatsAppProvider {
     const jid = key.remoteJid || key.participant || '';
     const senderPhone = jid.split('@')[0];
     const senderName = rawMessage.pushName || data.pushName || 'Contato WhatsApp';
+    const fullJid = jid;
 
     const getMessageContent = (m: any): string => {
       if (!m) return '';
@@ -295,6 +296,7 @@ export class EvolutionProvider implements WhatsAppProvider {
       timestamp,
       fromMe,
       quotedMessageExternalId,
+      fullJid,
       raw: payload
     };
   }
@@ -327,7 +329,8 @@ export class EvolutionProvider implements WhatsAppProvider {
             ...normalized.raw, 
             externalId: normalized.externalMessageId,
             fromMe: normalized.fromMe,
-            quotedMessageExternalId: normalized.quotedMessageExternalId
+            quotedMessageExternalId: normalized.quotedMessageExternalId,
+            jid: normalized.fullJid
           }
         };
       }

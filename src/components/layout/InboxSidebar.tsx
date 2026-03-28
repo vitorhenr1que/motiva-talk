@@ -4,6 +4,7 @@ import { Search, Filter, MessageSquare, Tag as TagIcon, Plus } from 'lucide-reac
 import { TagSelector } from '@/components/chat/TagSelector';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { formatPhone } from '@/lib/utils';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -72,7 +73,7 @@ export const Sidebar = () => {
 
   const filteredConversations = conversations.filter(conv => 
     conv.contact.name.toLowerCase().includes(search.toLowerCase()) ||
-    conv.contact.phone.includes(search)
+    formatPhone(conv.contact.phone).includes(search)
   );
 
   return (
@@ -159,7 +160,11 @@ export const Sidebar = () => {
                       {conv.contact.name}
                     </span>
                     <span className="text-[10px] text-slate-400 font-bold whitespace-nowrap">
-                      {conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---'}
+                      {conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleTimeString('pt-BR', { 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        timeZone: 'America/Bahia' 
+                      }) : '---'}
                     </span>
                   </div>
   

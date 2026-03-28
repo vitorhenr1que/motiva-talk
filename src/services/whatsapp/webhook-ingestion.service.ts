@@ -14,6 +14,18 @@ export class WebhookIngestionService {
       return;
     }
 
+    // --- FILTER: Only Personal Contacts (roughly 12 digits, exclude groups/status) ---
+    const jid = metadata?.jid || '';
+    const isPersonal = jid.endsWith('@s.whatsapp.net');
+    const numericOnly = senderPhone.replace(/\D/g, '');
+    const hasValidLength = numericOnly.length >= 10 && numericOnly.length <= 15;
+
+    if (!isPersonal || !hasValidLength) {
+      console.log(`[INGEST] Ignorando contato não pessoal: ${senderPhone} (JID: ${jid}, Len: ${numericOnly.length})`);
+      return;
+    }
+    // ---------------------------------------------------------------------------------
+
     try {
       const { ContactRepository } = await import('@/repositories/contactRepository');
       const { ConversationRepository } = await import('@/repositories/conversationRepository');

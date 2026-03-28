@@ -11,6 +11,7 @@ import { TagSelector } from './TagSelector';
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { formatPhone } from '@/lib/utils';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -255,7 +256,7 @@ export const ChatWindow = () => {
                  </h3>
                  {activeConversation.contact?.phone && (
                    <span className="text-[10px] text-slate-400 font-mono tracking-tighter opacity-0 group-hover/header-profile:opacity-100 transition-opacity">
-                      {activeConversation.contact.phone}
+                      {formatPhone(activeConversation.contact.phone)}
                    </span>
                  )}
               </div>
@@ -461,7 +462,7 @@ export const ChatWindow = () => {
                                    </div>
                                    <div className="flex-1 overflow-hidden">
                                       <p className="text-sm font-black text-slate-800 truncate">{msg.metadata?.contact?.fullName || 'Sem Nome'}</p>
-                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{msg.metadata?.contact?.wuid || 'Sem Número'}</p>
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{msg.metadata?.contact?.wuid ? formatPhone(msg.metadata.contact.wuid) : 'Sem Número'}</p>
                                    </div>
                                 </div>
                                 <div className="h-px bg-slate-50" />
@@ -489,8 +490,9 @@ export const ChatWindow = () => {
                           {(() => {
                              try {
                                 let raw = msg.createdAt;
-                                // Se não termina com Z e não tem offset (+/-), assumimos que o banco salvou em UTC
-                                if (raw && !raw.endsWith('Z') && !raw.includes('+') && !raw.includes('-')) {
+                                // Detecta se a string já tem informação de timezone (Z, +03:00, -0300, etc)
+                                const hasTZ = /Z$|[+-]\d{2}:?\d{2}$/.test(raw);
+                                if (raw && !hasTZ) {
                                    raw += 'Z';
                                 }
                                 
