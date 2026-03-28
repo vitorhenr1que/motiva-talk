@@ -182,8 +182,15 @@ export class EvolutionProvider implements WhatsAppProvider {
       const state: any = await evolutionApi.getConnectionState(instanceName);
       console.log(`[EVO_DEBUG] connectionState raw response:`, JSON.stringify(state));
 
-      // Try different common property names for status in Evolution v1/v2
-      const rawStatus = state.status || state.state || state.instance?.status || state.connection || 'DISCONNECTED';
+      // Robust field resolution for Evolution v1/v2/v2.1
+      const rawStatus = 
+        state.status || 
+        state.state || 
+        state.instance?.status || 
+        state.instance?.state || 
+        state.connection || 
+        'DISCONNECTED';
+      
       const internalStatus = this.mapStatus(rawStatus);
 
       console.log(`[EVO_DEBUG] Status Resolvido: Instance[${instanceName}] Raw[${rawStatus}] Int[${internalStatus}]`);
