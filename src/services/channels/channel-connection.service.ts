@@ -20,26 +20,26 @@ export class ChannelConnectionService {
     if (fetchError || !channel) {
       throw new Error(`Canal ${channelId} não encontrado`);
     }
-    console.log(`[SERVICE] Canal encontrado: ${channel.name || channel.id}`);
 
-    // Gerar instanceName consistente através do provider
     const instanceName = evolutionProvider.getInstanceName(channel as any);
-    console.log(`[SERVICE] Usando instanceName consistente: ${instanceName}`);
 
     try {
-      // 1. Chamar createSession que garante o fluxo obrigatório (Criação -> Webhook -> Validação)
-      console.log(`[SERVICE] Solicitando criação/configuração de sessão ao provedor...`);
-      await evolutionProvider.createSession(channel as any);
-      console.log(`[SERVICE] Sessão, Webhook e Validação concluídos com sucesso.`);
-
-      // 2. Persistir providerSessionId se estiver ausente ou desatualizado
-      if (channel.providerSessionId !== instanceName) {
-        console.log(`[SERVICE] Salvando providerSessionId atualizado: ${instanceName}`);
+      // REGRA 1 & 2: Criar instância apenas se não houver providerSessionId no banco
+      if (!channel.providerSessionId) {
+        console.log(`[SERVICE] [REGRA 1] Primeira conexão detectada. Criando instância na Evolution API...`);
+        await evolutionProvider.createSession(channel as any);
+        
+        // Salvar o providerSessionId gerado
         await supabaseAdmin
           .from('Channel')
           .update({ providerSessionId: instanceName })
           .eq('id', channelId)
+        
         channel.providerSessionId = instanceName;
+      } else {
+        console.log(`[SERVICE] [REGRA 2] Reconexão detectada. Reutilizando instância: ${channel.providerSessionId}`);
+        // Apenas para garantir que os webhooks estejam configurados na instância já existente
+        await evolutionProvider.createSession(channel as any);
       }
 
       // 3. Sincronizar status inicial
@@ -58,10 +58,10 @@ export class ChannelConnectionService {
 
       if (updateError) throw updateError
 
-      console.log(`[SERVICE] Fluxo de conexão do canal finalizado com sucesso.`);
+      console.log(`[SERVICE] Fluxo de conexão do canal finalizado com sucesso. Status: ${statusResult.status}`);
       return updatedChannel;
     } catch (error: any) {
-      console.error(`[SERVICE] Falha CRÍTICA em connectChannel: ${error.message}`);
+      console.error(`[SERVICE] Falha em connectChannel: ${error.message}`);
       throw error;
     }
   }
@@ -81,8 +81,9 @@ export class ChannelConnectionService {
     console.log(`[SERVICE] getChannelQrCode para ${channelId}. Status atual: ${channel.connectionStatus}`);
 
     try {
+      // REGRA 3: Se o canal estiver CONNECTED e pedirmos QR Code, desconectar primeiro
       if (channel.connectionStatus === 'CONNECTED') {
-        console.log(`[SERVICE] Canal está CONECTADO. Realizando logout para gerar novo QR Code...`);
+        console.log(`[SERVICE] [REGRA 3] Canal está CONECTADO. Desconectando para gerar novo QR Code...`);
         await evolutionProvider.disconnectSession(channel as any);
         await supabaseAdmin
           .from('Channel')
@@ -90,14 +91,17 @@ export class ChannelConnectionService {
           .eq('id', channelId)
       }
 
+      // Se não tiver providerSessionId, cria agora (Primeira conexão através do modal de QR Code)
       if (!channel.providerSessionId) {
-        console.log(`[SERVICE] SessionId ausente no getQrCode. Criando instância...`);
+        console.log(`[SERVICE] Criando sessão inicial para obter QR Code...`);
         await evolutionProvider.createSession(channel as any);
         const providerSessionId = evolutionProvider.getInstanceName(channel as any);
         await supabaseAdmin
           .from('Channel')
           .update({ providerSessionId })
           .eq('id', channelId)
+      } else {
+        console.log(`[SERVICE] Usando instância existente para QR Code: ${channel.providerSessionId}`);
       }
 
       const qrData = await evolutionProvider.getQrCode(channel as any);

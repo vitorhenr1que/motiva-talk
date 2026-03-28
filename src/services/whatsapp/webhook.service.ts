@@ -28,10 +28,14 @@ export class WebhookService {
   }
 
   private static async handleConnectionUpdate(event: WebhookEvent) {
-    const status = event.metadata?.status;
-    if (!status) return;
+    const rawStatus = event.metadata?.status;
+    if (!rawStatus) return;
 
-    console.log(`Updating connection status for ${event.channelId} to ${status}`);
+    // Sincronizar com o mapeamento centralizado do provider
+    const { evolutionProvider } = await import('./evolution-provider');
+    const internalStatus = evolutionProvider.mapStatus(rawStatus);
+
+    console.log(`[WEBHOOK] Connection Update: Channel[${event.channelId}] Raw[${rawStatus}] -> Int[${internalStatus}]`);
     
     // Find channel by ID or providerSessionId (handles UUID dash differences)
     const { data: channels } = await supabaseAdmin
@@ -45,15 +49,15 @@ export class WebhookService {
     );
 
     if (channel) {
-      console.log(`Canal encontrado! Atualizando ID ${channel.id} para status ${status}`);
+      console.log(`[WEBHOOK] Aplicando status ${internalStatus} ao canal ${channel.id}`);
       const { error } = await supabaseAdmin
         .from('Channel')
-        .update({ connectionStatus: status })
+        .update({ connectionStatus: internalStatus })
         .eq('id', channel.id)
       
-      if (error) console.error(`Erro ao atualizar banco: ${error.message}`);
+      if (error) console.error(`[WEBHOOK] Erro ao persistir no banco: ${error.message}`);
     } else {
-      console.error(`Canal NÃO encontrado para o ID de evento: ${event.channelId}`);
+      console.error(`[WEBHOOK] Canal NÃO encontrado para evento: ${event.channelId}`);
     }
   }
 

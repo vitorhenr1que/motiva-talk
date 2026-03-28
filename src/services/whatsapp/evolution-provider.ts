@@ -6,28 +6,38 @@ export class EvolutionProvider implements WhatsAppProvider {
   /**
    * Translates Evolution API status to our internal SessionStatus
    */
-  private mapStatus(evolutionStatus: string): SessionStatus['status'] {
-    const status = evolutionStatus?.toLowerCase();
-    switch (status) {
+  public mapStatus(evolutionStatus: string): SessionStatus['status'] {
+    const raw = (evolutionStatus || '').toLowerCase();
+    let internal: SessionStatus['status'] = 'PENDING';
+
+    switch (raw) {
       case 'open':
       case 'connected':
-        return 'CONNECTED';
+        internal = 'CONNECTED';
+        break;
       case 'connecting':
-        return 'CONNECTING';
+        internal = 'CONNECTING';
+        break;
       case 'qrcode':
       case 'qr':
-        return 'QR_CODE';
+        internal = 'QR_CODE';
+        break;
       case 'close':
       case 'disconnected':
       case 'unpaired':
-        return 'DISCONNECTED';
+        internal = 'DISCONNECTED';
+        break;
       case 'refused':
       case 'error':
       case 'failed':
-        return 'ERROR';
+        internal = 'ERROR';
+        break;
       default:
-        return 'PENDING';
+        internal = 'PENDING';
     }
+
+    console.log(`[EVO_DEBUG] mapStatus: Ext[${raw}] -> Int[${internal}]`);
+    return internal;
   }
 
   /**
@@ -59,21 +69,29 @@ export class EvolutionProvider implements WhatsAppProvider {
 
       if (!exists) {
         console.log(`[EVO_PROVIDER] Criando instância via API: ${instanceName}`);
-        await evolutionApi.createInstance({
-          instanceName,
-          token: instanceName,
-          webhook: {
-            url: process.env.EVOLUTION_WEBHOOK_URL!,
-            enabled: true,
-            webhookBase64: true,
-            webhookByEvents: true,
-            events: [
-              'QRCODE_UPDATED',
-              'CONNECTION_UPDATE',
-              'MESSAGES_UPSERT'
-            ]
+        try {
+          await evolutionApi.createInstance({
+            instanceName,
+            token: instanceName,
+            webhook: {
+              url: process.env.EVOLUTION_WEBHOOK_URL!,
+              enabled: true,
+              webhookBase64: true,
+              webhookByEvents: true,
+              events: [
+                'QRCODE_UPDATED',
+                'CONNECTION_UPDATE',
+                'MESSAGES_UPSERT'
+              ]
+            }
+          });
+        } catch (e: any) {
+          if (e.message?.toLowerCase().includes('already in use')) {
+            console.log(`[EVO_PROVIDER] Conflito resolvido: A API relata que "${instanceName}" já existe. Prosseguindo...`);
+          } else {
+            throw e;
           }
-        });
+        }
       }
 
       // 2. Configurar webhook (imediatamente após criação ou para garantir consistência)
@@ -158,12 +176,20 @@ export class EvolutionProvider implements WhatsAppProvider {
 
   async getSessionStatus(channel: Channel): Promise<SessionStatus> {
     const instanceName = this.getInstanceName(channel);
-    console.log(`[EVO_PROVIDER] Chamando getSessionStatus para: ${instanceName}`);
+    console.log(`[EVO_PROVIDER] getSessionStatus para: ${instanceName}`);
     
     try {
-      const state = await evolutionApi.getConnectionState(instanceName);
+      const state: any = await evolutionApi.getConnectionState(instanceName);
+      console.log(`[EVO_DEBUG] connectionState raw response:`, JSON.stringify(state));
+
+      // Try different common property names for status in Evolution v1/v2
+      const rawStatus = state.status || state.state || state.instance?.status || state.connection || 'DISCONNECTED';
+      const internalStatus = this.mapStatus(rawStatus);
+
+      console.log(`[EVO_DEBUG] Status Resolvido: Instance[${instanceName}] Raw[${rawStatus}] Int[${internalStatus}]`);
+
       return {
-        status: this.mapStatus(state.status),
+        status: internalStatus,
       };
     } catch (e: any) {
       console.warn(`[EVO_PROVIDER] Falha em getSessionStatus (${instanceName}): ${e.message}`);

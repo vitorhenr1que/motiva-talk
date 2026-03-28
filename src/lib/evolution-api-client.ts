@@ -145,9 +145,22 @@ class EvolutionApiClient {
    * FIX: Changed from /fetch/ to /fetchInstance/
    */
   async getInstance(instanceName: string) {
-    return this.request<any>(`/instance/fetchInstance/${instanceName}`, {
+    const instances = await this.request<any[]>('/instance/fetchInstances', {
       method: 'GET',
     });
+    
+    console.log(`[EVO_DEBUG] getInstance (${instanceName}): Total instâncias: ${instances.length}`);
+    const instance = instances.find(i => 
+      i.instanceName === instanceName || 
+      i.name === instanceName || 
+      i.instance?.instanceName === instanceName
+    );
+    
+    if (!instance) {
+      throw new Error('NOT_FOUND');
+    }
+    
+    return instance as Instance;
   }
 
   /**
