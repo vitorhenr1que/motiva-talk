@@ -36,14 +36,15 @@ export async function POST(req: Request) {
     console.log(`[API] ${req.method} ${ROUTE}:`, body);
 
     validateBody(body, ['conversationId', 'channelId', 'senderType', 'content'])
-    const { conversationId, channelId, senderType, content, type } = body
+    const { conversationId, channelId, senderType, content, type, replyToMessageId } = body
 
     const message = await MessageService.createMessage({
       conversationId,
       channelId,
       senderType,
       content,
-      type
+      type,
+      replyToMessageId
     })
 
     return NextResponse.json({ success: true, data: message }, { status: 201 })

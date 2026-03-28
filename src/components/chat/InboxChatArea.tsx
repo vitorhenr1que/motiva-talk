@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { useChatStore } from '@/store/useChatStore';
-import { MoreVertical, Search, MessageCircle, FileText, Phone, Info, Zap, Trash2, Tag as TagIcon } from 'lucide-react';
+import { MoreVertical, Search, MessageCircle, FileText, Phone, Info, Reply, Trash2, Tag as TagIcon } from 'lucide-react';
 import { TagSelector } from './TagSelector';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -128,13 +128,13 @@ export const ChatWindow = () => {
           </div>
         ) : (
           <>
-            {messages.map((msg) => {
+            {messages.map((msg: any) => {
               const isSentByUs = msg.senderType === 'AGENT' || msg.senderType === 'SYSTEM';
               return (
                 <div
                   key={msg.id}
                   className={cn(
-                    "flex w-full group",
+                    "flex w-full group anim-fade-in",
                     isSentByUs ? "justify-end" : "justify-start"
                   )}
                 >
@@ -147,67 +147,87 @@ export const ChatWindow = () => {
                     )}
                   >
                     <div className="px-2.5 py-1">
-                {msg.type === 'TEXT' && (
-                  <p className="whitespace-pre-wrap leading-relaxed text-[13px]">{msg.content}</p>
-                )}
-                
-                {msg.type === 'IMAGE' && (
-                  <div className="overflow-hidden rounded-xl bg-slate-100 mb-1">
-                    <img 
-                      src={msg.content} 
-                      alt="Anexo" 
-                      className="max-h-80 w-auto object-contain cursor-pointer transition-transform hover:scale-[1.02]" 
-                    />
-                  </div>
-                )}
+                      {/* Reply Preview inside Bubble */}
+                      {msg.replyTo && (
+                        <div className="mb-2 border-l-4 border-blue-400 bg-black/5 p-2 rounded-r-lg text-[11px] opacity-80 cursor-pointer hover:bg-black/10 transition-colors">
+                          <span className="block font-bold text-blue-600 mb-0.5">
+                            {msg.replyTo.senderType === 'USER' ? activeConversation.contact.name : 'Você'}
+                          </span>
+                          <span className="block truncate max-w-xs">{msg.replyTo.content}</span>
+                        </div>
+                      )}
 
-                {msg.type === 'AUDIO' && (
-                  <div className="py-2 min-w-[200px]">
-                    <audio src={msg.content} controls className="h-8 w-full" />
-                  </div>
-                )}
+                      {msg.type === 'TEXT' && (
+                        <p className="whitespace-pre-wrap leading-relaxed text-[13px]">{msg.content}</p>
+                      )}
+                      
+                      {msg.type === 'IMAGE' && (
+                        <div className="overflow-hidden rounded-xl bg-slate-100 mb-1">
+                          <img 
+                            src={msg.content} 
+                            alt="Anexo" 
+                            className="max-h-80 w-auto object-contain cursor-pointer transition-transform hover:scale-[1.02]" 
+                          />
+                        </div>
+                      )}
 
-                {msg.type === 'DOCUMENT' && (
-                  <a 
-                    href={msg.content} 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="flex items-center gap-3 rounded-lg bg-black/5 p-3 hover:bg-black/10 transition-all text-blue-600 font-bold decoration-none"
-                  >
-                    <div className="flex h-10 w-10 items-center justify-center rounded bg-white text-slate-500 shadow-sm">
-                      <FileText size={20} />
+                      {msg.type === 'AUDIO' && (
+                        <div className="py-2 min-w-[200px]">
+                          <audio src={msg.content} controls className="h-8 w-full" />
+                        </div>
+                      )}
+
+                      {msg.type === 'DOCUMENT' && (
+                        <a 
+                          href={msg.content} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="flex items-center gap-3 rounded-lg bg-black/5 p-3 hover:bg-black/10 transition-all text-blue-600 font-bold decoration-none"
+                        >
+                          <div className="flex h-10 w-10 items-center justify-center rounded bg-white text-slate-500 shadow-sm">
+                            <FileText size={20} />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-xs truncate max-w-[150px]">Documento Anexo</span>
+                            <span className="text-[9px] uppercase opacity-50">Clique para abrir</span>
+                          </div>
+                        </a>
+                      )}
+
+                      <div className="mt-1 flex items-center justify-end gap-1">
+                        <span className="text-[9px] text-slate-400 font-bold opacity-60">
+                          {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-xs truncate max-w-[150px]">Documento Anexo</span>
-                      <span className="text-[9px] uppercase opacity-50">Clique para abrir</span>
-                    </div>
-                  </a>
-                )}
 
-                <div className="mt-1 flex items-center justify-end gap-1">
-                  <span className="text-[9px] text-slate-400 font-bold opacity-60">
-                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
+                    {/* Action Controls (Hover) */}
+                    <div className={cn(
+                      "absolute top-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-all z-20",
+                      isSentByUs ? "-left-16" : "-right-16"
+                    )}>
+                       <button 
+                         onClick={() => useChatStore.getState().setReplyToMessage(msg)}
+                         className="p-2 rounded-xl bg-blue-50 text-blue-600 backdrop-blur shadow-sm hover:bg-blue-600 hover:text-white transition-all transform hover:scale-110"
+                         title="Responder"
+                       >
+                         <Reply size={16} />
+                       </button>
+                      <button 
+                        onClick={() => handleDeleteMessage(msg.id)}
+                        className="p-2 rounded-xl bg-white/90 backdrop-blur shadow-sm hover:text-red-600 hover:bg-red-50 transition-colors"
+                        title="Excluir"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-
-              {/* Delete Trigger (Hover) */}
-              <button 
-                onClick={() => handleDeleteMessage(msg.id)}
-                className={cn(
-                  "absolute top-2 opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-lg bg-white/80 backdrop-blur shadow-sm hover:text-red-600 hover:bg-red-50",
-                  isSentByUs ? "-left-10" : "-right-10"
-                )}
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          </div>
-        );
-      })}
-    </>
-  )}
-</div>
+              );
+            })}
+          </>
+        )}
+      </div>
     </div>
   );
 };

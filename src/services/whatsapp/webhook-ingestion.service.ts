@@ -78,6 +78,22 @@ export class WebhookIngestionService {
         console.log(`[INGEST] 3. Conversa ativa encontrada: ${conversation.id}`);
       }
 
+      // 5.5 Identificar se é uma resposta (Reply)
+      let replyToMessageId: string | undefined = undefined;
+      const quotedId = metadata?.quoted?.key?.id;
+      if (quotedId) {
+        const { data: quotedMsg } = await supabaseAdmin
+          .from('Message')
+          .select('id')
+          .eq('externalMessageId', quotedId)
+          .maybeSingle();
+        
+        if (quotedMsg) {
+          replyToMessageId = quotedMsg.id;
+          console.log(`[INGEST] Mensagem citada encontrada no banco (ID: ${replyToMessageId})`);
+        }
+      }
+
       // 6. Salvar Mensagem
       const { data: newMessage, error: msgError } = await supabaseAdmin
         .from('Message')
@@ -89,8 +105,9 @@ export class WebhookIngestionService {
           content: content,
           type: messageType || 'TEXT',
           externalMessageId: externalId,
+          replyToMessageId: replyToMessageId
         }])
-        .select()
+        .select('*, replyTo:replyToMessageId(*)')
         .single()
 
       if (msgError) throw msgError

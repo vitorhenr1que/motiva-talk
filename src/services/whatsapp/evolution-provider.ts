@@ -230,20 +230,45 @@ export class EvolutionProvider implements WhatsAppProvider {
     }
   }
 
-  async sendMessage(channel: Channel, recipient: string, content: string, type: MessageType = 'TEXT'): Promise<any> {
+  async sendMessage(
+    channel: Channel, 
+    recipient: string, 
+    content: string, 
+    type: MessageType = 'TEXT',
+    quoted?: { id: string, content: string, fromMe: boolean, type?: string }
+  ): Promise<any> {
     const instanceName = this.getInstanceName(channel);
-    
-    // Ensure number is in correct format for Evolution API (digits only)
     const cleanNumber = recipient.replace(/\D/g, '');
     
     if (type !== 'TEXT') {
        throw new Error(`Tipo de mensagem ${type} ainda não implementado no EvolutionProvider.`);
     }
 
-    return evolutionApi.sendMessage(instanceName, {
+    const payload: any = {
       number: cleanNumber,
       text: content
-    });
+    };
+
+    if (quoted) {
+      // Constrói o objeto de mensagem citada de forma mais fiel para o preview no WhatsApp
+      let quotedMessage: any = { conversation: quoted.content };
+      
+      if (quoted.type === 'IMAGE') quotedMessage = { imageMessage: { caption: quoted.content } };
+      else if (quoted.type === 'AUDIO') quotedMessage = { audioMessage: { caption: 'Áudio' } };
+      else if (quoted.type === 'VIDEO') quotedMessage = { videoMessage: { caption: quoted.content } };
+      else if (quoted.type === 'DOCUMENT') quotedMessage = { documentMessage: { caption: 'Documento' } };
+
+      payload.quoted = {
+        key: { 
+          id: quoted.id,
+          fromMe: quoted.fromMe,
+          remoteJid: cleanNumber.includes('@') ? cleanNumber : `${cleanNumber}@s.whatsapp.net`
+        },
+        message: quotedMessage
+      };
+    }
+
+    return evolutionApi.sendMessage(instanceName, payload);
   }
 
   /**
@@ -313,7 +338,36 @@ export class EvolutionProvider implements WhatsAppProvider {
     else if (inner.videoMessage) type = 'IMAGE'; // Tratamos vídeo como imagem por enquanto ou adicione VIDEO se tiver no enum
     else if (inner.documentMessage) type = 'DOCUMENT';
 
-    // 5. Timestamp
+    // 5. Extração de Resposta (Quoted/Reply) - Genérica para qualquer tipo de mensagem
+    let contextInfo: any = null;
+    
+    // Procura por contextInfo em qualquer sub-chave da mensagem
+    if (inner.contextInfo) {
+      contextInfo = inner.contextInfo;
+    } else {
+      // Alguns tipos de mensagem aninham o contextInfo dentro da chave do tipo (ex: imageMessage.contextInfo)
+      for (const key in inner) {
+        if (inner[key] && typeof inner[key] === 'object' && (inner[key] as any).contextInfo) {
+          contextInfo = (inner[key] as any).contextInfo;
+          break;
+        }
+      }
+    }
+    
+    let quoted: any = null;
+    if (contextInfo?.stanzaId) {
+      quoted = {
+        key: {
+          id: contextInfo.stanzaId, // ID da mensagem original (importante para o vínculo)
+          participant: contextInfo.participant,
+          fromMe: false // Se veio do webhook, geralmente estamos citando alguém
+        },
+        message: contextInfo.quotedMessage || {}
+      };
+      console.log(`[EVO_PARSER] Reply reconhecido: Citando mensagem [${contextInfo.stanzaId}]`);
+    }
+
+    // 6. Timestamp
     const timestamp = (rawMessage.messageTimestamp || data.messageTimestamp || Date.now()) * 1000;
 
     const result = {
@@ -325,6 +379,7 @@ export class EvolutionProvider implements WhatsAppProvider {
       type,
       timestamp,
       fromMe,
+      quoted,
       raw: payload
     };
 
@@ -363,7 +418,8 @@ export class EvolutionProvider implements WhatsAppProvider {
           metadata: { 
             ...normalized.raw, 
             externalId: normalized.externalMessageId,
-            fromMe: normalized.fromMe 
+            fromMe: normalized.fromMe,
+            quoted: normalized.quoted
           }
         };
       }

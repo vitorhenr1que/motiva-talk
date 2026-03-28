@@ -5,7 +5,7 @@ export class MessageRepository {
   static async findMany(where: any) {
     let query = supabaseAdmin
       .from('Message')
-      .select('*')
+      .select('*, replyTo:replyToMessageId(*)')
       .order('createdAt', { ascending: true })
 
     if (where.conversationId) query = query.eq('conversationId', where.conversationId)
@@ -25,7 +25,7 @@ export class MessageRepository {
     const { data: newMessage, error } = await supabaseAdmin
       .from('Message')
       .insert([{ id: generateId(), ...data }])
-      .select()
+      .select('*, replyTo:replyToMessageId(*)')
       .single()
     if (error) throw error
     return newMessage

@@ -20,10 +20,26 @@ export class MessageService {
   /**
    * Registra uma nova mensagem no banco e envia via API se for do atendente
    */
-  static async createMessage(data: CreateMessageData) {
-    const { conversationId, channelId, senderType, content, type } = data
+  static async createMessage(data: CreateMessageData & { replyToMessageId?: string }) {
+    const { conversationId, channelId, senderType, content, type, replyToMessageId } = data
     
     let externalMessageId: string | undefined = data.externalMessageId
+    let quoted: { id: string, content: string, fromMe: boolean, type?: string } | undefined = undefined;
+
+    // Se houver uma resposta, precisamos buscar os dados da mensagem original para a Evolution API
+    if (replyToMessageId) {
+      const { MessageRepository } = await import('@/repositories/messageRepository');
+      const originalMsg = await MessageRepository.findById(replyToMessageId);
+      if (originalMsg && originalMsg.externalMessageId) {
+        quoted = {
+          id: originalMsg.externalMessageId,
+          content: originalMsg.content,
+          fromMe: originalMsg.senderType === 'AGENT' || originalMsg.senderType === 'SYSTEM',
+          type: originalMsg.type
+        };
+        console.log(`[MSG_SERVICE] Preparando resposta para mensagem: ${quoted.id}`);
+      }
+    }
 
     // Se a mensagem for do atendente, PRECISAMOS enviar para a Evolution API
     if (senderType === 'AGENT') {
@@ -39,13 +55,14 @@ export class MessageService {
           throw new Error('Conversa, contato ou canal não encontrados para envio.')
         }
 
-        // 2. Enviar via Provider
+        // 2. Enviar via Provider (Passando o quoted se existir)
         const phone = conversation.contact.phone
         const result = await evolutionProvider.sendMessage(
           conversation.channel,
           phone,
           content,
-          (type as any) || 'TEXT'
+          (type as any) || 'TEXT',
+          quoted
         )
 
         // 3. Pegar ID externo retornado
@@ -53,8 +70,6 @@ export class MessageService {
         console.log(`[MSG_SERVICE] Enviado com sucesso! ExtID[${externalMessageId}]`);
       } catch (error) {
         console.error('[MSG_SERVICE] Erro ao enviar mensagem via Evolution API:', error)
-        // Decidimos salvar no banco mesmo se o envio falhar? 
-        // Por enquanto sim, mas sinalizamos o erro.
       }
     }
 
@@ -65,7 +80,8 @@ export class MessageService {
       senderType,
       content,
       type: type || 'TEXT',
-      externalMessageId
+      externalMessageId,
+      replyToMessageId // Re-habilitado após criação da coluna no banco
     })
   }
 

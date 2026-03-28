@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useChatStore } from '@/store/useChatStore';
-import { Send, Smile, Paperclip, Zap, Loader2 } from 'lucide-react';
+import { Send, Smile, Paperclip, Zap, Loader2, X } from 'lucide-react';
 import { QuickReplyMenu } from '@/components/quick-replies/Menu';
 import { QuickReplyManagerModal } from '@/components/quick-replies/ManagerModal';
 import { uploadFile } from '@/lib/supabase-utils';
@@ -15,23 +15,32 @@ export const MessageInput = () => {
   const [repliesOpen, setRepliesOpen] = useState(false);
   const [repliesSearch, setRepliesSearch] = useState('');
   const [managerOpen, setManagerOpen] = useState(false);
-  const { activeConversation, addMessage, messages } = useChatStore();
+  const { activeConversation, addMessage, upsertMessage, messages, replyToMessage, setReplyToMessage } = useChatStore();
 
   const handleSend = async () => {
     if (!content.trim() || !activeConversation) return;
 
+    const replyToId = replyToMessage?.id;
+    const tempId = `temp-${Date.now()}`;
+
     const newMsg = {
-      id: Math.random().toString(),
+      id: tempId,
       content,
       senderType: 'AGENT',
       type: 'TEXT',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      replyTo: replyToMessage // Preview local imediato
     } as any;
     
-    addMessage(newMsg);
+    // Adição otimista
+    upsertMessage(newMsg);
+    
+    // Limpeza de estado local
+    const currentContent = content; // Backup para caso de erro
     setContent('');
     setSuggestions([]);
     setRepliesOpen(false);
+    setReplyToMessage(null);
 
     try {
       const resp = await fetch('/api/messages', {
@@ -41,17 +50,22 @@ export const MessageInput = () => {
           conversationId: activeConversation.id,
           channelId: activeConversation.channel.id,
           senderType: 'AGENT',
-          content
+          content: currentContent,
+          replyToMessageId: replyToId
         })
       });
 
       if (resp.ok) {
         const realMsg = await resp.json();
-        // Access nested data property
-        addMessage(realMsg.data);
+        // Substitui a mensagem temporária pela real do banco (com ID UUID e relações carregadas)
+        upsertMessage(realMsg.data, tempId);
+      } else {
+        throw new Error('Erro ao enviar mensagem');
       }
     } catch (error) {
       console.error('API integration error:', error);
+      // Opcional: remover a mensagem temporária em caso de erro fatal
+      // useChatStore.getState().removeMessage(tempId);
     }
   };
 
@@ -158,6 +172,22 @@ export const MessageInput = () => {
 
   return (
     <div className="border-t bg-white p-3 relative shadow-inner">
+      {/* Reply Preview Bar */}
+      {replyToMessage && (
+        <div className="mb-2 flex items-center justify-between gap-3 bg-slate-50 p-2.5 rounded-xl border-l-4 border-blue-500 animate-in slide-in-from-bottom-2 duration-200">
+          <div className="flex-1 min-w-0">
+            <span className="block text-[10px] font-bold text-blue-600 uppercase tracking-widest">Respondendo a</span>
+            <span className="block text-xs text-slate-600 truncate">{replyToMessage.content}</span>
+          </div>
+          <button 
+            onClick={() => setReplyToMessage(null)} 
+            className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600 transition-all"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {/* Quick Reply Context Menu */}
       {repliesOpen && (
         <QuickReplyMenu

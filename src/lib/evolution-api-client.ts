@@ -28,6 +28,10 @@ export interface SendMessagePayload {
   number: string;
   text: string;
   linkPreview?: boolean;
+  quoted?: {
+    key: { id: string; fromMe?: boolean };
+    message: { [key: string]: any };
+  };
 }
 
 class EvolutionApiClient {
