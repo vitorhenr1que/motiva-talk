@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { MessageService } from '@/services/messages'
 import { deleteFile } from '@/lib/supabase-utils'
 
+export const dynamic = 'force-dynamic';
+
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

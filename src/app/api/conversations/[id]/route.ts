@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ConversationService } from '@/services/conversations'
 
+export const dynamic = 'force-dynamic';
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

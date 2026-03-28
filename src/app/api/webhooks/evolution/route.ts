@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { evolutionProvider } from '@/services/whatsapp/evolution-provider';
 import { WebhookService } from '@/services/whatsapp/webhook.service';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { ConversationService } from '@/services/conversations'
 import { ConversationStatus } from '@prisma/client'
 
+export const dynamic = 'force-dynamic';
+
 import { getServerSession, getUserRole } from '@/lib/auth-server'
 
 export async function GET(req: Request) {
