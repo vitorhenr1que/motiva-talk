@@ -2,7 +2,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateId } from '@/lib/utils'
 
 export class MessageRepository {
-  static async findMany(where: any) {
+  static async findMany(where: { conversationId?: string; before?: string; limit?: number }) {
     let query = supabaseAdmin
       .from('Message')
       .select(`
@@ -15,13 +15,23 @@ export class MessageRepository {
           externalMessageId
         )
       `)
-      .order('createdAt', { ascending: true })
 
-    if (where.conversationId) query = query.eq('conversationId', where.conversationId)
+    if (where.conversationId) query = query.eq('conversationId', where.conversationId);
+    
+    if (where.before) {
+      query = query.lt('createdAt', where.before);
+    }
 
-    const { data, error } = await query
-    if (error) throw error
-    return data
+    // Ordenação DESC para pegar as mais recentes antes do cursor
+    query = query.order('createdAt', { ascending: false });
+
+    if (where.limit) {
+      query = query.limit(where.limit);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
   }
 
   static async findById(id: string) {

@@ -10,6 +10,9 @@ interface ChatState {
   selectedChannelId: string | null
   loadingConversations: boolean
   loadingMessages: boolean
+  loadingMore: boolean
+  nextCursor: string | null
+  hasMore: boolean
   
   tags: any[]
   selectedTagId: string | null
@@ -21,7 +24,8 @@ interface ChatState {
   setConversations: (conversations: any[]) => void
   setActiveConversation: (conversation: any | null) => void
   setReplyToMessage: (message: any | null) => void
-  setMessages: (messages: any[]) => void
+  setMessages: (data: { messages: any[], nextCursor?: string | null, hasMore?: boolean }) => void
+  addMoreMessages: (data: { messages: any[], nextCursor?: string | null, hasMore?: boolean }) => void
   addMessage: (message: any) => void;
   upsertMessage: (message: any, tempId?: string) => void;
   removeMessage: (id: string) => void;
@@ -36,6 +40,7 @@ interface ChatState {
   setSelectedTagId: (id: string | null) => void
   setLoadingConversations: (loading: boolean) => void
   setLoadingMessages: (loading: boolean) => void
+  setLoadingMore: (loading: boolean) => void
   markAsRead: (conversationId: string) => void
   markAsUnread: (conversationId: string) => void
 }
@@ -51,6 +56,9 @@ export const useChatStore = create<ChatState>((set) => ({
   selectedTagId: null,
   loadingConversations: false,
   loadingMessages: false,
+  loadingMore: false,
+  nextCursor: null,
+  hasMore: false,
   isProfileOpen: false,
   kanbanData: [],
 
@@ -83,11 +91,33 @@ export const useChatStore = create<ChatState>((set) => ({
     }
   },
   setReplyToMessage: (message) => set({ replyToMessage: message }),
-  setMessages: (messages) => {
+  setMessages: (data) => {
+    const { messages, nextCursor = null, hasMore = false } = data;
     const uniqueMap = new Map();
     messages.forEach(m => uniqueMap.set(m.id, m));
-    set({ messages: Array.from(uniqueMap.values()) });
+    set({ 
+      messages: Array.from(uniqueMap.values()),
+      nextCursor,
+      hasMore
+    });
   },
+  addMoreMessages: (data) => set((state) => {
+    const { messages, nextCursor = null, hasMore = false } = data;
+    const existingIds = new Set(state.messages.map(m => m.id));
+    const newMessages = messages.filter(m => !existingIds.has(m.id));
+    
+    // As novas mensagens (antigas no tempo) vão pro INÍCIO (prepend)
+    // Mantemos a ordem cronológica ASC
+    const combined = [...newMessages, ...state.messages].sort((a, b) => 
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+
+    return {
+      messages: combined,
+      nextCursor,
+      hasMore
+    };
+  }),
   addMessage: (message) => set((state) => {
     if (!message || !message.id) return state
     
@@ -203,8 +233,9 @@ export const useChatStore = create<ChatState>((set) => ({
   setTags: (tags) => set({ tags }),
   setSelectedChannelId: (id) => set({ selectedChannelId: id }),
   setSelectedTagId: (id) => set({ selectedTagId: id }),
-  setLoadingConversations: (loading) => set({ loadingConversations: loading }),
-  setLoadingMessages: (loading) => set({ loadingMessages: loading }),
+  setLoadingConversations: (loading: boolean) => set({ loadingConversations: loading }),
+  setLoadingMessages: (loading: boolean) => set({ loadingMessages: loading }),
+  setLoadingMore: (loading: boolean) => set({ loadingMore: loading }),
 
   markAsRead: (conversationId) => set((state) => {
     const conv = state.conversations.find(c => c.id === conversationId);

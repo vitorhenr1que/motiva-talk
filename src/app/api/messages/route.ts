@@ -10,33 +10,25 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
     const conversationId = searchParams.get('conversationId')
-    
-    console.log(`[MSG_DEBUG] Buscando mensagens para conversa: ${conversationId}`);
+    const limit = parseInt(searchParams.get('limit') || '20')
+    const before = searchParams.get('before') || undefined
 
     if (!conversationId) {
       throw new AppError('conversationId é obrigatório', 400, 'VALIDATION_ERROR');
     }
 
-    const messages = await MessageService.listByConversation(conversationId)
+    const result = await MessageService.listByConversation(conversationId, limit, before)
     
-    // Logs temporários para validação de reply / quoted messages
-    const total = messages?.length || 0;
-    const withReplyId = messages?.filter((m: any) => m.replyToMessageId).length || 0;
-    const withReplyData = messages?.filter((m: any) => m.replyToMessage).length || 0;
+    // Logs temporários para validação de paginação
+    console.log(`[PAGINATION_DEBUG] Conv: ${conversationId} | Limit: ${limit} | Cursor: ${before || 'NONE'}`);
+    console.log(`[PAGINATION_DEBUG] Retornou: ${result.messages.length} | HasMore: ${result.hasMore} | Next: ${result.nextCursor}`);
 
-    console.log(`[MSG_DEBUG] Conversa ${conversationId}: ${total} mensagens retornadas.`);
-    if (withReplyId > 0) {
-      console.log(`[MSG_DEBUG] Mensagens com replyToMessageId: ${withReplyId}`);
-      console.log(`[MSG_DEBUG] Dados da mensagem original (replyToMessage) carregados: ${withReplyData}/${withReplyId}`);
-      
-      if (withReplyData < withReplyId) {
-        console.warn(`[MSG_DEBUG] AVISO: Algumas mensagens possuem ID de resposta mas os dados não foram encontrados (podem ter sido deletadas).`);
-      }
-    } else {
-      console.log(`[MSG_DEBUG] Nenhuma mensagem com reply detectada nesta conversa.`);
-    }
-
-    return NextResponse.json({ success: true, data: messages })
+    return NextResponse.json({ 
+      success: true, 
+      data: result.messages,
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore
+    })
   } catch (error) {
     return handleApiError(error, req, { route: ROUTE })
   }

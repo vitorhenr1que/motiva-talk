@@ -16,10 +16,30 @@ export class MessageService {
    * Lista histórico de mensagens paginado
    * Filtra mensagens apagadas (me/todos)
    */
-  static async listByConversation(conversationId: string) {
-    const messages = await MessageRepository.findMany({ conversationId })
-    // Filtro básico na camada de serviço (podemos mover para o Repo depois se necessário)
-    return messages.filter((m: any) => !m.deletedForMe)
+  static async listByConversation(conversationId: string, limit: number = 20, before?: string) {
+    const messages = await MessageRepository.findMany({ 
+      conversationId,
+      limit,
+      before
+    })
+    
+    // Filtrar localmente as deletadas para o atendente
+    const filtered = messages.filter((m: any) => !m.deletedForMe);
+
+    // Inverter para ASC antes de retornar para renderizar corretamente no chat (o repo mandou DESC)
+    const sorted = [...filtered].sort((a, b) => 
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+
+    // O cursor para a PRÓXIMA página (anterior no tempo) é a createdAt da mensagem MAIS ANTIGA deste lote (última do array original DESC)
+    const hasMore = messages.length === limit;
+    const nextCursor = hasMore ? messages[messages.length - 1].createdAt : null;
+
+    return { 
+      messages: sorted,
+      nextCursor,
+      hasMore
+    }
   }
 
   /**

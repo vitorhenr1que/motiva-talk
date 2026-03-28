@@ -5,6 +5,7 @@ import { TagSelector } from '@/components/chat/TagSelector';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { formatPhone } from '@/lib/utils';
+import { formatTimeBahia, parseSafeDate } from '@/lib/date-utils';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -160,11 +161,7 @@ export const Sidebar = () => {
                       {conv.contact.name}
                     </span>
                     <span className="text-[10px] text-slate-400 font-bold whitespace-nowrap">
-                      {conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleTimeString('pt-BR', { 
-                        hour: '2-digit', 
-                        minute: '2-digit',
-                        timeZone: 'America/Bahia' 
-                      }) : '---'}
+                      {conv.lastMessageAt ? formatTimeBahia(conv.lastMessageAt) : '---'}
                     </span>
                   </div>
   
