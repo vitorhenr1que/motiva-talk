@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useChatStore } from '@/store/useChatStore';
-import { Search, Filter, MessageSquare, Tag as TagIcon } from 'lucide-react';
+import { Search, Filter, MessageSquare, Tag as TagIcon, Plus } from 'lucide-react';
+import { TagSelector } from '@/components/chat/TagSelector';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -57,6 +58,17 @@ export const Sidebar = () => {
 
     fetchConversations();
   }, [selectedChannelId, selectedTagId, setConversations, setLoadingConversations]);
+
+  const refetchConversations = async () => {
+    if (!selectedChannelId) return;
+    try {
+      let url = `/api/conversations?channelId=${selectedChannelId}`;
+      if (selectedTagId) url += `&tagId=${selectedTagId}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      setConversations(data.data || []);
+    } catch (e) {}
+  };
 
   const filteredConversations = conversations.filter(conv => 
     conv.contact.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -208,6 +220,24 @@ export const Sidebar = () => {
                       >
                         <MessageSquare size={14} fill={(conv.unreadCount || 0) > 0 ? "currentColor" : "none"} />
                       </button>
+
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <TagSelector
+                          conversationId={conv.id}
+                          currentTags={conv.tags || []}
+                          onUpdate={refetchConversations}
+                          dropdownAlign="left"
+                          renderButton={(toggle) => (
+                            <button
+                              onClick={toggle}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-slate-200 text-slate-400 hover:text-indigo-600"
+                              title="Gerenciar Etiquetas"
+                            >
+                              <TagIcon size={14} />
+                            </button>
+                          )}
+                        />
+                      </div>
 
                       <span className={cn(
                         "text-[9px] font-extrabold px-1.5 py-0.5 rounded-md border tracking-tighter whitespace-nowrap",

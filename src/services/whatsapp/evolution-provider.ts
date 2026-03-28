@@ -141,15 +141,14 @@ export class EvolutionProvider implements WhatsAppProvider {
     recipient: string, 
     content: string, 
     type: MessageType = 'TEXT',
-    quoted?: { id: string, content: string, fromMe: boolean, type?: string }
+    quoted?: { id: string, content: string, fromMe: boolean, type?: string },
+    metadata?: any
   ): Promise<any> {
     const instanceName = this.getInstanceName(channel);
     const cleanNumber = recipient.replace(/\D/g, '');
-    
-    if (type !== 'TEXT') throw new Error(`Tipo de mensagem ${type} ainda não implementado.`);
 
-    const payload: any = { number: cleanNumber, text: content };
-
+    // Formata o quoted para os formatos da Evolution API
+    let quotedPayload: any = undefined;
     if (quoted) {
       let quotedMessage: any = { conversation: quoted.content };
       if (quoted.type === 'IMAGE') quotedMessage = { imageMessage: { caption: quoted.content } };
@@ -157,7 +156,7 @@ export class EvolutionProvider implements WhatsAppProvider {
       else if (quoted.type === 'VIDEO') quotedMessage = { videoMessage: { caption: quoted.content } };
       else if (quoted.type === 'DOCUMENT') quotedMessage = { documentMessage: { caption: 'Documento' } };
 
-      payload.quoted = {
+      quotedPayload = {
         key: { 
           id: quoted.id,
           fromMe: quoted.fromMe,
@@ -167,7 +166,37 @@ export class EvolutionProvider implements WhatsAppProvider {
       };
     }
 
-    return evolutionApi.sendMessage(instanceName, payload);
+    // Envio baseado no tipo
+    if (type === 'TEXT') {
+      return evolutionApi.sendMessage(instanceName, { 
+        number: cleanNumber, 
+        text: content,
+        quoted: quotedPayload 
+      });
+    }
+
+    if (type === 'IMAGE' || type === 'VIDEO' || type === 'AUDIO' || type === 'DOCUMENT') {
+      const mediatype = type.toLowerCase() as any;
+      return evolutionApi.sendMedia(instanceName, {
+        number: cleanNumber,
+        mediatype,
+        media: content, // URL do Supabase
+        fileName: metadata?.fileName || 'arquivo',
+        caption: metadata?.caption || '',
+        quoted: quotedPayload
+      });
+    }
+
+    if (type === 'CONTACT') {
+      const contactInfo = metadata?.contact || { fullName: 'Contato', wuid: cleanNumber };
+      return evolutionApi.sendContact(instanceName, {
+        number: cleanNumber,
+        contact: [contactInfo],
+        quoted: quotedPayload
+      });
+    }
+
+    throw new Error(`Tipo de mensagem ${type} ainda não implementado no provider.`);
   }
 
   /**
@@ -253,7 +282,8 @@ export class EvolutionProvider implements WhatsAppProvider {
     const contextInfo = inner.contextInfo || (inner.imageMessage?.contextInfo) || (inner.audioMessage?.contextInfo) || (inner.documentMessage?.contextInfo);
     if (contextInfo?.stanzaId) quotedMessageExternalId = contextInfo.stanzaId;
 
-    const timestamp = (rawMessage.messageTimestamp || data.messageTimestamp || Date.now()) * 1000;
+    const rawTimestamp = rawMessage.messageTimestamp || data.messageTimestamp;
+    const timestamp = rawTimestamp ? rawTimestamp * 1000 : Date.now();
 
     return {
       instanceName,

@@ -1,6 +1,6 @@
 export type UserRole = 'ADMIN' | 'SUPERVISOR' | 'AGENT';
 export type ConversationStatus = 'OPEN' | 'IN_PROGRESS' | 'CLOSED';
-export type MessageType = 'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT';
+export type MessageType = 'TEXT' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'DOCUMENT' | 'CONTACT';
 export type SenderType = 'USER' | 'AGENT' | 'SYSTEM';
 
 export interface User {
@@ -55,6 +55,7 @@ export interface Conversation {
   channel: Channel;
   tags?: ConversationTag[];
   messages?: Message[];
+  pinnedNote?: string;
 }
 
 export interface Message {
@@ -74,6 +75,7 @@ export interface Message {
     type: MessageType;
     externalMessageId?: string;
   };
+  metadata?: any;
 }
 
 export interface QuickReply {
@@ -91,4 +93,21 @@ export interface KeywordSuggestion {
   triggers: string[];
   response: string;
   category: string;
+}
+
+export interface FunnelStage {
+  id: string;
+  name: string;
+  type: 'STEP' | 'SELECT';
+  order: number;
+  options?: string[] | any;
+}
+
+export interface ConversationFunnel {
+  id: string;
+  conversationId: string;
+  stageId: string;
+  value?: string;
+  completedAt: string;
+  stage?: FunnelStage;
 }

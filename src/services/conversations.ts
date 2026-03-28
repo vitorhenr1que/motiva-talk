@@ -46,6 +46,9 @@ export class ConversationService {
    * Cria uma nova conversa (ex: contato enviou mensagem pela primeira vez)
    */
   static async startConversation(contactId: string, channelId: string) {
+    const existing = await ConversationRepository.findActive(contactId, channelId)
+    if (existing) return existing
+
     return await ConversationRepository.create({
       contactId: contactId,
       channelId: channelId,

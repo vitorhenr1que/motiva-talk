@@ -1,8 +1,9 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { useSettingsStore } from '@/store/useSettingsStore';
-import { Sun, Moon, Type, Check } from 'lucide-react';
+import { Sun, Moon, Type, Check, ArrowLeft } from 'lucide-react';
 
 export default function AccessibilitySettingsPage() {
   const { theme, toggleTheme, fontSize, setFontSize } = useSettingsStore();
@@ -14,10 +15,15 @@ export default function AccessibilitySettingsPage() {
   ] as const;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 p-8">
+      <Link href="/settings" className="inline-flex items-center gap-2 text-slate-400 hover:text-blue-600 font-bold text-xs uppercase tracking-widest transition-colors mb-2">
+         <ArrowLeft size={16} />
+         Voltar para Perfil
+      </Link>
+      
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Acessibilidade</h1>
-        <p className="text-slate-500 dark:text-slate-400">Personalize sua experiência visual no Motiva Talk.</p>
+        <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-2">Acessibilidade</h1>
+        <p className="text-slate-500 dark:text-slate-400 font-medium tracking-tight">Personalize sua experiência visual no Motiva Talk.</p>
       </div>
 
       {/* Seção de Tema */}

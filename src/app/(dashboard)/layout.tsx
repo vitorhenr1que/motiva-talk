@@ -35,6 +35,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
             iconName="inbox" 
             label="Conversas" 
           />
+
+          <SidebarItem 
+            href="/funnel" 
+            iconName="trending" 
+            label="Fluxo Kanban" 
+          />
           
           {(role === 'ADMIN' || role === 'SUPERVISOR') && (
             <>
@@ -64,13 +70,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
             label="Sugestões" 
           />
 
-          {(role === 'ADMIN') && (
-            <SidebarItem 
-              href="/settings" 
-              iconName="settings" 
-              label="Configurações" 
-            />
-          )}
+          <SidebarItem 
+            href="/settings" 
+            iconName="settings" 
+            label="Configurações" 
+          />
         </nav>
 
         <div className="p-4 border-t space-y-2">

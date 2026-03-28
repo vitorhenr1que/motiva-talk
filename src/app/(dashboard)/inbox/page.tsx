@@ -7,8 +7,16 @@ import { MessageInput } from '@/components/chat/InboxMessageInput';
 import { useChatStore } from '@/store/useChatStore';
 import { useRealtimeInbox } from '@/hooks/useRealtimeInbox';
 
+import { ContactProfileSidebar } from '@/components/chat/ContactProfileSidebar';
+
 export default function InboxPage() {
-  const { setConversations, setChannels, selectedChannelId, setSelectedChannelId } = useChatStore();
+  const {
+     setConversations,
+     setChannels,
+     selectedChannelId,
+     setSelectedChannelId,
+     isProfileOpen
+   } = useChatStore();
   
   // Realtime Subscriptions
   useRealtimeInbox();
@@ -32,12 +40,17 @@ export default function InboxPage() {
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-white">
-      {/* Nested Sidebar for Conversations */}
+      {/* 1. Conversas */}
       <Sidebar />
+
+      {/* 2. Área Central do Chat */}
       <div className="flex flex-1 flex-col overflow-hidden bg-slate-50">
         <ChatWindow />
         <MessageInput />
       </div>
+
+      {/* 3. Perfil do Contato (CRM) */}
+      {isProfileOpen && <ContactProfileSidebar />}
     </div>
   );
 }

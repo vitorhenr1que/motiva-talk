@@ -8,6 +8,7 @@ export interface CreateMessageData {
   content: string;
   type?: string;
   externalMessageId?: string;
+  metadata?: any;
 }
 
 export class MessageService {
@@ -25,7 +26,7 @@ export class MessageService {
    * Registra uma nova mensagem no banco e envia via API se for do atendente
    */
   static async createMessage(data: CreateMessageData & { replyToMessageId?: string }) {
-    const { conversationId, channelId, senderType, content, type, replyToMessageId } = data
+    const { conversationId, channelId, senderType, content, type, replyToMessageId, metadata } = data
     
     let externalMessageId: string | undefined = data.externalMessageId
     let quoted: { id: string, content: string, fromMe: boolean, type?: string } | undefined = undefined;
@@ -57,7 +58,8 @@ export class MessageService {
           conversation.contact.phone,
           content,
           (type as any) || 'TEXT',
-          quoted
+          quoted,
+          metadata
         )
 
         externalMessageId = result?.key?.id || result?.message?.key?.id
@@ -73,7 +75,9 @@ export class MessageService {
       content,
       type: type || 'TEXT',
       externalMessageId,
-      replyToMessageId
+      replyToMessageId,
+      metadata,
+      createdAt: new Date().toISOString()
     })
 
     if (senderType === 'AGENT') {

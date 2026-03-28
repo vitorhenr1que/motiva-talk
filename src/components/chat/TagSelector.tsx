@@ -1,27 +1,52 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Tag as TagIcon, X, Plus, Check } from 'lucide-react';
 import { useChatStore } from '@/store/useChatStore';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+import { createPortal } from 'react-dom';
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 
 interface TagSelectorProps {
   conversationId: string;
   currentTags: any[];
   onUpdate: () => void;
+  renderButton?: (toggle: () => void) => React.ReactNode;
+  dropdownAlign?: 'left' | 'right';
 }
 
-export const TagSelector = ({ conversationId, currentTags, onUpdate }: TagSelectorProps) => {
-  const { tags, setTags } = useChatStore();
+export const TagSelector = ({ conversationId, currentTags, onUpdate, renderButton, dropdownAlign = 'right' }: TagSelectorProps) => {
+  const [mounted, setMounted] = useState(false);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0 });
   const [isOpen, setIsOpen] = useState(false);
+  const { tags, setTags } = useChatStore();
   const [newTagName, setNewTagName] = useState('');
   const [newColor, setNewColor] = useState('#3b82f6');
   const [newEmoji, setNewEmoji] = useState('🏷️');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      // Ajuste: se alinhar à direita, subtraímos a largura do menu (288px)
+      const left = dropdownAlign === 'right' ? rect.right - 288 : rect.left;
+      setCoords({ top: rect.bottom + 8, left });
+    }
+  }, [isOpen, dropdownAlign]);
+
   const currentNames = currentTags.map(ct => ct.tag.name);
   const emojis = [
     '🏷️', '💰', '✅', '⚠️', '🎓', '🏢', '🙋‍♂️', '📋', '💬', '📧', '🛠️', '💡', '🔥', '💎', '🚀', 
-    '📅', '⏰', '⭐️', '🏆', '📌', '📎', '🔒', '🔓', '🔴', '🟢', '🟡', '🔵', '💜', '🖤', '✅',
+    '📅', '⏰', '⭐️', '🏆', '📌', '📎', '🔒', '🔓', '🔴', '🟢', '🟡', '🔵', '💜', '🖤', 
     '🚨', '🆘', '🛑', '🆗', '🆒', '🆕', '🔄', '✔️', '✖️', '➕', '➖', '❓', '❗️', '💯', '💢',
     '🤝', '📞', '🎧', '📱', '💻', '📈', '📉', '🛒', '🛍️', '📦', '🎁', '🎈', '🎉', '🎊', '✨',
     '👑', '🎖️', '🏅', '🥇', '🥈', '🥉', '🏳️', '🏴', '🏁', '🚩', '🔋', '🔌', '🔦', '🔗', '📐'
@@ -29,9 +54,13 @@ export const TagSelector = ({ conversationId, currentTags, onUpdate }: TagSelect
   const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b'];
 
   const fetchTags = async () => {
-    const res = await fetch('/api/tags');
-    const data = await res.json();
-    setTags(data.data || []);
+    try {
+      const res = await fetch('/api/tags');
+      const data = await res.json();
+      setTags(data.data || []);
+    } catch (e) {
+      console.error('Failed to fetch tags');
+    }
   };
 
   useEffect(() => {
@@ -57,7 +86,7 @@ export const TagSelector = ({ conversationId, currentTags, onUpdate }: TagSelect
       });
       if (res.ok) {
         onUpdate();
-        fetchTags(); // Atualiza a lista local do menu
+        fetchTags(); 
       }
     } catch (e) {
       console.error('Failed to sync tags');
@@ -71,26 +100,48 @@ export const TagSelector = ({ conversationId, currentTags, onUpdate }: TagSelect
     setNewTagName('');
   };
 
-  return (
-    <div className="relative">
-      <button 
-        onClick={() => setIsOpen(!isOpen)}
-        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
-        title="Gerenciar Etiquetas"
-      >
-        <TagIcon size={20} />
-      </button>
+  if (!mounted) return null;
 
-      {isOpen && (
+  return (
+    <div className="relative inline-block" ref={triggerRef}>
+      {renderButton ? renderButton(() => setIsOpen(!isOpen)) : (
+        <button 
+          onClick={() => setIsOpen(!isOpen)}
+          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+          title="Gerenciar Etiquetas"
+        >
+          <TagIcon size={20} />
+        </button>
+      )}
+
+      {isOpen && (coords.top > 0) && createPortal(
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute right-0 top-full mt-2 w-72 z-50 rounded-2xl bg-white p-4 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 z-[9998] bg-black/5 backdrop-blur-[1px]" 
+            onClick={() => { setIsOpen(false); setCoords({ top: 0, left: 0 }); }} 
+          />
+          
+          {/* Dropdown Menu */}
+          <div 
+            style={{ 
+              position: 'fixed',
+              top: `${coords.top}px`,
+              left: `${coords.left}px`,
+            }}
+            className="w-72 z-[9999] rounded-2xl bg-white p-4 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-100"
+          >
              <div className="mb-3 flex items-center justify-between">
                 <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Etiquetas da Conversa</h4>
-                <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
+                <button 
+                  onClick={() => setIsOpen(false)} 
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X size={14} />
+                </button>
              </div>
 
-             <div className="flex flex-wrap gap-2 mb-4 max-h-40 overflow-y-auto pr-1">
+             <div className="flex flex-wrap gap-2 mb-4 max-h-40 overflow-y-auto pr-1 personalized-scrollbar">
                {tags.map(tag => (
                  <button
                    key={tag.id}
@@ -100,9 +151,10 @@ export const TagSelector = ({ conversationId, currentTags, onUpdate }: TagSelect
                      backgroundColor: currentNames.includes(tag.name) ? tag.color : 'white',
                      borderColor: tag.color + '40'
                    }}
-                   className={(`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all ${
-                     !currentNames.includes(tag.name) && 'hover:bg-slate-50'
-                   }`)}
+                   className={cn(
+                     "flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all",
+                     !currentNames.includes(tag.name) && "hover:bg-slate-50"
+                   )}
                  >
                    <span>{tag.emoji}</span>
                    {tag.name}
@@ -123,7 +175,7 @@ export const TagSelector = ({ conversationId, currentTags, onUpdate }: TagSelect
                     </button>
 
                     {showEmojiPicker && (
-                      <div className="absolute bottom-full left-0 mb-2 w-48 max-h-48 overflow-y-auto rounded-xl bg-white p-2 shadow-xl border border-slate-100 grid grid-cols-5 gap-1 z-50 animate-in fade-in slide-in-from-bottom-2 scrollbar-thin">
+                      <div className="absolute bottom-full left-0 mb-2 w-48 max-h-48 overflow-y-auto rounded-xl bg-white p-2 shadow-xl border border-slate-100 grid grid-cols-5 gap-1 z-[10000] animate-in fade-in slide-in-from-bottom-2">
                         {emojis.map((e, idx) => (
                           <button
                             key={`${e}-${idx}`}
@@ -155,18 +207,26 @@ export const TagSelector = ({ conversationId, currentTags, onUpdate }: TagSelect
                         type="button"
                         onClick={() => setNewColor(c)}
                         style={{ backgroundColor: c }}
-                        className={`h-4 w-4 rounded-full ring-offset-2 transition-all ${newColor === c ? 'ring-2 ring-slate-300 scale-110' : 'opacity-80 hover:opacity-100'}`}
+                        className={cn(
+                          "h-4 w-4 rounded-full ring-offset-2 transition-all",
+                          newColor === c ? "ring-2 ring-slate-300 scale-110" : "opacity-80 hover:opacity-100"
+                        )}
                       />
                     ))}
                   </div>
-                  <button type="submit" className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white shadow-sm hover:bg-blue-700 transition-all shadow-blue-200 hover:shadow-lg">
+                  <button 
+                    type="submit" 
+                    className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white shadow-sm hover:bg-blue-700 transition-all shadow-blue-200 hover:shadow-lg"
+                  >
                     <Plus size={18} />
                   </button>
                 </div>
              </form>
           </div>
-        </>
-      )}
+        </>,
+        document.body
+      )
+      }
     </div>
   );
 };

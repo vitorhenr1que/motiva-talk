@@ -75,7 +75,12 @@ export class ConversationRepository {
     const { data: newConversation, error } = await supabaseAdmin
       .from('Conversation')
       .insert([{ id: generateId(), ...data }])
-      .select()
+      .select(`
+        *,
+        contact:Contact(*),
+        channel:Channel(*),
+        agent:User(*)
+      `)
       .single()
 
     if (error) throw error
@@ -102,11 +107,17 @@ export class ConversationRepository {
   static async findActive(contactId: string, channelId: string) {
     const { data: conversation, error } = await supabaseAdmin
       .from('Conversation')
-      .select('*')
+      .select(`
+        *,
+        contact:Contact(*),
+        channel:Channel(*),
+        agent:User(*),
+        tags:ConversationTag(*, tag:Tag(*))
+      `)
       .eq('contactId', contactId)
       .eq('channelId', channelId)
       .in('status', ['OPEN', 'IN_PROGRESS'])
-      .order('createdAt', { ascending: false })
+      .order('lastMessageAt', { ascending: false, nullsFirst: false })
       .limit(1)
       .maybeSingle()
 

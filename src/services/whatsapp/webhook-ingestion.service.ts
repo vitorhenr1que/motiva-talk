@@ -95,7 +95,8 @@ export class WebhookIngestionService {
           content: content,
           type: messageType || 'TEXT',
           externalMessageId: externalId,
-          replyToMessageId: replyToMessageId
+          replyToMessageId: replyToMessageId,
+          createdAt: new Date(event.timestamp).toISOString()
         }])
         .select('*, replyTo:replyToMessageId(*)')
         .single()
@@ -105,7 +106,7 @@ export class WebhookIngestionService {
 
       // 7. Atualizar lastMessageAt e unreadCount da Conversa
       const updateData: any = { 
-        lastMessageAt: new Date().toISOString() 
+        lastMessageAt: new Date(event.timestamp).toISOString() 
       };
       
       // Incrementa não lidas se a mensagem for do usuário e não estivermos com a conversa aberta no momento

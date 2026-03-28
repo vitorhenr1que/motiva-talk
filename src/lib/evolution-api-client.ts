@@ -199,6 +199,34 @@ class EvolutionApiClient {
     });
   }
 
+  async sendMedia(instanceName: string, payload: {
+    number: string;
+    mediatype: 'image' | 'video' | 'audio' | 'document';
+    media: string;
+    fileName?: string;
+    caption?: string;
+    quoted?: any;
+  }) {
+    return this.request<any>(`/message/sendMedia/${instanceName}`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async sendContact(instanceName: string, payload: {
+    number: string;
+    contact: {
+      fullName: string;
+      wuid: string;
+    }[];
+    quoted?: any;
+  }) {
+    return this.request<any>(`/message/sendContact/${instanceName}`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   // --- Chat Advanced ---
 
   async deleteMessage(instanceName: string, payload: { number: string; id: string; fromMe: boolean }) {

@@ -13,10 +13,14 @@ export async function POST(req: Request) {
 
     validateBody(body, ['content'])
     const { content, channelId } = body
+    console.log(`[AI_SUGGESTIONS] Content: "${content}", Channel: ${channelId}`);
 
     const suggestions = await SuggestionService.findSuggestions(content, channelId)
+    console.log(`[AI_SUGGESTIONS] Found: ${suggestions.length} matches`);
+    
     return NextResponse.json({ success: true, data: suggestions })
   } catch (error) {
+    console.error(`[AI_SUGGESTIONS] API Error:`, error);
     return handleApiError(error, req, { route: ROUTE })
   }
 }

@@ -13,6 +13,10 @@ interface ChatState {
   
   tags: any[]
   selectedTagId: string | null
+  isProfileOpen: boolean
+  setIsProfileOpen: (open: boolean) => void
+  kanbanData: any[]
+  setKanbanData: (data: any[]) => void
   
   setConversations: (conversations: any[]) => void
   setActiveConversation: (conversation: any | null) => void
@@ -22,7 +26,8 @@ interface ChatState {
   upsertMessage: (message: any, tempId?: string) => void;
   removeMessage: (id: string) => void;
   
-  // Ações de Exclusão de Mensagem
+  // Atualização local de estado para refletir mudanças IMEDIATAMENTE na UI
+  updateConversationLocally: (id: string, data: Partial<Conversation>) => void;
   deleteMessageLocally: (id: string, mode: 'me' | 'everyone') => void;
   
   setChannels: (channels: any[]) => void;
@@ -46,6 +51,11 @@ export const useChatStore = create<ChatState>((set) => ({
   selectedTagId: null,
   loadingConversations: false,
   loadingMessages: false,
+  isProfileOpen: false,
+  kanbanData: [],
+
+  setIsProfileOpen: (open) => set({ isProfileOpen: open }),
+  setKanbanData: (data) => set({ kanbanData: data }),
 
   setConversations: (conversations) => {
     const activeId = useChatStore.getState().activeConversation?.id;
@@ -68,6 +78,8 @@ export const useChatStore = create<ChatState>((set) => ({
     set({ activeConversation: conversation });
     if (conversation) {
       useChatStore.getState().markAsRead(conversation.id);
+    } else {
+      set({ isProfileOpen: false });
     }
   },
   setReplyToMessage: (message) => set({ replyToMessage: message }),
@@ -143,13 +155,42 @@ export const useChatStore = create<ChatState>((set) => ({
   })),
 
   /**
-   * Atualiza o estado visual da mensagem após exclusão (Me ou Everyone)
+   * Atualiza uma conversa localmente para feedback instantâneo (Nome do contato, Observações, Status)
    */
+  updateConversationLocally: (id, data) => set((state) => {
+    const updatedConversations = state.conversations.map(c => 
+      c.id === id ? { ...c, ...data } : c
+    );
+    
+    const activeConv = state.activeConversation?.id === id 
+      ? { ...state.activeConversation, ...data } 
+      : state.activeConversation;
+
+    // Sincronizar também com kanbanData
+    const updatedKanbanData = state.kanbanData.map(item => {
+       if (item.conversation?.id === id) {
+          return {
+             ...item,
+             conversation: {
+                ...item.conversation,
+                ...data
+             }
+          }
+       }
+       return item;
+    });
+
+    return { 
+      conversations: updatedConversations,
+      activeConversation: activeConv as any,
+      kanbanData: updatedKanbanData
+    };
+  }),
+
   deleteMessageLocally: (id, mode) => set((state) => {
     if (mode === 'me') {
       return { messages: state.messages.filter(m => m.id !== id) };
     } else {
-      // everyone: Mantém o balão mas altera o texto
       return { 
         messages: state.messages.map(m => 
           m.id === id ? { ...m, content: '🚫 Mensagem apagada', deletedForEveryone: true } : m
