@@ -9,9 +9,13 @@ const prismaClientSingleton = () => {
     throw new Error('DATABASE_URL environment variable is missing.');
   }
 
-  // Supabase usually requires SSL mode
+  // Supabase usually requires SSL mode and Transaction Pooler (6543)
+  console.log('[PRISMA_DEBUG] Inicializando Pool de Conexão...');
   const pool = new Pool({ 
     connectionString: url,
+    max: 1, // Recomendado para serverless se não houver pooler externo
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
     ssl: {
       rejectUnauthorized: false
     }
