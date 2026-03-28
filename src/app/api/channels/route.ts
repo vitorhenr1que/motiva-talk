@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { ChannelService } from '@/services/channels'
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const channels = await ChannelService.listActive()

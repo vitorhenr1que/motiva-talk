@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { UserService } from '@/services/users'
 import { getServerSession, getUserRole } from '@/lib/auth-server'
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const userSession = await getServerSession()

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { TagService } from '@/services/tags'
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const tags = await TagService.getAll()
