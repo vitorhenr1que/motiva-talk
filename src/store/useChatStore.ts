@@ -75,40 +75,49 @@ export const useChatStore = create<ChatState>((set) => ({
     }
   },
   setReplyToMessage: (message) => set({ replyToMessage: message }),
-  setMessages: (messages) => set({ messages }),
+  setMessages: (messages) => {
+    // Deduplicação de Mensagens por ID
+    const uniqueMap = new Map();
+    messages.forEach(m => uniqueMap.set(m.id, m));
+    set({ messages: Array.from(uniqueMap.values()) });
+  },
   addMessage: (message) => set((state) => {
     if (!message || !message.id) return state
-    const isDuplicate = state.messages.some(m => m.id === message.id)
-    if (isDuplicate) return state
     
-    // Atualizar lista de conversas (mover para o topo e incrementar unread se necessário)
-    const updatedConversations = state.conversations.map(conv => {
-      if (conv.id === message.conversationId) {
-        const isFromUser = message.senderType === 'USER';
-        const isNotActive = state.activeConversation?.id !== conv.id;
-        
-        // Se estiver ativa, forçamos o valor para 0 para não incomodar o atendente
-        const newUnread = (isFromUser && isNotActive) ? (conv.unreadCount || 0) + 1 : 0;
-        
-        if (isFromUser && !isNotActive) {
-          console.log(`[UNREAD_DEBUG] Mensagem recebida na conversa ATIVA. Mantendo unreadCount em 0.`);
-          // Opcionalmente: disparar markAsRead para o servidor aqui para sincronizar o DB
-          useChatStore.getState().markAsRead(conv.id);
-        } else if (isFromUser) {
-          console.log(`[UNREAD_DEBUG] Conversa ${conv.id} movida para o topo via Mensagem. Unread: ${conv.unreadCount} -> ${newUnread}`);
-        }
-        
-        return {
-          ...conv,
-          lastMessageAt: new Date().toISOString(),
-          unreadCount: newUnread,
-          messages: [message] // Atualiza o preview na lista lateral
-        };
+    // 1. Evitar Duplicação nas Mensagens (Chat)
+    const isDuplicate = state.messages.some(m => m.id === message.id)
+    if (isDuplicate) {
+      console.warn(`[UNREAD_DEBUG] Mensagem duplicada ignorada: ${message.id}`);
+      return state
+    }
+    
+    // 2. Atualizar lista de conversas (Deduplicando e reordenando)
+    const existingConvMap = new Map();
+    state.conversations.forEach(c => existingConvMap.set(c.id, c));
+    
+    const conv = existingConvMap.get(message.conversationId);
+    if (conv) {
+      const isFromUser = message.senderType === 'USER';
+      const isNotActive = state.activeConversation?.id === conv.id ? false : true;
+      const newUnread = (isFromUser && isNotActive) ? (conv.unreadCount || 0) + 1 : 0;
+      
+      if (isFromUser && !isNotActive) {
+        console.log(`[UNREAD_DEBUG] Mensagem na ativa. Sincronizando markAsRead...`);
+        useChatStore.getState().markAsRead(conv.id);
       }
-      return conv;
-    }).sort((a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime());
+      
+      existingConvMap.set(conv.id, {
+        ...conv,
+        lastMessageAt: new Date().toISOString(),
+        unreadCount: newUnread,
+        messages: [message]
+      });
+    }
 
-    // 2. Só adicionar no array global de mensagens SE for da conversa ativa
+    const updatedConversations = Array.from(existingConvMap.values())
+      .sort((a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime());
+
+    // 3. Só adicionar no array global de mensagens SE for da conversa ativa
     const shouldAddGlobal = state.activeConversation?.id === message.conversationId;
     const newMessages = shouldAddGlobal ? [...state.messages, message] : state.messages;
 
