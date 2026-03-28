@@ -1,4 +1,4 @@
-import prisma from '@/lib/prisma';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { WebhookEvent } from './provider';
 
 export class WebhookIngestionService {
@@ -15,26 +15,26 @@ export class WebhookIngestionService {
     }
 
     try {
-      // 1. Identify Channel by its ID or its providerSessionId
-      const channel = await prisma.channel.findFirst({
-        where: {
-          OR: [
-            { id: channelId },
-            { providerSessionId: channelId }
-          ]
-        }
-      });
+      // 1. Identify Channel
+      const { data: channel } = await supabaseAdmin
+        .from('Channel')
+        .select('*')
+        .or(`id.eq.${channelId},providerSessionId.eq.${channelId}`)
+        .single()
 
       if (!channel) {
         console.error(`Channel with ID ${channelId} not found for message ingestion.`);
         return;
       }
 
-      // 2. Deduplicate: Check if message already exists
+      // 2. Deduplicate
       if (externalMessageId) {
-        const existing = await prisma.message.findUnique({
-          where: { externalMessageId }
-        });
+        const { data: existing } = await supabaseAdmin
+          .from('Message')
+          .select('id')
+          .eq('externalMessageId', externalMessageId)
+          .maybeSingle()
+        
         if (existing) {
           console.log(`Duplicate message ${externalMessageId} ignored.`);
           return;
@@ -42,53 +42,65 @@ export class WebhookIngestionService {
       }
 
       // 3. Identify or Create Contact
-      const contact = await prisma.contact.upsert({
-        where: { phone: senderPhone },
-        update: { name: senderName || senderPhone }, // Update name if provided
-        create: {
-          phone: senderPhone,
-          name: senderName || senderPhone
-        }
-      });
+      const { data: contact, error: contactError } = await supabaseAdmin
+        .from('Contact')
+        .upsert({ 
+          phone: senderPhone, 
+          name: senderName || senderPhone 
+        }, { onConflict: 'phone' })
+        .select()
+        .single()
+
+      if (contactError || !contact) throw contactError || new Error('Failed to identify contact');
 
       // 4. Identify or Create Open Conversation
-      let conversation = await prisma.conversation.findFirst({
-        where: {
-          contactId: contact.id,
-          channelId: channel.id,
-          status: { in: ['OPEN', 'IN_PROGRESS'] }
-        },
-        orderBy: { createdAt: 'desc' }
-      });
+      let { data: conversation } = await supabaseAdmin
+        .from('Conversation')
+        .select('*')
+        .eq('contactId', contact.id)
+        .eq('channelId', channel.id)
+        .in('status', ['OPEN', 'IN_PROGRESS'])
+        .order('createdAt', { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
       if (!conversation) {
-        conversation = await prisma.conversation.create({
-          data: {
+        const { data: newConv, error: newConvError } = await supabaseAdmin
+          .from('Conversation')
+          .insert([{
             contactId: contact.id,
             channelId: channel.id,
             status: 'OPEN',
-            lastMessageAt: new Date() // Using current time
-          }
-        });
+            lastMessageAt: new Date().toISOString()
+          }])
+          .select()
+          .single()
+        
+        if (newConvError) throw newConvError
+        conversation = newConv
       }
 
       // 5. Save Message
-      const newMessage = await prisma.message.create({
-        data: {
+      const { data: newMessage, error: msgError } = await supabaseAdmin
+        .from('Message')
+        .insert([{
           conversationId: conversation.id,
           channelId: channel.id,
           senderType: 'USER',
           content: content,
           type: messageType || 'TEXT',
           externalMessageId: externalMessageId,
-        }
-      });
+        }])
+        .select()
+        .single()
+
+      if (msgError) throw msgError
 
       // 6. Update Conversation lastActivity
-      await prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { lastMessageAt: new Date() }
-      });
+      await supabaseAdmin
+        .from('Conversation')
+        .update({ lastMessageAt: new Date().toISOString() })
+        .eq('id', conversation.id)
 
       // 7. Success & Realtime Notification
       console.log(`Message from ${senderPhone} ingested successfully into conversation ${conversation.id}`);

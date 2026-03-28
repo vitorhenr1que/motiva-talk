@@ -1,31 +1,62 @@
-import prisma from '@/lib/prisma'
-import { Prisma, UserRole } from '@prisma/client'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export class UserRepository {
-  static async findMany(where?: Prisma.UserWhereInput) {
-    return await prisma.user.findMany({ 
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: { userChannels: { include: { channel: true } } }
-    })
+  static async findMany(where?: any) {
+    let query = supabaseAdmin
+      .from('User')
+      .select('*, userChannels:UserChannel(*, channel:Channel(*))')
+      .order('createdAt', { ascending: false })
+
+    if (where?.email) {
+      query = query.eq('email', where.email)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return data
   }
 
   static async findById(id: string) {
-    return await prisma.user.findUnique({ 
-      where: { id },
-      include: { userChannels: { include: { channel: true } } }
-    })
+    const { data, error } = await supabaseAdmin
+      .from('User')
+      .select('*, userChannels:UserChannel(*, channel:Channel(*))')
+      .eq('id', id)
+      .single()
+
+    if (error) throw error
+    return data
   }
 
-  static async create(data: Prisma.UserCreateInput) {
-    return await prisma.user.create({ data })
+  static async create(data: any) {
+    const { data: newUser, error } = await supabaseAdmin
+      .from('User')
+      .insert([data])
+      .select()
+      .single()
+
+    if (error) throw error
+    return newUser
   }
 
-  static async update(id: string, data: Prisma.UserUpdateInput) {
-    return await prisma.user.update({ where: { id }, data })
+  static async update(id: string, data: any) {
+    const { data: updatedUser, error } = await supabaseAdmin
+      .from('User')
+      .update(data)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) throw error
+    return updatedUser
   }
 
   static async delete(id: string) {
-    return await prisma.user.delete({ where: { id } })
+    const { error } = await supabaseAdmin
+      .from('User')
+      .delete()
+      .eq('id', id)
+
+    if (error) throw error
+    return { success: true }
   }
 }

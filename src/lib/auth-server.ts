@@ -24,9 +24,12 @@ export async function getServerSession() {
 }
 
 export async function getUserRole(email: string) {
-  const prisma = (await import('@/lib/prisma')).default
-  const user = await prisma.user.findUnique({
-    where: { email }
-  })
+  const { supabaseAdmin } = await import('@/lib/supabase-admin')
+  const { data: user } = await supabaseAdmin
+    .from('User')
+    .select('role')
+    .eq('email', email)
+    .single()
+  
   return user?.role || 'AGENT'
 }

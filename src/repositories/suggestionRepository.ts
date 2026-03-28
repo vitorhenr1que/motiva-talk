@@ -1,30 +1,37 @@
-import prisma from '@/lib/prisma'
-import { KeywordSuggestion, Prisma } from '@prisma/client'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export class SuggestionRepository {
-  static async findMany(where?: Prisma.KeywordSuggestionWhereInput) {
-    return await prisma.keywordSuggestion.findMany({ 
-      where,
-      include: { channel: true }
-    })
+  static async findMany(where?: any) {
+    let query = supabaseAdmin.from('KeywordSuggestion').select('*, channel:Channel(*)')
+    
+    if (where?.channelId) query = query.eq('channelId', where.channelId)
+
+    const { data, error } = await query
+    if (error) throw error
+    return data
   }
 
   static async findById(id: string) {
-    return await prisma.keywordSuggestion.findUnique({ 
-      where: { id },
-      include: { channel: true }
-    })
+    const { data, error } = await supabaseAdmin.from('KeywordSuggestion').select('*, channel:Channel(*)').eq('id', id).single()
+    if (error) throw error
+    return data
   }
 
-  static async create(data: Prisma.KeywordSuggestionCreateInput) {
-    return await prisma.keywordSuggestion.create({ data })
+  static async create(data: any) {
+    const { data: newSuggestion, error } = await supabaseAdmin.from('KeywordSuggestion').insert([data]).select().single()
+    if (error) throw error
+    return newSuggestion
   }
 
-  static async update(id: string, data: Prisma.KeywordSuggestionUpdateInput) {
-    return await prisma.keywordSuggestion.update({ where: { id }, data })
+  static async update(id: string, data: any) {
+    const { data: updatedSuggestion, error } = await supabaseAdmin.from('KeywordSuggestion').update(data).eq('id', id).select().single()
+    if (error) throw error
+    return updatedSuggestion
   }
 
   static async delete(id: string) {
-    return await prisma.keywordSuggestion.delete({ where: { id } })
+    const { error } = await supabaseAdmin.from('KeywordSuggestion').delete().eq('id', id)
+    if (error) throw error
+    return { success: true }
   }
 }

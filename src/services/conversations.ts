@@ -1,5 +1,4 @@
 import { ConversationRepository } from '@/repositories/conversationRepository'
-import { ConversationStatus } from '@prisma/client'
 
 export class ConversationService {
   /**
@@ -12,7 +11,7 @@ export class ConversationService {
   /**
    * Lista conversas por canal
    */
-  static async listByChannel(channelId: string, status?: ConversationStatus) {
+  static async listByChannel(channelId: string, status?: string) {
     return await ConversationRepository.findMany({
        channelId,
        status: status || undefined
@@ -24,7 +23,7 @@ export class ConversationService {
    */
   static async assignAgent(conversationId: string, agentId: string) {
     return await ConversationRepository.update(conversationId, {
-      agent: { connect: { id: agentId } },
+      assignedTo: agentId,
       status: 'IN_PROGRESS'
     })
   }
@@ -32,7 +31,7 @@ export class ConversationService {
   /**
    * Altera o status da conversa (Ex: Fechar atendimento)
    */
-  static async updateStatus(conversationId: string, status: ConversationStatus) {
+  static async updateStatus(conversationId: string, status: string) {
     return await ConversationRepository.update(conversationId, { status })
   }
 
@@ -48,8 +47,8 @@ export class ConversationService {
    */
   static async startConversation(contactId: string, channelId: string) {
     return await ConversationRepository.create({
-      contact: { connect: { id: contactId } },
-      channel: { connect: { id: channelId } },
+      contactId: contactId,
+      channelId: channelId,
       status: 'OPEN'
     })
   }

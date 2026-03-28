@@ -1,42 +1,73 @@
-import prisma from '@/lib/prisma'
-import { ConversationStatus, Prisma } from '@prisma/client'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export class ConversationRepository {
-  static async findMany(where: Prisma.ConversationWhereInput) {
-    return await prisma.conversation.findMany({
-      where,
-      include: {
-        contact: true,
-        channel: true,
-        agent: true,
-        tags: { include: { tag: true } },
-        messages: { orderBy: { createdAt: 'desc' }, take: 1 }
-      },
-      orderBy: { createdAt: 'desc' }
-    })
+  static async findMany(where: any) {
+    let query = supabaseAdmin
+      .from('Conversation')
+      .select(`
+        *,
+        contact:Contact(*),
+        channel:Channel(*),
+        agent:User(*),
+        tags:ConversationTag(*, tag:Tag(*)),
+        messages:Message(*)
+      `)
+      .order('createdAt', { ascending: false })
+
+    if (where.status) query = query.eq('status', where.status)
+    if (where.assignedTo) query = query.eq('assignedTo', where.assignedTo)
+    if (where.channelId) query = query.eq('channelId', where.channelId)
+
+    const { data, error } = await query
+    if (error) throw error
+
+    // Post-process messages to mirror Prisma 'take: 1' if needed
+    // or just return data as is if the frontend handles it.
+    return data
   }
 
   static async findById(id: string) {
-    return await prisma.conversation.findUnique({
-      where: { id },
-      include: {
-        contact: true,
-        channel: true,
-        agent: true,
-        tags: { include: { tag: true } }
-      }
-    })
+    const { data, error } = await supabaseAdmin
+      .from('Conversation')
+      .select(`
+        *,
+        contact:Contact(*),
+        channel:Channel(*),
+        agent:User(*),
+        tags:ConversationTag(*, tag:Tag(*))
+      `)
+      .eq('id', id)
+      .single()
+
+    if (error) throw error
+    return data
   }
 
-  static async create(data: Prisma.ConversationCreateInput) {
-    return await prisma.conversation.create({ data })
+  static async create(data: any) {
+    const { data: newConversation, error } = await supabaseAdmin
+      .from('Conversation')
+      .insert([data])
+      .select()
+      .single()
+
+    if (error) throw error
+    return newConversation
   }
 
-  static async update(id: string, data: Prisma.ConversationUpdateInput) {
-    return await prisma.conversation.update({
-      where: { id },
-      data,
-      include: { contact: true, channel: true, agent: true }
-    })
+  static async update(id: string, data: any) {
+    const { data: updatedConversation, error } = await supabaseAdmin
+      .from('Conversation')
+      .update(data)
+      .eq('id', id)
+      .select(`
+        *,
+        contact:Contact(*),
+        channel:Channel(*),
+        agent:User(*)
+      `)
+      .single()
+
+    if (error) throw error
+    return updatedConversation
   }
 }

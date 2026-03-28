@@ -1,4 +1,4 @@
-import prisma from '@/lib/prisma';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { WebhookEvent } from './provider';
 
 export class WebhookService {
@@ -34,20 +34,17 @@ export class WebhookService {
     console.log(`Updating connection status for ${event.channelId} to ${status}`);
     
     // Find channel by ID or providerSessionId
-    const channel = await prisma.channel.findFirst({
-      where: {
-        OR: [
-          { id: event.channelId },
-          { providerSessionId: event.channelId }
-        ]
-      }
-    });
+    const { data: channel } = await supabaseAdmin
+      .from('Channel')
+      .select('id')
+      .or(`id.eq.${event.channelId},providerSessionId.eq.${event.channelId}`)
+      .single()
 
     if (channel) {
-      await prisma.channel.update({
-        where: { id: channel.id },
-        data: { connectionStatus: status }
-      });
+      await supabaseAdmin
+        .from('Channel')
+        .update({ connectionStatus: status })
+        .eq('id', channel.id)
     }
   }
 

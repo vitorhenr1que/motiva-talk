@@ -1,12 +1,12 @@
 import { MessageRepository } from '@/repositories/messageRepository'
-import { MessageType, SenderType } from '@prisma/client'
 
 export interface CreateMessageData {
   conversationId: string;
   channelId: string;
-  senderType: SenderType;
+  senderType: string;
   content: string;
-  type?: MessageType;
+  type?: string;
+  externalMessageId?: string;
 }
 
 export class MessageService {
@@ -24,8 +24,8 @@ export class MessageService {
     const { conversationId, channelId, ...rest } = data
     return await MessageRepository.create({
       ...rest,
-      conversation: { connect: { id: conversationId } },
-      channel: { connect: { id: channelId } },
+      conversationId: conversationId,
+      channelId: channelId,
       type: data.type || 'TEXT'
     })
   }

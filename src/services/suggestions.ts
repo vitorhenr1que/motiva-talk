@@ -1,5 +1,4 @@
 import { SuggestionRepository } from '@/repositories/suggestionRepository'
-import { KeywordSuggestion } from '@prisma/client'
 
 export class SuggestionService {
   /**
@@ -17,16 +16,13 @@ export class SuggestionService {
    * Lógica central de sugestões baseada no conteúdo da última mensagem recebida
    * Filtra apenas sugestões que estão ATIVAS (isActive: true).
    */
-  static async findSuggestions(messageContent: string, channelId?: string): Promise<KeywordSuggestion[]> {
+  static async findSuggestions(messageContent: string, channelId?: string): Promise<any[]> {
     const input = this.normalizeText(messageContent)
     
     // Filtra por canal OU globais e que estejam ATIVAS
     const all = await SuggestionRepository.findMany({
       isActive: true,
-      OR: [
-        { channelId: null },
-        { channelId: channelId }
-      ]
+      channelId: channelId
     })
 
     const scored = (all as any[]).map(sug => {
@@ -47,7 +43,7 @@ export class SuggestionService {
 
   static async listAll(filters?: { keyword?: string; category?: string; channelId?: string; isActive?: boolean }) {
     const where: any = {}
-    if (filters?.keyword) where.keyword = { contains: filters.keyword, mode: 'insensitive' }
+    if (filters?.keyword) where.keyword = filters.keyword
     if (filters?.category) where.category = filters.category
     if (filters?.channelId) where.channelId = filters.channelId
     if (filters?.isActive !== undefined) where.isActive = filters.isActive
@@ -59,7 +55,7 @@ export class SuggestionService {
     const { channelId, ...rest } = data
     return await SuggestionRepository.create({
       ...rest,
-      channel: channelId ? { connect: { id: channelId } } : undefined
+      channelId: channelId || null
     })
   }
 
@@ -67,7 +63,7 @@ export class SuggestionService {
     const { channelId, ...rest } = data
     return await SuggestionRepository.update(id, {
       ...rest,
-      channel: channelId === null ? { disconnect: true } : (channelId ? { connect: { id: channelId } } : undefined)
+      channelId: channelId === null ? null : (channelId || undefined)
     })
   }
 

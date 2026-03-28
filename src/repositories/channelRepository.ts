@@ -1,20 +1,32 @@
-import prisma from '@/lib/prisma'
-import { Prisma } from '@prisma/client'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export class ChannelRepository {
-  static async findMany(where?: Prisma.ChannelWhereInput) {
-    return await prisma.channel.findMany({ where })
+  static async findMany(where?: any) {
+    let query = supabaseAdmin.from('Channel').select('*')
+    if (where) {
+      if (where.isActive !== undefined) query = query.eq('isActive', where.isActive)
+      if (where.providerSessionId) query = query.eq('providerSessionId', where.providerSessionId)
+    }
+    const { data, error } = await query
+    if (error) throw error
+    return data
   }
 
   static async findById(id: string) {
-    return await prisma.channel.findUnique({ where: { id } })
+    const { data, error } = await supabaseAdmin.from('Channel').select('*').eq('id', id).single()
+    if (error) throw error
+    return data
   }
 
-  static async create(data: Prisma.ChannelCreateInput) {
-    return await prisma.channel.create({ data })
+  static async create(data: any) {
+    const { data: newChannel, error } = await supabaseAdmin.from('Channel').insert([data]).select().single()
+    if (error) throw error
+    return newChannel
   }
 
-  static async update(id: string, data: Prisma.ChannelUpdateInput) {
-    return await prisma.channel.update({ where: { id }, data })
+  static async update(id: string, data: any) {
+    const { data: updatedChannel, error } = await supabaseAdmin.from('Channel').update(data).eq('id', id).select().single()
+    if (error) throw error
+    return updatedChannel
   }
 }

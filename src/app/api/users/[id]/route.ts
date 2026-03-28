@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession, getUserRole } from '@/lib/auth-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { UserRepository } from '@/repositories/userRepository'
 
 export const dynamic = 'force-dynamic';
 
@@ -27,19 +28,14 @@ export async function PATCH(
     if (name) updateData.user_metadata = { full_name: name }
 
     if (Object.keys(updateData).length > 0) {
-      const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, updateData)
-      // Nota: Falha pode ocorrer se o ID for do Seed (não existe no Auth)
+      await supabaseAdmin.auth.admin.updateUserById(id, updateData)
     }
 
-    // 2. Atualizar Prisma
-    const prisma = (await import('@/lib/prisma')).default
-    const updated = await prisma.user.update({
-      where: { id },
-      data: {
-        name: name || undefined,
-        email: email || undefined,
-        role: userRole || undefined
-      }
+    // 2. Atualizar no Banco
+    const updated = await UserRepository.update(id, {
+      name: name || undefined,
+      email: email || undefined,
+      role: userRole || undefined
     })
     
     return NextResponse.json(updated)
@@ -67,8 +63,7 @@ export async function DELETE(
     await supabaseAdmin.auth.admin.deleteUser(id)
 
     // Deletar do Banco
-    const prisma = (await import('@/lib/prisma')).default
-    await prisma.user.delete({ where: { id } })
+    await UserRepository.delete(id)
 
     return NextResponse.json({ success: true })
   } catch (error: any) {

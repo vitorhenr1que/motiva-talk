@@ -1,4 +1,4 @@
-import prisma from '@/lib/prisma';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { evolutionProvider } from '@/services/whatsapp/evolution-provider';
 import { evolutionApi } from '@/lib/evolution-api-client';
 import { Channel } from '@/types/chat';
@@ -11,11 +11,13 @@ export class ChannelConnectionService {
   static async connectChannel(channelId: string) {
     console.log(`[SERVICE] connectChannel iniciado para canal ID: ${channelId}`);
     
-    const channel = await prisma.channel.findUnique({
-      where: { id: channelId }
-    });
+    const { data: channel, error: fetchError } = await supabaseAdmin
+      .from('Channel')
+      .select('*')
+      .eq('id', channelId)
+      .single()
 
-    if (!channel) {
+    if (fetchError || !channel) {
       throw new Error(`Canal ${channelId} não encontrado`);
     }
     console.log(`[SERVICE] Canal encontrado: ${channel.name || channel.id}`);
@@ -26,7 +28,6 @@ export class ChannelConnectionService {
 
     try {
       // 1. Chamar createSession que garante o fluxo obrigatório (Criação -> Webhook -> Validação)
-      // Se o webhook falhar ou não estiver ativo, o provider lançará um erro aqui.
       console.log(`[SERVICE] Solicitando criação/configuração de sessão ao provedor...`);
       await evolutionProvider.createSession(channel as any);
       console.log(`[SERVICE] Sessão, Webhook e Validação concluídos com sucesso.`);
@@ -34,10 +35,10 @@ export class ChannelConnectionService {
       // 2. Persistir providerSessionId se estiver ausente ou desatualizado
       if (channel.providerSessionId !== instanceName) {
         console.log(`[SERVICE] Salvando providerSessionId atualizado: ${instanceName}`);
-        await prisma.channel.update({
-          where: { id: channelId },
-          data: { providerSessionId: instanceName }
-        });
+        await supabaseAdmin
+          .from('Channel')
+          .update({ providerSessionId: instanceName })
+          .eq('id', channelId)
         channel.providerSessionId = instanceName;
       }
 
@@ -45,13 +46,17 @@ export class ChannelConnectionService {
       console.log(`[SERVICE] Sincronizando status de conexão inicial...`);
       const statusResult = await evolutionProvider.getSessionStatus(channel as any);
       
-      const updatedChannel = await prisma.channel.update({
-        where: { id: channelId },
-        data: {
+      const { data: updatedChannel, error: updateError } = await supabaseAdmin
+        .from('Channel')
+        .update({
           connectionStatus: statusResult.status,
           isActive: true
-        }
-      });
+        })
+        .eq('id', channelId)
+        .select()
+        .single()
+
+      if (updateError) throw updateError
 
       console.log(`[SERVICE] Fluxo de conexão do canal finalizado com sucesso.`);
       return updatedChannel;
@@ -63,39 +68,36 @@ export class ChannelConnectionService {
 
   /**
    * Fetches the QR code.
-   * Logic: 
-   * - Creates instance only if missing.
-   * - If already CONNECTED, forces logout first to generate new QR.
    */
   static async getChannelQrCode(channelId: string) {
-    const channel = await prisma.channel.findUnique({
-      where: { id: channelId }
-    });
-    if (!channel) throw new Error('Canal não encontrado');
+    const { data: channel, error: fetchError } = await supabaseAdmin
+      .from('Channel')
+      .select('*')
+      .eq('id', channelId)
+      .single()
+
+    if (fetchError || !channel) throw new Error('Canal não encontrado');
 
     console.log(`[SERVICE] getChannelQrCode para ${channelId}. Status atual: ${channel.connectionStatus}`);
 
     try {
-      // Rule: Logic for reconnection - if connected, disconnect first
       if (channel.connectionStatus === 'CONNECTED') {
         console.log(`[SERVICE] Canal está CONECTADO. Realizando logout para gerar novo QR Code...`);
         await evolutionProvider.disconnectSession(channel as any);
-        // We update the DB locally to reflect DISCONNECTED immediately
-        await prisma.channel.update({
-          where: { id: channelId },
-          data: { connectionStatus: 'DISCONNECTED' }
-        });
+        await supabaseAdmin
+          .from('Channel')
+          .update({ connectionStatus: 'DISCONNECTED' })
+          .eq('id', channelId)
       }
 
-      // Rule: Ensure instance exists if somehow the sessionId is missing
       if (!channel.providerSessionId) {
         console.log(`[SERVICE] SessionId ausente no getQrCode. Criando instância...`);
         await evolutionProvider.createSession(channel as any);
         const providerSessionId = evolutionProvider.getInstanceName(channel as any);
-        await prisma.channel.update({
-          where: { id: channelId },
-          data: { providerSessionId }
-        });
+        await supabaseAdmin
+          .from('Channel')
+          .update({ providerSessionId })
+          .eq('id', channelId)
       }
 
       const qrData = await evolutionProvider.getQrCode(channel as any);
@@ -111,20 +113,23 @@ export class ChannelConnectionService {
    * Syncs status between Provider and DB.
    */
   static async getChannelStatus(channelId: string) {
-    const channel = await prisma.channel.findUnique({
-      where: { id: channelId }
-    });
-    if (!channel) throw new Error('Canal não encontrado');
+    const { data: channel, error: fetchError } = await supabaseAdmin
+      .from('Channel')
+      .select('*')
+      .eq('id', channelId)
+      .single()
+
+    if (fetchError || !channel) throw new Error('Canal não encontrado');
 
     try {
       const statusResult = await evolutionProvider.getSessionStatus(channel as any);
 
       if (channel.connectionStatus !== statusResult.status) {
         console.log(`[SERVICE] Mudança de status detectada: ${channel.connectionStatus} -> ${statusResult.status}`);
-        await prisma.channel.update({
-          where: { id: channelId },
-          data: { connectionStatus: statusResult.status }
-        });
+        await supabaseAdmin
+          .from('Channel')
+          .update({ connectionStatus: statusResult.status })
+          .eq('id', channelId)
       }
 
       return statusResult;
@@ -138,18 +143,21 @@ export class ChannelConnectionService {
    * Disconnects the session.
    */
   static async disconnectChannel(channelId: string) {
-    const channel = await prisma.channel.findUnique({
-      where: { id: channelId }
-    });
-    if (!channel) throw new Error('Canal não encontrado');
+    const { data: channel, error: fetchError } = await supabaseAdmin
+      .from('Channel')
+      .select('*')
+      .eq('id', channelId)
+      .single()
+
+    if (fetchError || !channel) throw new Error('Canal não encontrado');
 
     try {
       await evolutionProvider.disconnectSession(channel as any);
       
-      await prisma.channel.update({
-        where: { id: channelId },
-        data: { connectionStatus: 'DISCONNECTED' }
-      });
+      await supabaseAdmin
+        .from('Channel')
+        .update({ connectionStatus: 'DISCONNECTED' })
+        .eq('id', channelId)
       
       console.log(`[SERVICE] Canal ${channelId} desconectado.`);
     } catch (error: any) {
@@ -160,19 +168,19 @@ export class ChannelConnectionService {
 
   /**
    * Resets the channel by deleting the instance and creating a new one.
-   * Useful when QR code is stuck or instance is corrupted.
    */
   static async resetChannel(channelId: string) {
     console.log(`[SERVICE] Iniciando RESET de canal: ${channelId}`);
     
-    const channel = await prisma.channel.findUnique({
-      where: { id: channelId }
-    });
+    const { data: channel, error: fetchError } = await supabaseAdmin
+      .from('Channel')
+      .select('*')
+      .eq('id', channelId)
+      .single()
 
-    if (!channel) throw new Error('Canal não encontrado');
+    if (fetchError || !channel) throw new Error('Canal não encontrado');
 
     try {
-      // 1. Delete external instance
       console.log(`[SERVICE] [RESET] 1. Removendo instância externa...`);
       try {
         await evolutionProvider.deleteSession(channel as any);
@@ -180,17 +188,15 @@ export class ChannelConnectionService {
         console.warn(`[SERVICE] [RESET] Aviso: Instância externa não pôde ser removida: ${e.message}`);
       }
 
-      // 2. Clear local session ID to force a fresh creation
       console.log(`[SERVICE] [RESET] 2. Limpando dados locais...`);
-      await prisma.channel.update({
-        where: { id: channelId },
-        data: { 
+      await supabaseAdmin
+        .from('Channel')
+        .update({ 
           providerSessionId: null,
           connectionStatus: 'PENDING'
-        }
-      });
+        })
+        .eq('id', channelId)
 
-      // 3. Trigger fresh connection
       console.log(`[SERVICE] [RESET] 3. Recriando instância base...`);
       const updatedChannel = await this.connectChannel(channelId);
 
@@ -206,8 +212,13 @@ export class ChannelConnectionService {
    */
   static async deleteChannel(channelId: string) {
     console.log(`[SERVICE] Full Delete para: ${channelId}`);
-    const channel = await prisma.channel.findUnique({ where: { id: channelId } });
-    if (!channel) throw new Error('Canal não encontrado');
+    const { data: channel, error: fetchError } = await supabaseAdmin
+      .from('Channel')
+      .select('*')
+      .eq('id', channelId)
+      .single()
+
+    if (fetchError || !channel) throw new Error('Canal não encontrado');
 
     try {
       await evolutionProvider.deleteSession(channel as any);
@@ -215,7 +226,7 @@ export class ChannelConnectionService {
       console.warn(`[SERVICE] Falha ao remover instância: ${e.message}`);
     }
 
-    await prisma.channel.delete({ where: { id: channelId } });
+    await supabaseAdmin.from('Channel').delete().eq('id', channelId)
     console.log(`[SERVICE] Canal removido do banco.`);
     return { success: true };
   }

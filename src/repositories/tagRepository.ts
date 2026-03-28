@@ -1,47 +1,63 @@
-import prisma from '@/lib/prisma'
-import { Prisma } from '@prisma/client'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export class TagRepository {
   static async findMany() {
-    return await prisma.tag.findMany({ 
-      orderBy: { name: 'asc' } 
-    })
+    const { data, error } = await supabaseAdmin.from('Tag').select('*').order('name', { ascending: true })
+    if (error) throw error
+    return data
   }
 
   static async findOrCreate(name: string, color?: string, emoji?: string) {
-    const existing = await prisma.tag.findFirst({ where: { name } })
+    const { data: existing, error: searchError } = await supabaseAdmin
+      .from('Tag')
+      .select('*')
+      .eq('name', name)
+      .maybeSingle()
+    
     if (existing) return existing
-    return await prisma.tag.create({
-      data: { 
-        name, 
-        color: color || '#3b82f6', 
-        emoji: emoji || '🏷️' 
-      }
-    })
+
+    const { data: newTag, error: createError } = await supabaseAdmin
+      .from('Tag')
+      .insert([{
+        name,
+        color: color || '#3b82f6',
+        emoji: emoji || '🏷️'
+      }])
+      .select()
+      .single()
+
+    if (createError) throw createError
+    return newTag
   }
 
   static async addToConversation(conversationId: string, tagId: string) {
-    return await prisma.conversationTag.upsert({
-      where: {
-        conversationId_tagId: { conversationId, tagId }
-      },
-      update: {},
-      create: { conversationId, tagId }
-    })
+    const { data, error } = await supabaseAdmin
+      .from('ConversationTag')
+      .upsert({ conversationId, tagId }, { onConflict: 'conversationId,tagId' })
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
   }
 
   static async removeFromConversation(conversationId: string, tagId: string) {
-    return await prisma.conversationTag.delete({
-      where: {
-        conversationId_tagId: { conversationId, tagId }
-      }
-    })
+    const { error } = await supabaseAdmin
+      .from('ConversationTag')
+      .delete()
+      .match({ conversationId, tagId })
+
+    if (error) throw error
+    return { success: true }
   }
 
   static async listByConversation(conversationId: string) {
-    return await prisma.conversationTag.findMany({
-      where: { conversationId },
-      include: { tag: true }
-    })
+    const { data, error } = await supabaseAdmin
+      .from('ConversationTag')
+      .select('*, tag:Tag(*)')
+      .eq('conversationId', conversationId)
+
+    if (error) throw error
+    return data
   }
 }

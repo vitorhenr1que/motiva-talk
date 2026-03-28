@@ -1,31 +1,40 @@
-import prisma from '@/lib/prisma'
-import { Prisma } from '@prisma/client'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export class QuickReplyRepository {
-  static async findMany(where?: Prisma.QuickReplyWhereInput) {
-    return await prisma.quickReply.findMany({ 
-      where, 
-      orderBy: { title: 'asc' } 
-    })
+  static async findMany(where?: any) {
+    let query = supabaseAdmin.from('QuickReply').select('*').order('title', { ascending: true })
+    const { data, error } = await query
+    if (error) throw error
+    return data
   }
 
   static async findById(id: string) {
-    return await prisma.quickReply.findUnique({ where: { id } })
+    const { data, error } = await supabaseAdmin.from('QuickReply').select('*').eq('id', id).single()
+    if (error) throw error
+    return data
   }
 
   static async findByCategory(category: string) {
-    return await prisma.quickReply.findMany({ where: { category } })
+    const { data, error } = await supabaseAdmin.from('QuickReply').select('*').eq('category', category)
+    if (error) throw error
+    return data
   }
 
-  static async create(data: Prisma.QuickReplyCreateInput) {
-    return await prisma.quickReply.create({ data })
+  static async create(data: any) {
+    const { data: newQuickReply, error } = await supabaseAdmin.from('QuickReply').insert([data]).select().single()
+    if (error) throw error
+    return newQuickReply
   }
 
-  static async update(id: string, data: Prisma.QuickReplyUpdateInput) {
-    return await prisma.quickReply.update({ where: { id }, data })
+  static async update(id: string, data: any) {
+    const { data: updatedQuickReply, error } = await supabaseAdmin.from('QuickReply').update(data).eq('id', id).select().single()
+    if (error) throw error
+    return updatedQuickReply
   }
 
   static async delete(id: string) {
-    return await prisma.quickReply.delete({ where: { id } })
+    const { error } = await supabaseAdmin.from('QuickReply').delete().eq('id', id)
+    if (error) throw error
+    return { success: true }
   }
 }

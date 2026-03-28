@@ -1,30 +1,47 @@
-import prisma from '@/lib/prisma'
-import { Prisma, SenderType, MessageType } from '@prisma/client'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export class MessageRepository {
-  static async findMany(where: Prisma.MessageWhereInput) {
-    return await prisma.message.findMany({
-      where,
-      orderBy: { createdAt: 'asc' }
-    })
+  static async findMany(where: any) {
+    let query = supabaseAdmin
+      .from('Message')
+      .select('*')
+      .order('createdAt', { ascending: true })
+
+    if (where.conversationId) query = query.eq('conversationId', where.conversationId)
+
+    const { data, error } = await query
+    if (error) throw error
+    return data
   }
 
   static async findById(id: string) {
-    return await prisma.message.findUnique({ where: { id } })
+    const { data, error } = await supabaseAdmin.from('Message').select('*').eq('id', id).single()
+    if (error) throw error
+    return data
   }
 
-  static async create(data: Prisma.MessageCreateInput) {
-    return await prisma.message.create({ data })
+  static async create(data: any) {
+    const { data: newMessage, error } = await supabaseAdmin.from('Message').insert([data]).select().single()
+    if (error) throw error
+    return newMessage
   }
 
   static async delete(id: string) {
-    return await prisma.message.delete({ where: { id } })
+    const { error } = await supabaseAdmin.from('Message').delete().eq('id', id)
+    if (error) throw error
+    return { success: true }
   }
 
   static async findLastByConversation(conversationId: string) {
-    return await prisma.message.findFirst({
-      where: { conversationId },
-      orderBy: { createdAt: 'desc' }
-    })
+    const { data, error } = await supabaseAdmin
+      .from('Message')
+      .select('*')
+      .eq('conversationId', conversationId)
+      .order('createdAt', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) throw error
+    return data
   }
 }
