@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { ChannelConnectionService } from '@/services/channels/channel-connection.service';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Handle manual channel reset
  * Removes the old instance and creates a fresh one.
