@@ -1,0 +1,203 @@
+'use client';
+
+import React, { useEffect, useRef } from 'react';
+import { useChatStore } from '@/store/useChatStore';
+import { MoreVertical, Search, MessageCircle, FileText, Phone, Info, Zap, Trash2, Tag as TagIcon } from 'lucide-react';
+import { TagSelector } from './TagSelector';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+export const ChatWindow = () => {
+  const { 
+    activeConversation, 
+    messages, 
+    setMessages, 
+    loadingMessages, 
+    setLoadingMessages,
+    removeMessage
+  } = useChatStore();
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const handleDeleteMessage = async (id: string) => {
+    if (!confirm('Deseja apagar esta mensagem para todos?')) return;
+    
+    try {
+      const resp = await fetch(`/api/messages/${id}`, { method: 'DELETE' });
+      if (resp.ok) {
+        removeMessage(id);
+      }
+    } catch (e) {
+      console.error('Erro ao deletar msg:', e);
+    }
+  };
+
+  useEffect(() => {
+    if (!activeConversation) return;
+
+    const fetchMessages = async () => {
+      setLoadingMessages(true);
+      try {
+        const resp = await fetch(`/api/messages?conversationId=${activeConversation.id}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          setMessages(data);
+        }
+      } catch (e) {
+        console.error('Fetch error');
+      } finally {
+        setLoadingMessages(false);
+      }
+    };
+
+    fetchMessages();
+  }, [activeConversation, setMessages, setLoadingMessages]);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, loadingMessages]);
+
+  const refetchConversations = async () => {
+    if (!activeConversation) return;
+    try {
+      const res = await fetch(`/api/conversations?channelId=${activeConversation.channelId}`);
+      const data = await res.json();
+      useChatStore.getState().setConversations(data);
+      // Atualizar a conversa atual também para refletir as novas tags
+      const updated = data.find((c: any) => c.id === activeConversation.id);
+      if (updated) useChatStore.getState().setActiveConversation(updated);
+    } catch (e) {}
+  };
+
+  if (!activeConversation) {
+    return (
+      <div className="flex h-full flex-1 flex-col items-center justify-center bg-slate-50 text-slate-400 p-10 text-center">
+        <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white shadow-xl ring-1 ring-slate-100 mb-6 animate-bounce duration-[2000ms]">
+          <MessageCircle size={40} className="text-blue-100" />
+        </div>
+        <h2 className="text-xl font-bold text-slate-700">Bem-vindo ao Motiva Talk</h2>
+        <p className="mt-2 text-sm max-w-xs text-slate-400 font-medium">Selecione uma conversa na lateral para começar a atender seus alunos e candidatos.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-1 flex-col bg-[#efeae2] relative">
+      {/* Dynamic Header */}
+      <div className="flex h-16 items-center justify-between border-b bg-white px-6 shadow-sm z-10">
+        <div className="flex items-center gap-4">
+          <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200">
+             <span className="font-bold text-slate-500 uppercase">{activeConversation.contact.name[0]}</span>
+          </div>
+          <div className="leading-tight">
+            <h3 className="text-sm font-bold text-slate-800 tracking-tight">{activeConversation.contact.name}</h3>
+            <div className="flex items-center gap-2 mt-0.5">
+               <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+               <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{activeConversation.channel.name}</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <TagSelector 
+            conversationId={activeConversation.id} 
+            currentTags={activeConversation.tags || []} 
+            onUpdate={refetchConversations} 
+          />
+          <button className="rounded-xl p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all"><Search size={20} /></button>
+          <button className="rounded-xl p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all"><MoreVertical size={20} /></button>
+        </div>
+      </div>
+
+      {/* Messages Feed */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scroll-smooth">
+        {loadingMessages ? (
+          <div className="flex flex-col gap-6">
+            <div className="flex justify-start"><div className="h-12 w-48 bg-white/50 rounded-lg animate-pulse" /></div>
+            <div className="flex justify-end"><div className="h-12 w-64 bg-blue-100/50 rounded-lg animate-pulse" /></div>
+            <div className="flex justify-start"><div className="h-20 w-56 bg-white/50 rounded-lg animate-pulse" /></div>
+          </div>
+        ) : (
+          <>
+            {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={cn(
+              "flex w-full group",
+              msg.senderType === 'AGENT' ? "justify-end" : "justify-start"
+            )}
+          >
+            <div
+              className={cn(
+                "relative max-w-[80%] md:max-w-[70%] rounded-2xl p-1.5 shadow-sm transition-all hover:shadow-md",
+                msg.senderType === 'AGENT' 
+                  ? "bg-[#d9fdd3] text-slate-800 rounded-tr-none" 
+                  : "bg-white text-slate-800 rounded-tl-none border border-slate-100"
+              )}
+            >
+              <div className="px-2.5 py-1">
+                {msg.type === 'TEXT' && (
+                  <p className="whitespace-pre-wrap leading-relaxed text-[13px]">{msg.content}</p>
+                )}
+                
+                {msg.type === 'IMAGE' && (
+                  <div className="overflow-hidden rounded-xl bg-slate-100 mb-1">
+                    <img 
+                      src={msg.content} 
+                      alt="Anexo" 
+                      className="max-h-80 w-auto object-contain cursor-pointer transition-transform hover:scale-[1.02]" 
+                    />
+                  </div>
+                )}
+
+                {msg.type === 'AUDIO' && (
+                  <div className="py-2 min-w-[200px]">
+                    <audio src={msg.content} controls className="h-8 w-full" />
+                  </div>
+                )}
+
+                {msg.type === 'DOCUMENT' && (
+                  <a 
+                    href={msg.content} 
+                    target="_blank" 
+                    rel="noreferrer"
+                    className="flex items-center gap-3 rounded-lg bg-black/5 p-3 hover:bg-black/10 transition-all text-blue-600 font-bold decoration-none"
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded bg-white text-slate-500 shadow-sm">
+                      <FileText size={20} />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs truncate max-w-[150px]">Documento Anexo</span>
+                      <span className="text-[9px] uppercase opacity-50">Clique para abrir</span>
+                    </div>
+                  </a>
+                )}
+
+                <div className="mt-1 flex items-center justify-end gap-1">
+                  <span className="text-[9px] text-slate-400 font-bold opacity-60">12:45</span>
+                </div>
+              </div>
+
+              {/* Delete Trigger (Hover) */}
+              <button 
+                onClick={() => handleDeleteMessage(msg.id)}
+                className={cn(
+                  "absolute top-2 opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-lg bg-white/80 backdrop-blur shadow-sm hover:text-red-600 hover:bg-red-50",
+                  msg.senderType === 'AGENT' ? "-left-10" : "-right-10"
+                )}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
+          ))}
+        </>
+      )}
+      </div>
+    </div>
+  );
+};

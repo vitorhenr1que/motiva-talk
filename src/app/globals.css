@@ -1,0 +1,26 @@
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+}
+
+.dark {
+  --background: #0f172a;
+  --foreground: #f8fafc;
+}
+
+/* Accessibility: Font Scaling */
+html.font-large {
+  font-size: 112.5%; /* ~18pt standard scale */
+}
+
+html.font-extra-large {
+  font-size: 125%; /* ~20pt standard scale */
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+@import "tailwindcss";
