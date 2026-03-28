@@ -15,6 +15,8 @@ export class WebhookService {
         break;
       
       case 'MESSAGE':
+        console.log(`[WEBHOOK_SERVICE] Incoming MESSAGE for channel ${event.channelId} from ${event.senderPhone}`);
+        console.log(`[WEBHOOK_SERVICE] Context: contentPrefix='${event.content?.substring(0, 15)}...', type=${event.messageType}`);
         await this.handleIncomingMessage(event);
         break;
 

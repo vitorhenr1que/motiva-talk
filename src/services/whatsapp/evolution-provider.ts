@@ -259,8 +259,14 @@ export class EvolutionProvider implements WhatsAppProvider {
     const key = rawMessage.key || data.key;
     const message = rawMessage.message || data.message;
 
-    if (!key || !message) {
-      console.warn('[EVO_PARSER] Estrutura de mensagem incompleta ou não reconhecida:', JSON.stringify(payload).substring(0, 200));
+    if (!key) {
+      console.warn('[EVO_PARSER] Falha: Campo "key" ausente no payload.');
+      return null;
+    }
+
+    if (!message) {
+      // Mensagens de sistema/status podem não ter "message"
+      console.warn('[EVO_PARSER] Aviso: Campo "message" ausente. Pode ser um evento de sistema ou mensagem deletada.');
       return null;
     }
 
@@ -274,24 +280,38 @@ export class EvolutionProvider implements WhatsAppProvider {
     const senderName = rawMessage.pushName || data.pushName || 'Contato WhatsApp';
 
     // 3. Extração de Conteúdo (Extremamente robusto para Baileys)
-    // O conteúdo pode estar em 'conversation', 'extendedTextMessage', 'imageMessage', etc.
-    // Às vezes o Baileys aninha mais um nível: message.message.conversation
-    const inner = message.message || message;
-    
-    const content = 
-      inner.conversation || 
-      inner.extendedTextMessage?.text || 
-      inner.imageMessage?.caption || 
-      inner.videoMessage?.caption || 
-      inner.audioMessage?.caption ||
-      inner.documentMessage?.caption ||
-      '';
+    // O conteúdo pode estar em múltiplos níveis e formatos
+    const getMessageContent = (m: any): string => {
+      if (!m) return '';
+      if (typeof m === 'string') return m;
+      
+      return (
+        m.conversation || 
+        m.extendedTextMessage?.text || 
+        m.imageMessage?.caption || 
+        m.videoMessage?.caption || 
+        m.audioMessage?.caption ||
+        m.documentMessage?.caption ||
+        m.buttonsResponseMessage?.selectedButtonId ||
+        m.listResponseMessage?.title ||
+        m.templateButtonReplyMessage?.selectedId ||
+        ''
+      );
+    };
+
+    // Tenta extrair do nível principal ou de um sub-nível aninhado (comum no Baileys/Evo v2)
+    let content = getMessageContent(message);
+    if (!content && message.message) {
+      content = getMessageContent(message.message);
+    }
 
     // 4. Tipo da Mensagem
     let type: MessageType = 'TEXT';
+    const inner = message.message || message;
     if (inner.imageMessage) type = 'IMAGE';
-    if (inner.audioMessage) type = 'AUDIO';
-    if (inner.documentMessage) type = 'DOCUMENT';
+    else if (inner.audioMessage) type = 'AUDIO';
+    else if (inner.videoMessage) type = 'IMAGE'; // Tratamos vídeo como imagem por enquanto ou adicione VIDEO se tiver no enum
+    else if (inner.documentMessage) type = 'DOCUMENT';
 
     // 5. Timestamp
     const timestamp = (rawMessage.messageTimestamp || data.messageTimestamp || Date.now()) * 1000;
@@ -301,14 +321,14 @@ export class EvolutionProvider implements WhatsAppProvider {
       externalMessageId,
       senderPhone,
       senderName,
-      content,
+      content: content || '[Mensagem sem conteúdo textual]',
       type,
       timestamp,
       fromMe,
       raw: payload
     };
 
-    console.log(`[EVO_PARSER] Normalizado: From[${senderPhone}] Content[${content.substring(0, 15)}...] FromMe[${fromMe}]`);
+    console.log(`[EVO_PARSER] Sucesso: ID[${externalMessageId}] From[${senderPhone}] Type[${type}] Content[${result.content.substring(0, 15)}...]`);
     return result;
   }
 

@@ -10,27 +10,36 @@ const ROUTE = '/api/webhooks/evolution';
 export async function POST(req: Request) {
   const timestamp = new Date().toISOString();
   try {
-    const body = await req.json();
-    console.log(`\n\n[${timestamp}] ================== WEBHOOK RECEIVED ==================`);
-    console.log(`[WEBHOOK] Event: ${body.event}`);
-    console.log(`[WEBHOOK] Instance: ${body.instance}`);
-    console.log(`[WEBHOOK] Full Payload:`, JSON.stringify(body, null, 2));
-    console.log(`==========================================================\n\n`);
+    // 1. Get raw text to avoid any body parsing issues
+    const rawBody = await req.text();
+    console.log(`\n[${timestamp}] [WEBHOOK_TRACE] RAW BODY RECEIVED:`, rawBody.substring(0, 500) + (rawBody.length > 500 ? '...' : ''));
+    
+    // 2. Parse manually
+    const body = JSON.parse(rawBody);
+    console.log(`[WEBHOOK_TRACE] Event Type: ${body.event}`);
+    console.log(`[WEBHOOK_TRACE] Instance: ${body.instance}`);
+    console.log(`[WEBHOOK_TRACE] Full Payload:`, JSON.stringify(body, null, 2));
 
-    // 2. Parse using provider mapping
+    // 3. Parse using provider mapping
     const event = await evolutionProvider.parseIncomingWebhook(body);
     
     if (!event) {
-      console.warn(`[WEBHOOK] Evento ignorado ou parser retornou nulo para: ${body.event}`);
+      console.warn(`[WEBHOOK_TRACE] Evento ignorado ou parser retornou nulo para: ${body.event}`);
       return NextResponse.json({ success: true, message: 'Evento ignorado' });
     }
 
-    // 3. Delegate to business logic service
+    console.log(`[WEBHOOK_TRACE] Standardized Event:`, JSON.stringify(event, null, 2));
+
+    // 4. Delegate to business logic service (with timing)
+    console.log(`[WEBHOOK_TRACE] Starting WebhookService.processEvent...`);
+    const start = Date.now();
     await WebhookService.processEvent(event);
+    const duration = Date.now() - start;
+    console.log(`[WEBHOOK_TRACE] Finished WebhookService.processEvent in ${duration}ms`);
 
     return NextResponse.json({ success: true, message: 'Webhook processado com sucesso' });
   } catch (error) {
-    // Custom handling for webhooks: we might want to return 200 but keep the error body for logs
+    console.error(`[WEBHOOK_TRACE] CRITICAL ERROR IN ROUTE:`, error);
     return handleApiError(error, req, { route: ROUTE });
   }
 }
