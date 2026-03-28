@@ -340,31 +340,51 @@ export class EvolutionProvider implements WhatsAppProvider {
 
     // 5. Extração de Resposta (Quoted/Reply) - Genérica para qualquer tipo de mensagem
     let contextInfo: any = null;
-    
-    // Procura por contextInfo em qualquer sub-chave da mensagem
+    let quotedMessageExternalId: string | null = null;
+    let fieldUsed: string = 'none';
+
+    // 5.1 Busca por contextInfo em diferentes níveis
     if (inner.contextInfo) {
       contextInfo = inner.contextInfo;
+      fieldUsed = 'inner.contextInfo';
     } else {
       // Alguns tipos de mensagem aninham o contextInfo dentro da chave do tipo (ex: imageMessage.contextInfo)
-      for (const key in inner) {
-        if (inner[key] && typeof inner[key] === 'object' && (inner[key] as any).contextInfo) {
-          contextInfo = (inner[key] as any).contextInfo;
+      for (const k in inner) {
+        if (inner[k] && typeof inner[k] === 'object' && (inner[k] as any).contextInfo) {
+          contextInfo = (inner[k] as any).contextInfo;
+          fieldUsed = `inner.${k}.contextInfo`;
           break;
         }
       }
     }
+
+    // 5.2 Se encontrou contextInfo, tenta extrair o stanzaId
+    if (contextInfo?.stanzaId) {
+      quotedMessageExternalId = contextInfo.stanzaId;
+    } 
+    
+    // 5.3 Se não encontrou no contextInfo, tenta messageContextInfo (comum em replies de bot ou v2)
+    if (!quotedMessageExternalId) {
+       const mci = payload.messageContextInfo || data.messageContextInfo || inner.messageContextInfo;
+       if (mci?.stanzaId) {
+         quotedMessageExternalId = mci.stanzaId;
+         fieldUsed = fieldUsed === 'none' ? 'messageContextInfo' : `${fieldUsed} + messageContextInfo`;
+       }
+    }
     
     let quoted: any = null;
-    if (contextInfo?.stanzaId) {
+    if (quotedMessageExternalId) {
       quoted = {
         key: {
-          id: contextInfo.stanzaId, // ID da mensagem original (importante para o vínculo)
-          participant: contextInfo.participant,
+          id: quotedMessageExternalId, // ID da mensagem original (importante para o vínculo)
+          participant: contextInfo?.participant,
           fromMe: false // Se veio do webhook, geralmente estamos citando alguém
         },
-        message: contextInfo.quotedMessage || {}
+        message: contextInfo?.quotedMessage || {}
       };
-      console.log(`[EVO_PARSER] Reply reconhecido: Citando mensagem [${contextInfo.stanzaId}]`);
+      console.log(`[EVO_PARSER] Reply detectado! Quoted ID: ${quotedMessageExternalId} via: ${fieldUsed}`);
+    } else {
+      console.log(`[EVO_PARSER] Mensagem normal (sem reply).`);
     }
 
     // 6. Timestamp
@@ -380,12 +400,14 @@ export class EvolutionProvider implements WhatsAppProvider {
       timestamp,
       fromMe,
       quoted,
+      quotedMessageExternalId,
       raw: payload
     };
 
     console.log(`[EVO_PARSER] Sucesso: ID[${externalMessageId}] From[${senderPhone}] Type[${type}] Content[${result.content.substring(0, 15)}...]`);
     return result;
   }
+
 
   /**
    * Parses various Evolution API events into our generic WebhookEvent format.
@@ -419,7 +441,8 @@ export class EvolutionProvider implements WhatsAppProvider {
             ...normalized.raw, 
             externalId: normalized.externalMessageId,
             fromMe: normalized.fromMe,
-            quoted: normalized.quoted
+            quoted: normalized.quoted,
+            quotedMessageExternalId: normalized.quotedMessageExternalId
           }
         };
       }

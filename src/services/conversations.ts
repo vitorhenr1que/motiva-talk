@@ -52,4 +52,18 @@ export class ConversationService {
       status: 'OPEN'
     })
   }
+
+  /**
+   * Atualiza unreadCount de uma conversa
+   */
+  static async setUnreadCount(id: string, count: number) {
+    return await ConversationRepository.update(id, { unreadCount: count });
+  }
+
+  /**
+   * Atualização genérica de conversa
+   */
+  static async updateConversation(id: string, data: any) {
+    return await ConversationRepository.update(id, data);
+  }
 }

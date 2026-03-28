@@ -20,6 +20,17 @@ export class ConversationRepository {
     if (where.status) query = query.eq('status', where.status)
     if (where.assignedTo) query = query.eq('assignedTo', where.assignedTo)
     if (where.channelId) query = query.eq('channelId', where.channelId)
+    
+    // Filtro por Etiqueta (Tag)
+    if (where.tagId) {
+      const { data: tagConvs } = await supabaseAdmin
+        .from('ConversationTag')
+        .select('conversationId')
+        .eq('tagId', where.tagId);
+      
+      const conversationIds = tagConvs?.map(tc => tc.conversationId) || [];
+      query = query.in('id', conversationIds);
+    }
 
     // Filtro de Segurança / RBAC
     if (where.allowedChannelIds) {
@@ -32,6 +43,13 @@ export class ConversationRepository {
 
     const { data, error } = await query
     if (error) throw error
+
+    if (data && data.length > 0) {
+      console.log(`[UNREAD_DEBUG] Repositório retornou ${data.length} conversas. Primeira unreadCount: ${data[0].unreadCount}`);
+      if (data[0].unreadCount === undefined) {
+        console.warn(`[UNREAD_DEBUG] ALERTA: A coluna 'unreadCount' retornou UNDEFINED. Talvez o schema cache do Supabase ainda não tenha atualizado.`);
+      }
+    }
 
     return data
   }

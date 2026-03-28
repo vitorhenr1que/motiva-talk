@@ -61,43 +61,44 @@ export const useRealtimeInbox = () => {
   }, [selectedChannelId]);
 
   /**
-   * SUBSCRIPTION: MESSAGES
+   * SUBSCRIPTION: MESSAGES (Listen to ALL messages for the selected channel)
    */
   useEffect(() => {
-    if (!activeConversation) return;
+    if (!selectedChannelId) return;
 
-    console.log(`[REALTIME_SUB] Iniciando escuta de Mensagens para conversa: ${activeConversation.id}`);
+    console.log(`[REALTIME_SUB] Iniciando escuta de Mensagens para o CANAL: ${selectedChannelId}`);
 
     const channel = supabase
-      .channel(`public:Message:conversationId=eq.${activeConversation.id}`)
+      .channel(`public:Message:channelId=eq.${selectedChannelId}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'Message',
-          filter: `conversationId=eq.${activeConversation.id}`
+          filter: `channelId=eq.${selectedChannelId}`
         },
         (payload) => {
           const newMessage = payload.new as Message;
-          console.log(`[REALTIME_EVENT] Nova mensagem detectada!`, newMessage.content.substring(0, 20) + '...');
+          console.log(`[REALTIME_EVENT] Nova mensagem no canal ${selectedChannelId}:`, newMessage.content.substring(0, 20) + '...');
           
-          // Adicionar no chat se for a conversa atual
-          addMessage(newMessage); 
-          
-          // E também disparar refresh da lista lateral (sidebar) para atualizar o preview
-          if (selectedChannelId) {
-            refreshConversations(selectedChannelId);
+          // 1. Adicionar no chat se for a conversa atual
+          if (activeConversation?.id === newMessage.conversationId) {
+             addMessage(newMessage); 
+          } else {
+             // 2. Se não for a atual, ainda chamamos addMessage para atualizar a LISTA LATERAL (preview/unread)
+             // O addMessage já tem a lógica de não duplicar se receber de novo pela subscription da conversa
+             addMessage(newMessage);
           }
         }
       )
       .subscribe((status) => {
-        console.log(`[REALTIME_STATUS] Mensagens Subscription Status: ${status}`);
+        console.log(`[REALTIME_STATUS] Mensagens Canal Subscription Status: ${status}`);
       });
 
     return () => {
-      console.log(`[REALTIME_SUB] Encerrando escuta de Mensagens: ${activeConversation.id}`);
+      console.log(`[REALTIME_SUB] Encerrando escuta de Mensagens do Canal: ${selectedChannelId}`);
       supabase.removeChannel(channel);
     };
-  }, [activeConversation?.id, selectedChannelId, addMessage]);
+  }, [selectedChannelId, activeConversation?.id, addMessage]);
 };

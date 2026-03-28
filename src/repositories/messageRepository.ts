@@ -5,7 +5,16 @@ export class MessageRepository {
   static async findMany(where: any) {
     let query = supabaseAdmin
       .from('Message')
-      .select('*, replyTo:replyToMessageId(*)')
+      .select(`
+        *,
+        replyToMessage:replyToMessageId (
+          id,
+          content,
+          senderType,
+          type,
+          externalMessageId
+        )
+      `)
       .order('createdAt', { ascending: true })
 
     if (where.conversationId) query = query.eq('conversationId', where.conversationId)

@@ -50,6 +50,7 @@ export interface Conversation {
   status: ConversationStatus;
   createdAt: string;
   lastMessageAt?: string;
+  unreadCount?: number;
   contact: Contact;
   channel: Channel;
   tags?: ConversationTag[];
@@ -64,6 +65,15 @@ export interface Message {
   content: string;
   type: MessageType;
   createdAt: string;
+  externalMessageId?: string;
+  replyToMessageId?: string;
+  replyToMessage?: {
+    id: string;
+    content: string;
+    senderType: SenderType;
+    type: MessageType;
+    externalMessageId?: string;
+  };
 }
 
 export interface QuickReply {

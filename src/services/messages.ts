@@ -74,15 +74,27 @@ export class MessageService {
     }
 
     const { MessageRepository } = await import('@/repositories/messageRepository')
-    return await MessageRepository.create({
+    const newMessage = await MessageRepository.create({
       conversationId,
       channelId,
       senderType,
       content,
       type: type || 'TEXT',
       externalMessageId,
-      replyToMessageId // Re-habilitado após criação da coluna no banco
+      replyToMessageId
     })
+
+    // Se o atendente enviou mensagem, marcamos a conversa como "lida" (unreadCount = 0)
+    if (senderType === 'AGENT') {
+      const { ConversationRepository } = await import('@/repositories/conversationRepository')
+      console.log(`[UNREAD_DEBUG] Atendente enviou mensagem. Resetando unreadCount para conversa ${conversationId}`);
+      await ConversationRepository.update(conversationId, { 
+        lastMessageAt: new Date().toISOString(),
+        unreadCount: 0 
+      })
+    }
+
+    return newMessage
   }
 
   /**

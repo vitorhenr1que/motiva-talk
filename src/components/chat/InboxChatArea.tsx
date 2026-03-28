@@ -148,12 +148,17 @@ export const ChatWindow = () => {
                   >
                     <div className="px-2.5 py-1">
                       {/* Reply Preview inside Bubble */}
-                      {msg.replyTo && (
-                        <div className="mb-2 border-l-4 border-blue-400 bg-black/5 p-2 rounded-r-lg text-[11px] opacity-80 cursor-pointer hover:bg-black/10 transition-colors">
+                      {msg.replyToMessage && (
+                        <div className="mb-2 border-l-4 border-blue-400 bg-black/10 p-2 rounded-r-lg text-[11px] opacity-90 cursor-pointer hover:bg-black/20 transition-colors">
                           <span className="block font-bold text-blue-600 mb-0.5">
-                            {msg.replyTo.senderType === 'USER' ? activeConversation.contact.name : 'Você'}
+                            {msg.replyToMessage.senderType === 'USER' ? activeConversation.contact.name : 'Você'}
                           </span>
-                          <span className="block truncate max-w-xs">{msg.replyTo.content}</span>
+                          <span className="block truncate max-w-xs italic text-slate-500">
+                             {msg.replyToMessage.type === 'TEXT' ? msg.replyToMessage.content : 
+                              msg.replyToMessage.type === 'IMAGE' ? '📷 Foto' :
+                              msg.replyToMessage.type === 'AUDIO' ? '🎵 Áudio' :
+                              msg.replyToMessage.type === 'DOCUMENT' ? '📄 Documento' : 'Mensagem'}
+                          </span>
                         </div>
                       )}
 

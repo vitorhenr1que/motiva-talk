@@ -130,50 +130,92 @@ export const Sidebar = () => {
                 key={conv.id}
                 onClick={() => setActiveConversation(conv)}
                 className={cn(
-                  "flex cursor-pointer items-center gap-3 border-b p-4 transition-all hover:bg-slate-50",
-                  activeConversation?.id === conv.id && "bg-blue-50 hover:bg-blue-50 border-l-4 border-l-blue-600"
+                  "flex cursor-pointer items-center gap-3 border-b p-4 transition-all hover:bg-slate-50 relative group",
+                  activeConversation?.id === conv.id && "bg-blue-50/80 hover:bg-blue-50 border-l-4 border-l-blue-600 shadow-inner"
                 )}
               >
-                <div className="relative h-10 w-10 shrink-0 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500">
+                <div className="relative h-12 w-12 shrink-0 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 shadow-sm transition-transform group-hover:scale-105 overflow-hidden border border-slate-100">
                   {conv.contact.name[0]}
                 </div>
                 
                 <div className="flex flex-1 flex-col overflow-hidden">
-                  <div className="flex items-center justify-between">
-                    <span className="truncate text-sm font-bold text-slate-700">{conv.contact.name}</span>
-                    <span className="text-[9px] text-slate-400 font-medium">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className={cn(
+                      "truncate text-sm font-bold tracking-tight",
+                      (conv.unreadCount || 0) > 0 ? "text-slate-900" : "text-slate-700"
+                    )}>
+                      {conv.contact.name}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-bold whitespace-nowrap">
                       {conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---'}
                     </span>
                   </div>
- 
+  
                   {/* Tags Badges */}
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {conv.tags?.map((ct: any) => (
+                  <div className="flex flex-wrap gap-1 mt-0.5 mb-1.5 min-h-[16px]">
+                    {conv.tags?.slice(0, 3).map((ct: any) => (
                       <span 
                         key={ct.tag.id} 
                         style={{ 
-                          backgroundColor: ct.tag.color + '15',
+                          backgroundColor: ct.tag.color + '20',
                           color: ct.tag.color,
-                          borderColor: ct.tag.color + '30'
+                          borderColor: ct.tag.color + '40'
                         }}
-                        className="px-1.5 py-0.5 rounded-md text-[8px] font-extrabold uppercase border flex items-center gap-1"
+                        className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase border leading-none flex items-center gap-1 shadow-sm"
                       >
-                        {ct.tag.emoji && <span>{ct.tag.emoji}</span>}
+                        {ct.tag.emoji && <span className="text-[10px] grayscale-0">{ct.tag.emoji}</span>}
                         {ct.tag.name}
                       </span>
                     ))}
+                    {(conv.tags?.length || 0) > 3 && (
+                      <span className="px-1 py-0.5 rounded bg-slate-100 text-[8px] font-bold text-slate-400 border border-slate-200">
+                        +{(conv.tags?.length || 0) - 3}
+                      </span>
+                    )}
                   </div>
- 
-                  <div className="flex items-center justify-between mt-1">
-                    <p className="truncate text-[11px] text-slate-400">
-                      {conv.messages?.[0]?.content || 'Sem mensagens...'}
-                    </p>
-                    <span className={cn(
-                      "text-[9px] font-bold px-1.5 py-0.5 rounded-full",
-                      conv.status === 'OPEN' ? "bg-amber-100 text-amber-600" : "bg-green-100 text-green-600"
+  
+                  <div className="flex items-center justify-between gap-2">
+                    <p className={cn(
+                      "truncate text-[11px] flex-1",
+                      (conv.unreadCount || 0) > 0 ? "text-slate-700 font-bold" : "text-slate-400"
                     )}>
-                      {conv.status === 'OPEN' ? 'ABERTO' : 'EM ATEND.'}
-                    </span>
+                      {conv.messages?.[0]?.content?.substring(0, 40) || 'Sem mensagens...'}
+                    </p>
+                    
+                    <div className="flex items-center gap-2">
+                      {/* Unread Badge */}
+                      {(conv.unreadCount || 0) > 0 && (
+                        <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-black text-white shadow-lg animate-in fade-in zoom-in duration-300">
+                          {conv.unreadCount}
+                        </span>
+                      )}
+                      
+                      {/* Mark as Unread Button (Hover) */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if ((conv.unreadCount || 0) > 0) {
+                            useChatStore.getState().markAsRead(conv.id);
+                          } else {
+                            useChatStore.getState().markAsUnread(conv.id);
+                          }
+                        }}
+                        className={cn(
+                          "opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-slate-200 text-slate-400 hover:text-blue-600",
+                          (conv.unreadCount || 0) > 0 && "opacity-100 text-blue-600"
+                        )}
+                        title={ (conv.unreadCount || 0) > 0 ? "Marcar como lida" : "Marcar como não lida" }
+                      >
+                        <MessageSquare size={14} fill={(conv.unreadCount || 0) > 0 ? "currentColor" : "none"} />
+                      </button>
+
+                      <span className={cn(
+                        "text-[9px] font-extrabold px-1.5 py-0.5 rounded-md border tracking-tighter whitespace-nowrap",
+                        conv.status === 'OPEN' ? "bg-amber-50 text-amber-600 border-amber-200" : "bg-green-50 text-green-600 border-green-200"
+                      )}>
+                        {conv.status === 'OPEN' ? 'ABERTO' : 'EM ATEND.'}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>

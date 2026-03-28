@@ -15,7 +15,7 @@ export async function PATCH(
     const body = await req.json()
     console.log(`[API] ${req.method} ${ROUTE}:`, { id, body });
 
-    const { status, assignedTo } = body
+    const { status, assignedTo, unreadCount } = body
 
     if (!id) throw new AppError('ID obrigatório', 400, 'VALIDATION_ERROR');
 
@@ -25,8 +25,11 @@ export async function PATCH(
       updated = await ConversationService.assignAgent(id, assignedTo)
     } else if (status) {
       updated = await ConversationService.updateStatus(id, status)
+    } else if (unreadCount !== undefined) {
+      console.log(`[UNREAD_DEBUG] API PATCH: Atualizando unreadCount para ${unreadCount} na conversa ${id}`);
+      updated = await ConversationService.setUnreadCount(id, Number(unreadCount))
     } else {
-      throw new AppError('Status ou assignedTo é necessário', 400, 'VALIDATION_ERROR');
+      throw new AppError('Nenhum campo válido para atualização (status, assignedTo ou unreadCount)', 400, 'VALIDATION_ERROR');
     }
 
     return NextResponse.json({ success: true, data: updated })

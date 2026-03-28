@@ -25,6 +25,7 @@ export async function GET(req: Request) {
     let where: any = {
       channelId: channelId || undefined,
       status: status || undefined,
+      tagId: tagId || undefined
     }
 
     // Lógica de Filtro por Role (Segurança)

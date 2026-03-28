@@ -79,19 +79,9 @@ export class WebhookIngestionService {
       }
 
       // 5.5 Identificar se é uma resposta (Reply)
-      let replyToMessageId: string | undefined = undefined;
-      const quotedId = metadata?.quoted?.key?.id;
-      if (quotedId) {
-        const { data: quotedMsg } = await supabaseAdmin
-          .from('Message')
-          .select('id')
-          .eq('externalMessageId', quotedId)
-          .maybeSingle();
-        
-        if (quotedMsg) {
-          replyToMessageId = quotedMsg.id;
-          console.log(`[INGEST] Mensagem citada encontrada no banco (ID: ${replyToMessageId})`);
-        }
+      const replyToMessageId = metadata?.resolvedReplyToId;
+      if (replyToMessageId) {
+        console.log(`[INGEST] Persistindo vínculo com mensagem original: DB ID ${replyToMessageId}`);
       }
 
       // 6. Salvar Mensagem
@@ -113,10 +103,20 @@ export class WebhookIngestionService {
       if (msgError) throw msgError
       console.log(`[INGEST] 4. Mensagem salva com sucesso! (ID: ${newMessage.id})`);
 
-      // 7. Atualizar lastMessageAt da Conversa
-      await ConversationRepository.update(conversation.id, { 
+      // 7. Atualizar lastMessageAt e unreadCount da Conversa
+      const updateData: any = { 
         lastMessageAt: new Date().toISOString() 
-      });
+      };
+      
+      // Incrementa não lidas se a mensagem for do usuário e não estivermos com a conversa aberta no momento
+      // (A lógica de resetar pra 0 ao ler será feita no frontend/API de leitura)
+      if (senderType === 'USER') {
+        const currentUnread = conversation.unreadCount || 0;
+        updateData.unreadCount = currentUnread + 1;
+        console.log(`[INGEST] Incrementando não lidas para conversa ${conversation.id}: ${currentUnread} -> ${updateData.unreadCount}`);
+      }
+      
+      await ConversationRepository.update(conversation.id, updateData);
 
       // 8. Notificação em Tempo Real
       const { RealtimeService } = await import('@/services/realtime.service');

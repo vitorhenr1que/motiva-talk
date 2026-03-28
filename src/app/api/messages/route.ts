@@ -19,9 +19,21 @@ export async function GET(req: Request) {
 
     const messages = await MessageService.listByConversation(conversationId)
     
-    console.log(`[MSG_DEBUG] Encontradas ${messages?.length || 0} mensagens.`);
-    if (messages && messages.length > 0) {
-      console.log(`[MSG_DEBUG] IDs das mensagens encontradas:`, messages.map(m => m.id));
+    // Logs temporários para validação de reply / quoted messages
+    const total = messages?.length || 0;
+    const withReplyId = messages?.filter((m: any) => m.replyToMessageId).length || 0;
+    const withReplyData = messages?.filter((m: any) => m.replyToMessage).length || 0;
+
+    console.log(`[MSG_DEBUG] Conversa ${conversationId}: ${total} mensagens retornadas.`);
+    if (withReplyId > 0) {
+      console.log(`[MSG_DEBUG] Mensagens com replyToMessageId: ${withReplyId}`);
+      console.log(`[MSG_DEBUG] Dados da mensagem original (replyToMessage) carregados: ${withReplyData}/${withReplyId}`);
+      
+      if (withReplyData < withReplyId) {
+        console.warn(`[MSG_DEBUG] AVISO: Algumas mensagens possuem ID de resposta mas os dados não foram encontrados (podem ter sido deletadas).`);
+      }
+    } else {
+      console.log(`[MSG_DEBUG] Nenhuma mensagem com reply detectada nesta conversa.`);
     }
 
     return NextResponse.json({ success: true, data: messages })

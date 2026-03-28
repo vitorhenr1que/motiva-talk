@@ -66,6 +66,30 @@ export class WebhookService {
   private static async handleIncomingMessage(event: WebhookEvent) {
     const { WebhookIngestionService } = await import('./webhook-ingestion.service');
     
+    // 1. Detectar se a mensagem recebida contém quoted message
+    const quotedId = event.metadata?.quotedMessageExternalId || event.metadata?.quoted?.key?.id;
+    
+    if (quotedId) {
+      console.log(`[WEBHOOK_SERVICE] Quoted Message external ID detectado: ${quotedId}`);
+      
+      // 2. Buscar no banco a mensagem original pelo externalMessageId
+      const { data: originalMsg } = await supabaseAdmin
+        .from('Message')
+        .select('id')
+        .eq('externalMessageId', quotedId)
+        .maybeSingle();
+      
+      if (originalMsg) {
+        // Encontrou! Guardamos no metadata para o ingestMessage usar
+        event.metadata.resolvedReplyToId = originalMsg.id;
+        console.log(`[WEBHOOK_SERVICE] Vínculo de Reply/Quote resolvido com sucesso! Original DB ID: ${originalMsg.id}`);
+      } else {
+        console.log(`[WEBHOOK_SERVICE] Mensagem original [${quotedId}] não encontrada no banco. A relação de reply não será persistida.`);
+      }
+    } else {
+      console.log(`[WEBHOOK_SERVICE] Mensagem normal sem reply.`);
+    }
+
     try {
       await WebhookIngestionService.ingestMessage(event);
     } catch (error) {
