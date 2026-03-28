@@ -41,6 +41,7 @@ export const useChatStore = create<ChatState>((set) => ({
   setActiveConversation: (conversation) => set({ activeConversation: conversation }),
   setMessages: (messages) => set({ messages }),
   addMessage: (message) => set((state) => {
+    if (!message || !message.id) return state
     const isDuplicate = state.messages.some(m => m.id === message.id)
     if (isDuplicate) return state
     return { messages: [...state.messages, message] }

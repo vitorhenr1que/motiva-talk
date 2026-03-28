@@ -92,7 +92,7 @@ export const ChatWindow = () => {
   }
 
   return (
-    <div className="flex h-full flex-1 flex-col bg-[#efeae2] relative">
+    <div className="flex flex-1 flex-col bg-[#efeae2] relative overflow-hidden">
       {/* Dynamic Header */}
       <div className="flex h-16 items-center justify-between border-b bg-white px-6 shadow-sm z-10">
         <div className="flex items-center gap-4">
