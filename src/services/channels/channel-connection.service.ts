@@ -234,4 +234,43 @@ export class ChannelConnectionService {
     console.log(`[SERVICE] Canal removido do banco.`);
     return { success: true };
   }
+
+  /**
+   * Obter configuração de webhook diretamente da Evolution API
+   */
+  static async getWebhookConfig(channelId: string) {
+    const { data: channel } = await supabaseAdmin
+      .from('Channel')
+      .select('*')
+      .eq('id', channelId)
+      .single()
+
+    if (!channel) throw new Error('Canal não encontrado');
+    
+    const instanceName = evolutionProvider.getInstanceName(channel as any);
+    try {
+      return await evolutionApi.findWebhook(instanceName);
+    } catch (e: any) {
+      if (e.message === 'NOT_FOUND') {
+        return { enabled: false, url: '', webhookByEvents: true, webhookBase64: true, events: [] };
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Atualizar configuração de webhook na Evolution API
+   */
+  static async setWebhookConfig(channelId: string, config: any) {
+    const { data: channel } = await supabaseAdmin
+      .from('Channel')
+      .select('*')
+      .eq('id', channelId)
+      .single()
+
+    if (!channel) throw new Error('Canal não encontrado');
+    
+    const instanceName = evolutionProvider.getInstanceName(channel as any);
+    return await evolutionApi.setWebhook(instanceName, config);
+  }
 }

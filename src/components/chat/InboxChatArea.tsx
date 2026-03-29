@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useChatStore } from '@/store/useChatStore';
 import { 
   MoreVertical, Search, MessageCircle, FileText, Reply, Trash2, 
-  Loader2, Check, Pin, UserPlus, CheckCircle2, XCircle, X, UserPlus as ContactIcon
+  Loader2, Check, Pin, UserPlus, CheckCircle2, XCircle, X, ChevronDown, UserPlus as ContactIcon
 } from 'lucide-react';
 import { TagSelector } from './TagSelector';
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
@@ -50,6 +50,111 @@ export const ChatWindow = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [deleteMenuId, setDeleteMenuId] = useState<string | null>(null);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+
+  // Estados de busca e destaque
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const scrollToAndHighlight = (id: string) => {
+    const element = document.getElementById(`msg-${id}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedMessageId(id);
+      console.log(`[SEARCH_DEBUG] Scroll executado para msg: ${id}`);
+      setTimeout(() => setHighlightedMessageId(null), 3000);
+    } else {
+      console.warn(`[SEARCH_DEBUG] Elemento msg-${id} não encontrado no DOM.`);
+    }
+  };
+
+  const handleNavigateToMessage = async (msgId: string, createdAt: string) => {
+    setIsSearchOpen(false);
+    setSearchQuery('');
+    setSearchResults([]);
+    
+    console.log(`[SEARCH_DEBUG] Navegando para id: ${msgId}`);
+
+    const existingMsg = messages.find(m => m.id === msgId);
+    
+    if (existingMsg) {
+       console.log(`[SEARCH_DEBUG] Mensagem já está carregada na lista.`);
+       setTimeout(() => scrollToAndHighlight(msgId), 100);
+    } else {
+       console.log(`[SEARCH_DEBUG] Mensagem não carregada. Buscando contexto...`);
+       // Buscamos um pouco após a data da msg para garantir que ela venha no lote DESC
+       const targetDate = new Date(createdAt);
+       targetDate.setSeconds(targetDate.getSeconds() + 2);
+       const beforeCursor = targetDate.toISOString();
+
+       try {
+         setLoadingMore(true);
+         const resp = await fetch(`/api/messages?conversationId=${activeConversation?.id}&limit=40&before=${encodeURIComponent(beforeCursor)}`);
+         if (resp.ok) {
+            const data = await resp.json();
+            addMoreMessages({
+              messages: data.data || [],
+              nextCursor: data.nextCursor,
+              hasMore: data.hasMore
+            });
+            console.log(`[SEARCH_DEBUG] Contexto carregado. Tentando scroll...`);
+            setTimeout(() => scrollToAndHighlight(msgId), 300);
+         }
+       } catch (e) {
+         console.error('Erro ao buscar contexto:', e);
+       } finally {
+         setLoadingMore(false);
+       }
+    }
+  };
+
+  const handleScrollToBottom = () => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+    if (!activeConversation || query.trim().length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    
+    setIsSearching(true);
+    console.log(`[UI_SEARCH] Termo digitado: ${query}`);
+    try {
+      const resp = await fetch(`/api/messages/search?conversationId=${activeConversation.id}&query=${encodeURIComponent(query)}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        setSearchResults(data.data || []);
+        console.log(`[UI_SEARCH] Busca disparada | Resultados: ${data.data?.length || 0}`);
+      }
+    } catch (e) {
+      console.error('Erro na busca:', e);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleEvents = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsSearchOpen(false);
+        setSearchQuery('');
+        setSearchResults([]);
+      }
+    };
+    window.addEventListener('keydown', handleEvents);
+    return () => window.removeEventListener('keydown', handleEvents);
+  }, []);
 
   const handleFinishConversation = async () => {
     if (!activeConversation) return;
@@ -110,13 +215,19 @@ export const ChatWindow = () => {
   };
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    // Se estiver carregando inicialmente ou rolando para baixo, ignoramos
+    // Se estiver carregando inicialmente ou rolando para baixo, ignoramos a paginação reverso
     if (loadingMessages || loadingMore) return;
     
-    const { scrollTop } = e.currentTarget;
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+
+    // Paginação para cima (reverso)
     if (scrollTop < 100) {
       handleLoadMore();
     }
+
+    // Mostrar ou esconder botão de scroll para baixo (distância do fundo > 300px)
+    const distanceToBottom = scrollHeight - scrollTop - clientHeight;
+    setShowScrollBottom(distanceToBottom > 300);
   };
 
   const handleUpdateContactName = async () => {
@@ -261,51 +372,117 @@ export const ChatWindow = () => {
   return (
     <div className="flex flex-1 flex-col bg-[#efeae2] relative overflow-hidden">
       {/* Header */}
-      <div className="flex h-16 items-center justify-between border-b bg-white px-6 shadow-sm z-30 shrink-0">
-        <div className="flex items-center gap-4 overflow-hidden">
-          <div onClick={() => setIsProfileOpen(!isProfileOpen)} className={cn("flex items-center gap-4 cursor-pointer px-2 py-1 rounded-xl transition-all hover:bg-slate-50 group/header-profile shrink-0", isProfileOpen && "bg-slate-50 shadow-inner")}>
-            <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200 shadow-sm overflow-hidden">
-               <span className="font-bold text-slate-500 uppercase text-lg">{activeConversation.contact?.name?.[0] || '?'}</span>
+      <div className="flex h-16 items-center justify-between border-b bg-white px-6 shadow-sm z-30 shrink-0 relative">
+        {isSearchOpen ? (
+          <div className="flex-1 flex items-center gap-4 animate-in slide-in-from-right-4 duration-300">
+            <div className="flex-1 relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                {isSearching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+              </span>
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Buscar mensagens na conversa..."
+                className="w-full h-10 pl-10 pr-4 bg-slate-50 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-100 transition-all outline-none"
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+                autoFocus
+              />
             </div>
-            <div className="leading-tight">
-              <div className="flex items-center gap-2">
-                 <h3 className="text-sm font-bold text-slate-800 tracking-tight transition-colors truncate max-w-[150px]">{activeConversation.contact?.name}</h3>
-                 {activeConversation.contact?.phone && <span className="text-[10px] text-slate-400 font-mono tracking-tighter opacity-0 group-hover/header-profile:opacity-100 transition-opacity whitespace-nowrap">{formatPhone(activeConversation.contact.phone)}</span>}
-              </div>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className={cn("h-2 w-2 rounded-full", isClosed ? "bg-red-500" : "bg-green-500 animate-pulse")} />
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none">{isClosed ? 'Atendimento Finalizado' : (activeConversation.channel?.name || 'Inbox')}</span>
-              </div>
-            </div>
-          </div>
-          <div className="h-4 w-px bg-slate-100 mx-1 shrink-0" />
-          <div className="flex gap-1 items-center overflow-x-auto no-scrollbar max-w-[300px]">
-             {activeConversation.tags?.map((ct) => (
-                <div key={ct.tagId} className="relative group/tag-badge flex items-center">
-                  <span style={{ color: ct.tag.color, backgroundColor: `${ct.tag.color}10`, borderColor: `${ct.tag.color}30` }} className="px-1.5 py-0.5 rounded-lg text-[8px] font-black uppercase border whitespace-nowrap">
-                     {ct.tag.emoji && <span className="mr-0.5">{ct.tag.emoji}</span>}
-                     {ct.tag.name}
-                  </span>
-                  <button onClick={(e) => { e.stopPropagation(); handleRemoveTag(ct.tag.name); }} className="absolute -top-1 -right-1 h-3.5 w-3.5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/tag-badge:opacity-100 scale-0 group-hover/tag-badge:scale-100 transition-all shadow-sm z-10 hover:bg-red-600"><X size={8} /></button>
+            <button 
+              onClick={() => { setIsSearchOpen(false); setSearchQuery(''); setSearchResults([]); }}
+              className="px-4 py-2 text-[10px] font-black uppercase text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              Cancelar
+            </button>
+            
+            {/* Resultados da Busca (Dropdown flutuante) */}
+            {searchQuery.trim().length >= 2 && (
+              <div className="absolute top-14 left-0 right-0 bg-white shadow-2xl rounded-2xl border border-slate-100 max-h-[400px] overflow-y-auto z-50 p-2 animate-in fade-in slide-in-from-top-2">
+                <div className="px-4 py-2 border-b border-slate-50 flex justify-between items-center">
+                   <span className="text-[10px] font-black uppercase text-slate-400">Resultados para "{searchQuery}"</span>
+                   <span className="text-[10px] bg-blue-50 text-blue-600 px-3 py-1 rounded-lg font-black">{searchResults.length} {searchResults.length === 1 ? 'encontrado' : 'encontrados'}</span>
                 </div>
-             ))}
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
-          <TagSelector conversationId={activeConversation.id} currentTags={activeConversation.tags || []} onUpdate={refetchConversations} />
-          <button className="rounded-xl p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all"><Search size={20} /></button>
-          <div className="relative">
-            <button onClick={() => setHeaderMenuOpen(!headerMenuOpen)} className={cn("rounded-xl p-2 transition-all", headerMenuOpen ? "bg-slate-100 text-slate-900" : "text-slate-400 hover:bg-slate-50 hover:text-slate-600")}><MoreVertical size={20} /></button>
-            {headerMenuOpen && (
-              <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-50 animate-in fade-in zoom-in-95 duration-200">
-                <button onClick={handleUpdateContactName} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors"><UserPlus size={16} className="text-blue-500" />Identificar Contato</button>
-                <button onClick={handleUpdatePinnedNote} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors"><Pin size={16} className="text-orange-500" />Adicionar Observação</button>
-                <div className="h-px bg-slate-100 my-1 mx-2" />
-                <button disabled={isClosed} onClick={handleFinishConversation} className={cn("w-full text-left px-4 py-2.5 text-xs font-bold rounded-xl flex items-center gap-3 transition-colors", isClosed ? "text-slate-300 cursor-not-allowed" : "text-red-600 hover:bg-red-50")}><CheckCircle2 size={16} className={isClosed ? "text-slate-300" : "text-red-500"} />Finalizar Conversa</button>
+                {searchResults.length === 0 && !isSearching ? (
+                  <div className="p-10 text-center flex flex-col items-center gap-2">
+                    <Search size={32} className="text-slate-100" />
+                    <p className="text-sm font-bold text-slate-400">Nenhuma mensagem encontrada</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1 mt-1">
+                    {searchResults.map(res => (
+                      <div 
+                        key={res.id} 
+                        onClick={() => handleNavigateToMessage(res.id, res.createdAt)}
+                        className="p-3 hover:bg-slate-50 rounded-xl cursor-pointer group transition-colors border-b border-transparent hover:border-blue-100"
+                      >
+                         <div className="flex justify-between items-start mb-1">
+                            <span className={cn("text-[9px] font-black uppercase tracking-tighter", res.senderType === 'USER' ? "text-blue-500" : "text-green-600")}>
+                               {res.senderType === 'USER' ? (activeConversation.contact?.name || 'Cliente') : 'Atendente'}
+                            </span>
+                            <span className="text-[9px] text-slate-400 font-bold">{formatTimeBahia(res.createdAt)}</span>
+                         </div>
+                         <p className="text-[12px] text-slate-700 font-medium line-clamp-2 leading-tight">{res.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-4 overflow-hidden">
+              <div onClick={() => setIsProfileOpen(!isProfileOpen)} className={cn("flex items-center gap-4 cursor-pointer px-2 py-1 rounded-xl transition-all hover:bg-slate-50 group/header-profile shrink-0", isProfileOpen && "bg-slate-50 shadow-inner")}>
+                <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200 shadow-sm overflow-hidden">
+                   <span className="font-bold text-slate-500 uppercase text-lg">{activeConversation.contact?.name?.[0] || '?'}</span>
+                </div>
+                <div className="leading-tight">
+                  <div className="flex items-center gap-2">
+                     <h3 className="text-sm font-bold text-slate-800 tracking-tight transition-colors truncate max-w-[150px]">{activeConversation.contact?.name}</h3>
+                     {activeConversation.contact?.phone && <span className="text-[10px] text-slate-400 font-mono tracking-tighter opacity-0 group-hover/header-profile:opacity-100 transition-opacity whitespace-nowrap">{formatPhone(activeConversation.contact.phone)}</span>}
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className={cn("h-2 w-2 rounded-full", isClosed ? "bg-red-500" : "bg-green-500 animate-pulse")} />
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none">{isClosed ? 'Atendimento Finalizado' : (activeConversation.channel?.name || 'Inbox')}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="h-4 w-px bg-slate-100 mx-1 shrink-0" />
+              <div className="flex gap-1 items-center overflow-x-auto no-scrollbar max-w-[300px]">
+                 {activeConversation.tags?.map((ct) => (
+                    <div key={ct.tagId} className="relative group/tag-badge flex items-center">
+                      <span style={{ color: ct.tag.color, backgroundColor: `${ct.tag.color}10`, borderColor: `${ct.tag.color}30` }} className="px-1.5 py-0.5 rounded-lg text-[8px] font-black uppercase border whitespace-nowrap">
+                         {ct.tag.emoji && <span className="mr-0.5">{ct.tag.emoji}</span>}
+                         {ct.tag.name}
+                      </span>
+                      <button onClick={(e) => { e.stopPropagation(); handleRemoveTag(ct.tag.name); }} className="absolute -top-1 -right-1 h-3.5 w-3.5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/tag-badge:opacity-100 scale-0 group-hover/tag-badge:scale-100 transition-all shadow-sm z-10 hover:bg-red-600"><X size={8} /></button>
+                    </div>
+                 ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <TagSelector conversationId={activeConversation.id} currentTags={activeConversation.tags || []} onUpdate={refetchConversations} />
+              <button 
+                onClick={() => setIsSearchOpen(true)}
+                className="rounded-xl p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all"
+              >
+                <Search size={20} />
+              </button>
+              <div className="relative">
+                <button onClick={() => setHeaderMenuOpen(!headerMenuOpen)} className={cn("rounded-xl p-2 transition-all", headerMenuOpen ? "bg-slate-100 text-slate-900" : "text-slate-400 hover:bg-slate-50 hover:text-slate-600")}><MoreVertical size={20} /></button>
+                {headerMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-50 animate-in fade-in zoom-in-95 duration-200">
+                    <button onClick={handleUpdateContactName} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors"><UserPlus size={16} className="text-blue-500" />Identificar Contato</button>
+                    <button onClick={handleUpdatePinnedNote} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors"><Pin size={16} className="text-orange-500" />Adicionar Observação</button>
+                    <div className="h-px bg-slate-100 my-1 mx-2" />
+                    <button disabled={isClosed} onClick={handleFinishConversation} className={cn("w-full text-left px-4 py-2.5 text-xs font-bold rounded-xl flex items-center gap-3 transition-colors", isClosed ? "text-slate-300 cursor-not-allowed" : "text-red-600 hover:bg-red-50")}><CheckCircle2 size={16} className={isClosed ? "text-slate-300" : "text-red-500"} />Finalizar Conversa</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Pinned Note */}
@@ -334,6 +511,15 @@ export const ChatWindow = () => {
           </div>
         ) : (
           <>
+            {showScrollBottom && (
+              <button 
+                onClick={handleScrollToBottom}
+                className="fixed bottom-[108px] right-10 z-30 h-10 w-10 flex items-center justify-center bg-white border border-slate-100 shadow-2xl rounded-full text-blue-500 hover:bg-blue-600 hover:text-white transition-all transform hover:scale-110 active:scale-95 animate-in slide-in-from-bottom-5 duration-300"
+                title="Ir para o final"
+              >
+                <ChevronDown size={20} className="animate-bounce" />
+              </button>
+            )}
             {loadingMore && (
               <div className="flex justify-center p-4">
                 <Loader2 className="h-6 w-6 text-blue-500 animate-spin" />
@@ -350,7 +536,14 @@ export const ChatWindow = () => {
               return (
                 <React.Fragment key={msg.id}>
                   {showDivider && <MessageDateDivider date={formatDateDivider(currentMsgDate)} />}
-                  <div className={cn("flex w-full group anim-fade-in", isSentByUs ? "justify-end" : "justify-start")}>
+                  <div 
+                    id={`msg-${msg.id}`}
+                    className={cn(
+                      "flex w-full group anim-fade-in transition-all duration-1000 p-1 rounded-2xl", 
+                      isSentByUs ? "justify-end" : "justify-start",
+                      highlightedMessageId === msg.id && "bg-yellow-100/50 shadow-inner ring-2 ring-yellow-200"
+                    )}
+                  >
                     <div className={cn("relative max-w-[80%] md:max-w-[70%] rounded-2xl p-1.5 shadow-sm transition-all hover:shadow-md", isSentByUs ? "bg-[#d9fdd3] text-slate-800 rounded-tr-none" : "bg-white text-slate-800 rounded-tl-none border border-slate-100", msg.status === 'sending' && "opacity-60 grayscale-[0.2]")}>
                       <div className="px-2.5 py-1">
                         {msg.replyToMessage && !isEveryoneDeleted && (

@@ -41,6 +41,75 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
   onOpenConnect
 }) => {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [webhookConfig, setWebhookConfig] = useState({
+    enabled: true,
+    webhookBase64: true,
+    webhookByEvents: true,
+    events: [] as string[]
+  });
+  const [loadingWebhook, setLoadingWebhook] = useState(false);
+  const [updatingField, setUpdatingField] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (isOpen && channel) {
+      fetchWebhook();
+    }
+  }, [isOpen, channel?.id]);
+
+  const fetchWebhook = async () => {
+    setLoadingWebhook(true);
+    try {
+      const res = await fetch(`/api/channels/${channel?.id}/webhook`);
+      const data = await res.json();
+      if (data.success && data.data) {
+        // A Evolution API pode retornar dentro de um objeto 'webhook' ou no root
+        const config = data.data.webhook || data.data;
+        setWebhookConfig({
+          enabled: config.enabled ?? false,
+          webhookBase64: config.webhookBase64 ?? config.webhook_by_base64 ?? false,
+          webhookByEvents: config.webhookByEvents ?? config.webhook_by_events ?? false,
+          events: config.events || []
+        });
+      }
+    } catch (e) {
+      console.error('Falha ao buscar webhook:', e);
+    } finally {
+      setLoadingWebhook(false);
+    }
+  };
+
+  const updateWebhook = async (field: string, value: boolean) => {
+    if (!channel) return;
+    setUpdatingField(field);
+    
+    // Atualiza localmente primeiro (Optimistic)
+    const newConfig = { ...webhookConfig, [field]: value };
+    setWebhookConfig(newConfig);
+
+    try {
+      const res = await fetch(`/api/channels/${channel.id}/webhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: field === 'enabled' ? value : webhookConfig.enabled,
+          webhookBase64: field === 'webhookBase64' ? value : webhookConfig.webhookBase64,
+          webhookByEvents: field === 'webhookByEvents' ? value : webhookConfig.webhookByEvents,
+          events: webhookConfig.events.length > 0 ? webhookConfig.events : ['QRCODE_UPDATED', 'CONNECTION_UPDATE', 'MESSAGES_UPSERT']
+        })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        // Rollback se falhar
+        setWebhookConfig(webhookConfig);
+        alert('Falha ao atualizar webhook na API: ' + (data.message || 'Erro desconhecido'));
+      }
+    } catch (e) {
+      setWebhookConfig(webhookConfig);
+      alert('Erro de conexão ao atualizar webhook.');
+    } finally {
+      setUpdatingField(null);
+    }
+  };
 
   if (!isOpen || !channel) return null;
 
@@ -134,6 +203,97 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
            >
              <RefreshCw size={18} className={loadingAction === 'sync' ? 'animate-spin' : ''} />
            </button>
+        </div>
+
+        {/* Webhook Settings Section */}
+        <div className="bg-slate-50 dark:bg-slate-800/30 rounded-3xl p-6 mb-8 border border-slate-100 dark:border-slate-800">
+          <div className="flex items-center gap-2 mb-6 text-blue-600 dark:text-blue-400">
+            <Zap size={16} fill="currentColor" className="opacity-50" />
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em]">Configuração de Webhooks</h3>
+          </div>
+
+          <div className="space-y-4">
+            {/* Toggle Webhook Geral */}
+            <div className="flex items-center justify-between group/toggle">
+              <div className="flex items-center gap-3">
+                <div className={cn("p-1.5 rounded-lg transition-colors", webhookConfig.enabled ? "bg-green-100 text-green-600" : "bg-slate-100 text-slate-400")}>
+                  <Activity size={14} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Webhook Geral</p>
+                  <p className="text-[9px] font-medium text-slate-400">Ativa o recebimento de dados</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => updateWebhook('enabled', !webhookConfig.enabled)}
+                disabled={updatingField === 'enabled' || loadingWebhook}
+                className={cn(
+                  "relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none",
+                  webhookConfig.enabled ? "bg-blue-600" : "bg-slate-200 dark:bg-slate-700",
+                  (updatingField === 'enabled' || loadingWebhook) && "opacity-50 cursor-wait"
+                )}
+              >
+                <span className={cn(
+                  "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                  webhookConfig.enabled ? "translate-x-5" : "translate-x-0"
+                )} />
+              </button>
+            </div>
+
+            {/* Toggle Webhook Base64 */}
+            <div className="flex items-center justify-between group/toggle">
+              <div className="flex items-center gap-3">
+                <div className={cn("p-1.5 rounded-lg transition-colors", webhookConfig.webhookBase64 ? "bg-purple-100 text-purple-600" : "bg-slate-100 text-slate-400")}>
+                  <ShieldCheck size={14} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Mídia em Base64</p>
+                  <p className="text-[9px] font-medium text-slate-400">Envia o arquivo direto no webhook</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => updateWebhook('webhookBase64', !webhookConfig.webhookBase64)}
+                disabled={updatingField === 'webhookBase64' || loadingWebhook}
+                className={cn(
+                  "relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none",
+                  webhookConfig.webhookBase64 ? "bg-blue-600" : "bg-slate-200 dark:bg-slate-700",
+                  (updatingField === 'webhookBase64' || loadingWebhook) && "opacity-50 cursor-wait"
+                )}
+              >
+                <span className={cn(
+                  "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                  webhookConfig.webhookBase64 ? "translate-x-5" : "translate-x-0"
+                )} />
+              </button>
+            </div>
+
+            {/* Toggle Webhook Eventos */}
+            <div className="flex items-center justify-between group/toggle">
+              <div className="flex items-center gap-3">
+                <div className={cn("p-1.5 rounded-lg transition-colors", webhookConfig.webhookByEvents ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-400")}>
+                  <RefreshCw size={14} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Eventos Globais</p>
+                  <p className="text-[9px] font-medium text-slate-400">Filtra por eventos específicos</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => updateWebhook('webhookByEvents', !webhookConfig.webhookByEvents)}
+                disabled={updatingField === 'webhookByEvents' || loadingWebhook}
+                className={cn(
+                  "relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none",
+                  webhookConfig.webhookByEvents ? "bg-blue-600" : "bg-slate-200 dark:bg-slate-700",
+                  (updatingField === 'webhookByEvents' || loadingWebhook) && "opacity-50 cursor-wait"
+                )}
+              >
+                <span className={cn(
+                  "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                  webhookConfig.webhookByEvents ? "translate-x-5" : "translate-x-0"
+                )} />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Action Grid */}

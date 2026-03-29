@@ -83,4 +83,17 @@ export class MessageRepository {
     if (error) throw error
     return data
   }
+
+  static async search(conversationId: string, queryText: string) {
+    const { data, error } = await supabaseAdmin
+      .from('Message')
+      .select('id, content, createdAt, senderType, conversationId, deletedForEveryone')
+      .eq('conversationId', conversationId)
+      .ilike('content', `%${queryText}%`)
+      .order('createdAt', { ascending: false })
+      .limit(50)
+
+    if (error) throw error
+    return data
+  }
 }

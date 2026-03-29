@@ -180,4 +180,17 @@ export class MessageService {
   static async getLastMessage(conversationId: string) {
     return await MessageRepository.findLastByConversation(conversationId)
   }
+
+  static async searchMessages(conversationId: string, query: string) {
+    const results = await MessageRepository.search(conversationId, query)
+    
+    // Filtrar mensagens apagadas para todos (opcional: o atendente pode querer saber que algo existiu, mas aqui limpamos)
+    return results.filter((m: any) => !m.deletedForEveryone).map((m: any) => ({
+      id: m.id,
+      content: m.content,
+      createdAt: m.createdAt,
+      senderType: m.senderType,
+      conversationId: m.conversationId
+    }))
+  }
 }

@@ -300,26 +300,44 @@ export const MessageInput = () => {
 
             {/* AI Suggestions Cards */}
             {suggestions.length > 0 && !repliesOpen && (
-              <div className="flex gap-4 py-1 overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth">
-                {suggestions.map((sug, i) => (
+              <div className="flex flex-col gap-2 group/suggestions">
+                <div className="flex items-center justify-between px-1">
+                  <div className="flex items-center gap-2">
+                    <div className="h-5 w-5 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 shadow-sm">
+                      <Zap size={10} fill="currentColor" />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600/70">Sugestões de IA</span>
+                  </div>
                   <button 
-                    key={i} 
-                    onClick={() => setContent(sug.response)} 
-                    className="group flex items-start gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:bg-blue-600 hover:border-blue-600 transition-all w-[320px] min-w-[320px] text-left animate-in zoom-in-95 duration-200 shrink-0 snap-start"
+                    onClick={() => setSuggestions([])}
+                    className="p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all"
+                    title="Ocultar sugestões"
                   >
-                    <div className="mt-0.5 h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 group-hover:bg-white/20 group-hover:text-white shrink-0 transition-colors">
-                      <Zap size={15} fill="currentColor" />
-                    </div>
-                    <div className="flex-1 overflow-hidden">
-                      <h4 className="text-[10px] font-black uppercase tracking-widest text-blue-600 group-hover:text-white/80 transition-colors mb-1.5">
-                        {sug.keyword}
-                      </h4>
-                      <p className="text-[12px] font-medium text-slate-600 group-hover:text-white transition-colors line-clamp-3 leading-relaxed">
-                        {sug.response}
-                      </p>
-                    </div>
+                    <X size={14} />
                   </button>
-                ))}
+                </div>
+
+                <div className="flex gap-4 py-1 overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth pr-6">
+                  {suggestions.map((sug, i) => (
+                    <button 
+                      key={i} 
+                      onClick={() => setContent(sug.response)} 
+                      className="group/card flex items-start gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:bg-blue-600 hover:border-blue-600 transition-all w-[320px] min-w-[320px] text-left animate-in zoom-in-95 duration-200 shrink-0 snap-start"
+                    >
+                      <div className="mt-0.5 h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 group-hover/card:bg-white/20 group-hover:text-white shrink-0 transition-colors">
+                        <Zap size={15} fill="currentColor" />
+                      </div>
+                      <div className="flex-1 overflow-hidden">
+                        <h4 className="text-[10px] font-black uppercase tracking-widest text-blue-600 group-hover/card:text-white/80 transition-colors mb-1.5">
+                          {sug.keyword}
+                        </h4>
+                        <p className="text-[12px] font-medium text-slate-600 group-hover/card:text-white transition-colors line-clamp-3 leading-relaxed">
+                          {sug.response}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
          </div>

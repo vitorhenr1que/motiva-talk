@@ -75,7 +75,7 @@ class EvolutionApiClient {
       console.log(`[EVO_DEBUG] Response Status: ${response.status} ${response.statusText}`);
 
       const responseText = await response.text();
-      // console.log(`[EVO_DEBUG] Response Body:`, responseText);
+      console.log(`[EVO_DEBUG] Response Body:`, responseText);
 
       let responseData: any = {};
       try {
@@ -134,9 +134,11 @@ class EvolutionApiClient {
         qrcode: true,
         integration: 'WHATSAPP-BAILEYS',
         webhook: data.webhook ? {
-          ...data.webhook,
-          webhookByEvents: data.webhook.webhookByEvents ?? true,
-          webhookBase64: data.webhook.webhookBase64 ?? true
+          url: data.webhook.url,
+          enabled: data.webhook.enabled,
+          webhook_by_events: data.webhook.webhookByEvents ?? true,
+          webhook_by_base64: data.webhook.webhookBase64 ?? true,
+          events: data.webhook.events
         } : undefined
       }),
     });
@@ -260,10 +262,21 @@ class EvolutionApiClient {
     events: string[];
   }) {
     const payload = {
+      instance: instanceName, // Algumas versões exigem no corpo
       webhook: {
-        ...data,
+        // Tenta todos os formatos possíveis dentro do objeto 'webhook' para máxima compatibilidade
+        instanceName,
+        url: data.url,
+        enabled: data.enabled,
+        webhook_url: data.url,
+        webhook_enabled: data.enabled,
+        webhook_by_events: data.webhookByEvents ?? true,
+        webhook_by_base64: data.webhookBase64 ?? true,
+        webhook_by_status: data.webhookByStatus ?? false,
         webhookByEvents: data.webhookByEvents ?? true,
-        webhookBase64: data.webhookBase64 ?? true
+        webhookBase64: data.webhookBase64 ?? true,
+        webhookByStatus: data.webhookByStatus ?? false,
+        events: data.events
       }
     };
     
