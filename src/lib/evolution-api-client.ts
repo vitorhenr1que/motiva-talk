@@ -246,6 +246,25 @@ class EvolutionApiClient {
     });
   }
 
+  /**
+   * Decrypts a WhatsApp media message and returns its base64 data.
+   * Essential when receiving encrypted media URLs from WhatsApp (mmg.whatsapp.net).
+   */
+  async getMediaBase64(instanceName: string, message: any) {
+    try {
+      console.log(`[EVO_DEBUG] Solicitando descriptografia de mídia para ${instanceName}...`);
+      const response = await this.request<any>(`/chat/getBase64FromMediaMessage/${instanceName}`, {
+        method: 'POST',
+        body: JSON.stringify({ message }),
+      });
+      
+      return response.base64 || response.response?.base64 || response;
+    } catch (error: any) {
+      console.error(`[EVO_DEBUG] Erro ao obter base64 da mídia:`, error.message);
+      return null;
+    }
+  }
+
   // --- Webhooks ---
   
   async findWebhook(instanceName: string) {

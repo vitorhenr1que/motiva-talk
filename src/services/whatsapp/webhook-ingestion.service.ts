@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { WebhookEvent } from './provider';
+import { evolutionApi } from '@/lib/evolution-api-client';
 
 export class WebhookIngestionService {
   /**
@@ -29,27 +30,35 @@ export class WebhookIngestionService {
 
     let finalMediaUrl = event.mediaUrl;
     let finalMimeType = event.mimeType || 'application/octet-stream';
+    let localBase64 = event.base64;
 
     // --- TRATAMENTO DE MÍDIA: Download do WhatsApp -> Upload pro Nosso Storage (Supabase) ---
-    if ((event.mediaUrl || event.base64) && !event.mediaUrl?.includes('supabase.co')) {
+    // Se for URL do WhatsApp (mmg.whatsapp.net), ela está criptografada.
+    // Solicitamos a versão descriptografada via API da Evolution se não vier no Webhook.
+    if (finalMediaUrl?.includes('mmg.whatsapp.net') && !localBase64) {
+       console.log(`[INGEST] Mídia criptografada detectada (AUDIO/MEDIA). Solicitando via API...`);
+       localBase64 = await evolutionApi.getMediaBase64(channelId, metadata);
+    }
+
+    if ((finalMediaUrl || localBase64) && !finalMediaUrl?.includes('supabase.co')) {
       try {
         const { generateId: genId } = await import('@/lib/utils');
         let buffer: ArrayBuffer;
 
-        if (event.base64) {
-          console.log(`[INGEST] Usando Base64 para mídia (${event.messageType})...`);
-          const base64Data = event.base64.split(',').pop() || event.base64;
+        if (localBase64) {
+          console.log(`[INGEST] Sucesso: Usando Base64 descriptografado (AUDIO/MEDIA)...`);
+          const base64Data = localBase64.split(',').pop() || localBase64;
           const binaryBuffer = Buffer.from(base64Data, 'base64');
           buffer = binaryBuffer.buffer.slice(binaryBuffer.byteOffset, binaryBuffer.byteOffset + binaryBuffer.byteLength) as ArrayBuffer;
-        } else if (event.mediaUrl) {
-          console.log(`[INGEST] Baixando mídia externa via URL (${event.messageType}): ${event.mediaUrl}...`);
+        } else if (finalMediaUrl) {
+          console.log(`[INGEST] Download direto via URL (Não recomendado p/ WhatsApp Criptografado): ${finalMediaUrl}...`);
           
           const fetchHeaders: any = {};
-          if (event.mediaUrl.includes('evolution.fazag.edu.br')) {
+          if (finalMediaUrl.includes('evolution.fazag.edu.br')) {
             fetchHeaders['apikey'] = process.env.EVOLUTION_API_KEY;
           }
 
-          const response = await fetch(event.mediaUrl, { headers: fetchHeaders });
+          const response = await fetch(finalMediaUrl, { headers: fetchHeaders });
           if (!response.ok) throw new Error(`Falha no download da mídia: ${response.statusText}`);
           buffer = await response.arrayBuffer();
           const contentType = response.headers.get('content-type');
@@ -61,13 +70,13 @@ export class WebhookIngestionService {
         }
 
         // --- Normalização do MimeType e Extensão ---
-        if (event.messageType === 'AUDIO' && (finalMimeType === 'application/octet-stream' || !finalMimeType.includes('audio'))) {
+        if (messageType === 'AUDIO' && (finalMimeType === 'application/octet-stream' || !finalMimeType.includes('audio'))) {
           finalMimeType = 'audio/ogg'; // Default para WhatsApp
         }
         
         let extension = finalMimeType.split('/')[1]?.split(';')[0] || 'bin';
         if (extension === 'octet-stream' || extension === 'bin') {
-          extension = event.messageType === 'AUDIO' ? 'ogg' : 'bin';
+          extension = messageType === 'AUDIO' ? 'ogg' : 'bin';
         }
         const fileName = `${genId()}.${extension}`;
         const filePath = `received/${channel.id}/${fileName}`;
