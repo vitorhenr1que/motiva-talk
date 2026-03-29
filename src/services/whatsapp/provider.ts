@@ -18,6 +18,11 @@ export interface WebhookEvent {
   content?: string;
   messageType?: MessageType;
   timestamp: number;
+  mediaUrl?: string;
+  fileName?: string;
+  mimeType?: string;
+  fileSize?: number;
+  thumbnailUrl?: string;
   metadata?: any;
 }
 

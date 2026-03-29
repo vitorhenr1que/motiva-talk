@@ -108,6 +108,11 @@ export class WebhookIngestionService {
           type: messageType || 'TEXT',
           externalMessageId: externalId,
           replyToMessageId: replyToMessageId,
+          mediaUrl: event.mediaUrl,
+          fileName: event.fileName,
+          mimeType: event.mimeType,
+          fileSize: event.fileSize,
+          thumbnailUrl: event.thumbnailUrl,
           createdAt: new Date(event.timestamp).toISOString()
         }])
         .select('*, replyTo:replyToMessageId(*)')

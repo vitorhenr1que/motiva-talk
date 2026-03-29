@@ -29,6 +29,8 @@ export const MessageInput = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
   const [fileType, setFileType] = useState<'IMAGE' | 'VIDEO' | 'DOCUMENT' | null>(null);
+  const [pendingFile, setPendingFile] = useState<{ file: File, previewUrl: string, type: 'IMAGE' | 'VIDEO' | 'DOCUMENT' } | null>(null);
+  const [mediaCaption, setMediaCaption] = useState('');
 
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [repliesOpen, setRepliesOpen] = useState(false);
@@ -158,19 +160,47 @@ export const MessageInput = () => {
     if (fileInputRef.current) {
       if (type === 'IMAGE') fileInputRef.current.accept = 'image/*';
       else if (type === 'VIDEO') fileInputRef.current.accept = 'video/*';
-      else fileInputRef.current.accept = '.pdf,.doc,.docx,.xls,.xlsx,.txt';
+      else fileInputRef.current.accept = '.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip,.rar';
       fileInputRef.current.click();
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !activeConversation || activeConversation.status === 'CLOSED') return;
-    setUploading(true);
-    try {
-      const publicUrl = await uploadFile(file);
-      const messageType = fileType || 'DOCUMENT';
 
+    // Validation
+    const maxSize = 64 * 1024 * 1024; // 64MB
+    if (file.size > maxSize) {
+      alert('Arquivo muito grande. O limite é 64MB.');
+      return;
+    }
+
+    const type = fileType || 'DOCUMENT';
+    const previewUrl = URL.createObjectURL(file);
+    setPendingFile({ file, previewUrl, type });
+    setMediaCaption('');
+  };
+
+  const handleSendMedia = async () => {
+    if (!pendingFile || !activeConversation || activeConversation.status === 'CLOSED') return;
+    
+    setUploading(true);
+    const { file, type, previewUrl } = pendingFile;
+    
+    try {
+      // 1. Upload to Storage
+      const publicUrl = await uploadFile(file);
+
+      // 2. Prepare metadata
+      const metadata = {
+        fileName: file.name,
+        mimeType: file.type,
+        fileSize: file.size,
+        caption: mediaCaption
+      };
+
+      // 3. Send to API
       const resp = await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -178,20 +208,30 @@ export const MessageInput = () => {
           conversationId: activeConversation.id,
           channelId: activeConversation.channel.id,
           senderType: 'AGENT',
-          content: publicUrl,
-          type: messageType,
-          metadata: { fileName: file.name }
+          content: mediaCaption || file.name, // Use caption as main content
+          type: type,
+          mediaUrl: publicUrl,
+          fileName: file.name,
+          mimeType: file.type,
+          fileSize: file.size,
+          metadata: { ...metadata, caption: mediaCaption }
         })
       });
+
       if (resp.ok) {
         const realMsg = await resp.json();
         addMessage(realMsg.data);
+        setPendingFile(null);
+        URL.revokeObjectURL(previewUrl);
+      } else {
+        const err = await resp.json();
+        alert('Falha ao enviar arquivo: ' + (err.message || 'Erro desconhecido'));
       }
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Erro no fluxo de envio de mídia:', error);
+      alert('Erro ao processar o arquivo.');
     } finally {
       setUploading(false);
-      setFileType(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -282,7 +322,58 @@ export const MessageInput = () => {
   }
 
   return (
-    <div className="border-t bg-white">
+    <div className="border-t bg-white relative">
+       {/* Media Preview Overlay */}
+       {pendingFile && (
+         <div className="absolute bottom-0 left-0 right-0 z-[100] bg-slate-900 flex flex-col items-center justify-center p-6 animate-in slide-in-from-bottom duration-300 min-h-[400px]">
+            <button 
+              onClick={() => { setPendingFile(null); URL.revokeObjectURL(pendingFile.previewUrl); }}
+              className="absolute top-6 right-6 p-2 rounded-full bg-slate-800 text-white hover:bg-slate-700 transition-colors"
+            >
+              <X size={24} />
+            </button>
+
+            <div className="flex-1 w-full max-w-2xl flex flex-col items-center justify-center gap-6">
+              {pendingFile.type === 'IMAGE' && (
+                <img src={pendingFile.previewUrl} className="max-h-[300px] rounded-2xl shadow-2xl object-contain border-4 border-white/10" alt="Preview" />
+              )}
+              {pendingFile.type === 'VIDEO' && (
+                <video src={pendingFile.previewUrl} controls className="max-h-[300px] rounded-2xl shadow-2xl bg-black border-4 border-white/10" />
+              )}
+              {pendingFile.type === 'DOCUMENT' && (
+                <div className="flex flex-col items-center gap-4 p-12 bg-slate-800 rounded-[32px] border border-white/5 shadow-2xl">
+                   <div className="p-6 bg-orange-500/10 rounded-3xl text-orange-500">
+                     <FileText size={64} />
+                   </div>
+                   <div className="text-center">
+                     <p className="text-white font-black text-lg truncate max-w-[300px]">{pendingFile.file.name}</p>
+                     <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">{(pendingFile.file.size / 1024 / 1024).toFixed(2)} MB • {pendingFile.file.name.split('.').pop()?.toUpperCase()}</p>
+                   </div>
+                </div>
+              )}
+
+              <div className="w-full relative group">
+                <input 
+                  type="text" 
+                  autoFocus
+                  placeholder="Adicionar legenda..."
+                  value={mediaCaption}
+                  onChange={(e) => setMediaCaption(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendMedia()}
+                  className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl py-4 px-6 text-white placeholder:text-slate-500 outline-none focus:border-blue-500 transition-all shadow-xl"
+                />
+                <button 
+                  onClick={handleSendMedia}
+                  disabled={uploading}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-500 disabled:opacity-50 transition-all active:scale-95 shadow-lg"
+                >
+                  {uploading ? <Loader2 size={24} className="animate-spin" /> : <Send size={24} />}
+                </button>
+              </div>
+            </div>
+         </div>
+       )}
+
        {(suggestions.length > 0 && !repliesOpen || content.match(/[*_~`]|https?:\/\//)) && (
          <div className="px-4 py-3 bg-slate-50/50 border-b border-slate-100 flex flex-col gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
             {/* Sintaxe WhatsApp Preview */}
@@ -388,7 +479,7 @@ export const MessageInput = () => {
             <Paperclip size={22} className={cn(attachmentMenuOpen && "rotate-45 transition-transform")} />
           </button>
           
-          <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+          <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
 
           {attachmentMenuOpen && (
             <div className="absolute bottom-full left-0 mb-4 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-[60] animate-in fade-in slide-in-from-bottom-2 duration-200">

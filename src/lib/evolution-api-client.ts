@@ -207,6 +207,7 @@ class EvolutionApiClient {
     media: string;
     fileName?: string;
     caption?: string;
+    ptt?: boolean;
     quoted?: any;
   }) {
     return this.request<any>(`/message/sendMedia/${instanceName}`, {

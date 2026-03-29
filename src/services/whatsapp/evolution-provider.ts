@@ -177,12 +177,15 @@ export class EvolutionProvider implements WhatsAppProvider {
 
     if (type === 'IMAGE' || type === 'VIDEO' || type === 'AUDIO' || type === 'DOCUMENT') {
       const mediatype = type.toLowerCase() as any;
+      const media = metadata?.mediaUrl || content; 
+      
       return evolutionApi.sendMedia(instanceName, {
         number: cleanNumber,
         mediatype,
-        media: content, // URL do Supabase
-        fileName: metadata?.fileName || 'arquivo',
-        caption: metadata?.caption || '',
+        media: media,
+        fileName: metadata?.fileName || (type === 'VIDEO' ? 'video.mp4' : (type === 'IMAGE' ? 'imagem.jpg' : 'arquivo')),
+        caption: (type !== 'AUDIO') ? (metadata?.caption || (media === content ? '' : content) || '') : undefined,
+        ptt: type === 'AUDIO', // Send audio as voice note (ptt)
         quoted: quotedPayload
       });
     }
@@ -256,6 +259,7 @@ export class EvolutionProvider implements WhatsAppProvider {
     const senderName = rawMessage.pushName || data.pushName || 'Contato WhatsApp';
     const fullJid = jid;
 
+    // Content/Caption discovery
     const getMessageContent = (m: any): string => {
       if (!m) return '';
       if (typeof m === 'string') return m;
@@ -273,14 +277,60 @@ export class EvolutionProvider implements WhatsAppProvider {
     let content = getMessageContent(message);
     if (!content && message.message) content = getMessageContent(message.message);
 
+    // Media & Type discovery
     let type: MessageType = 'TEXT';
+    let mediaFields: { 
+      mediaUrl?: string, 
+      fileName?: string, 
+      mimeType?: string, 
+      fileSize?: number, 
+      thumbnailUrl?: string 
+    } = {};
+
     const inner = message.message || message;
-    if (inner.imageMessage) type = 'IMAGE';
-    else if (inner.audioMessage) type = 'AUDIO';
-    else if (inner.documentMessage) type = 'DOCUMENT';
+    
+    if (inner.imageMessage) {
+      type = 'IMAGE';
+      mediaFields = {
+        mediaUrl: inner.imageMessage.url,
+        mimeType: inner.imageMessage.mimetype,
+        fileSize: inner.imageMessage.fileLength,
+        thumbnailUrl: inner.imageMessage.jpegThumbnail ? `data:image/jpeg;base64,${inner.imageMessage.jpegThumbnail}` : undefined
+      };
+    } else if (inner.videoMessage) {
+      type = 'VIDEO';
+      mediaFields = {
+        mediaUrl: inner.videoMessage.url,
+        mimeType: inner.videoMessage.mimetype,
+        fileSize: inner.videoMessage.fileLength,
+        thumbnailUrl: inner.videoMessage.jpegThumbnail ? `data:image/jpeg;base64,${inner.videoMessage.jpegThumbnail}` : undefined
+      };
+    } else if (inner.audioMessage) {
+      type = 'AUDIO';
+      mediaFields = {
+        mediaUrl: inner.audioMessage.url,
+        mimeType: inner.audioMessage.mimetype,
+        fileSize: inner.audioMessage.fileLength
+      };
+    } else if (inner.documentMessage) {
+      type = 'DOCUMENT';
+      mediaFields = {
+        mediaUrl: inner.documentMessage.url,
+        fileName: inner.documentMessage.fileName || 'arquivo.pdf',
+        mimeType: inner.documentMessage.mimetype,
+        fileSize: inner.documentMessage.fileLength
+      };
+    } else if (inner.contactMessage || inner.contactsArrayMessage) {
+      type = 'CONTACT';
+    }
 
     let quotedMessageExternalId: string | null = null;
-    const contextInfo = inner.contextInfo || (inner.imageMessage?.contextInfo) || (inner.audioMessage?.contextInfo) || (inner.documentMessage?.contextInfo);
+    const contextInfo = inner.contextInfo || 
+                        inner.imageMessage?.contextInfo || 
+                        inner.videoMessage?.contextInfo ||
+                        inner.audioMessage?.contextInfo || 
+                        inner.documentMessage?.contextInfo;
+    
     if (contextInfo?.stanzaId) quotedMessageExternalId = contextInfo.stanzaId;
 
     const rawTimestamp = rawMessage.messageTimestamp || data.messageTimestamp;
@@ -291,12 +341,13 @@ export class EvolutionProvider implements WhatsAppProvider {
       externalMessageId,
       senderPhone,
       senderName,
-      content: content || '[Mensagem sem conteúdo textual]',
+      content: content || (type === 'TEXT' ? '' : `[${type}]`),
       type,
       timestamp,
       fromMe,
       quotedMessageExternalId,
       fullJid,
+      ...mediaFields,
       raw: payload
     };
   }
@@ -325,6 +376,11 @@ export class EvolutionProvider implements WhatsAppProvider {
           senderName: normalized.senderName,
           content: normalized.content,
           messageType: normalized.type,
+          mediaUrl: (normalized as any).mediaUrl,
+          fileName: (normalized as any).fileName,
+          mimeType: (normalized as any).mimeType,
+          fileSize: (normalized as any).fileSize,
+          thumbnailUrl: (normalized as any).thumbnailUrl,
           metadata: { 
             ...normalized.raw, 
             externalId: normalized.externalMessageId,

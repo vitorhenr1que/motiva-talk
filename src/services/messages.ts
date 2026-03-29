@@ -1,5 +1,6 @@
 import { MessageRepository } from '@/repositories/messageRepository'
 import { Channel } from '@/types/chat';
+import { AppError } from '@/lib/api-errors';
 
 export interface CreateMessageData {
   conversationId: string;
@@ -8,6 +9,11 @@ export interface CreateMessageData {
   content: string;
   type?: string;
   externalMessageId?: string;
+  mediaUrl?: string;
+  fileName?: string;
+  mimeType?: string;
+  fileSize?: number;
+  thumbnailUrl?: string;
   metadata?: any;
 }
 
@@ -46,7 +52,20 @@ export class MessageService {
    * Registra uma nova mensagem no banco e envia via API se for do atendente
    */
   static async createMessage(data: CreateMessageData & { replyToMessageId?: string }) {
-    const { conversationId, channelId, senderType, content, type, replyToMessageId, metadata } = data
+    const { 
+      conversationId, 
+      channelId, 
+      senderType, 
+      content, 
+      type, 
+      replyToMessageId, 
+      metadata,
+      mediaUrl,
+      fileName,
+      mimeType,
+      fileSize,
+      thumbnailUrl
+    } = data
     
     let externalMessageId: string | undefined = data.externalMessageId
     let quoted: { id: string, content: string, fromMe: boolean, type?: string } | undefined = undefined;
@@ -70,21 +89,35 @@ export class MessageService {
         
         const conversation = await ConversationRepository.findById(conversationId)
         if (!conversation || !conversation.contact || !conversation.channel) {
-          throw new Error('Conversa, contato ou canal não encontrados.')
+          throw new AppError('Conversa, contato ou canal não encontrados.', 404, 'NOT_FOUND');
         }
 
+        // Se for mídia, passamos as informações pro provider
         const result = await evolutionProvider.sendMessage(
           conversation.channel,
           conversation.contact.phone,
           content,
           (type as any) || 'TEXT',
           quoted,
-          metadata
+          {
+            ...metadata,
+            mediaUrl: mediaUrl || content, // content pode ser a URL se for mídia
+            fileName,
+            mimeType,
+            fileSize
+          }
         )
 
         externalMessageId = result?.key?.id || result?.message?.key?.id
-      } catch (error) {
-        console.error('[MSG_SERVICE] Erro ao enviar mensagem:', error)
+        
+        if (!externalMessageId) {
+           console.error('[MSG_SERVICE] Falha ao obter ID externo da mensagem da Evolution API. Retorno bruto:', result);
+           throw new Error('A Evolution API não retornou o ID da mensagem enviada.');
+        }
+
+      } catch (error: any) {
+        console.error('[MSG_SERVICE] Erro ao enviar mensagem via Evolution API:', error)
+        throw new AppError(`Falha no envio via WhatsApp: ${error.message}`, 500, 'INTERNAL_ERROR');
       }
     }
 
@@ -97,6 +130,11 @@ export class MessageService {
       externalMessageId,
       replyToMessageId,
       metadata,
+      mediaUrl,
+      fileName,
+      mimeType,
+      fileSize,
+      thumbnailUrl,
       createdAt: new Date().toISOString()
     })
 

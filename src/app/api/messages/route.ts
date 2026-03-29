@@ -40,7 +40,20 @@ export async function POST(req: Request) {
     console.log(`[API] ${req.method} ${ROUTE}:`, body);
 
     validateBody(body, ['conversationId', 'channelId', 'senderType', 'content'])
-    const { conversationId, channelId, senderType, content, type, replyToMessageId, metadata } = body
+    const { 
+      conversationId, 
+      channelId, 
+      senderType, 
+      content, 
+      type, 
+      replyToMessageId, 
+      metadata,
+      mediaUrl,
+      fileName,
+      mimeType,
+      fileSize,
+      thumbnailUrl
+    } = body
 
     const message = await MessageService.createMessage({
       conversationId,
@@ -49,7 +62,12 @@ export async function POST(req: Request) {
       content,
       type,
       replyToMessageId,
-      metadata
+      metadata,
+      mediaUrl,
+      fileName,
+      mimeType,
+      fileSize,
+      thumbnailUrl
     })
 
     return NextResponse.json({ success: true, data: message }, { status: 201 })

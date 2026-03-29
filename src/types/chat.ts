@@ -68,6 +68,11 @@ export interface Message {
   createdAt: string;
   externalMessageId?: string;
   replyToMessageId?: string;
+  mediaUrl?: string;
+  fileName?: string;
+  mimeType?: string;
+  fileSize?: number;
+  thumbnailUrl?: string;
   replyToMessage?: {
     id: string;
     content: string;

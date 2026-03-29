@@ -59,6 +59,7 @@ export const ChatWindow = () => {
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [lightboxMedia, setLightboxMedia] = useState<{ url: string, type: 'IMAGE' | 'VIDEO', caption?: string } | null>(null);
 
   const scrollToAndHighlight = (id: string) => {
     const element = document.getElementById(`msg-${id}`);
@@ -557,9 +558,43 @@ export const ChatWindow = () => {
                         ) : (
                           <>
                             {msg.type === 'TEXT' && <p className="whitespace-pre-wrap leading-relaxed text-[13px]">{formatWhatsappText(msg.content)}</p>}
-                            {msg.type === 'IMAGE' && <img src={msg.content} alt="Anexo" className="max-h-80 w-auto rounded-xl cursor-pointer" onClick={() => window.open(msg.content, '_blank')} />}
-                            {msg.type === 'AUDIO' && <audio src={msg.content} controls className="h-8 w-full py-2 min-w-[200px]" />}
-                            {msg.type === 'VIDEO' && <div className="max-w-[300px] overflow-hidden rounded-xl border border-black/5"><video src={msg.content} controls className="w-full h-auto max-h-[400px]" /></div>}
+                            {msg.type === 'IMAGE' && (
+                               <div className="flex flex-col gap-2">
+                                 <img 
+                                   src={msg.mediaUrl || msg.content} 
+                                   alt="Anexo" 
+                                   className="max-h-80 w-auto rounded-xl cursor-pointer hover:opacity-95 transition-opacity duration-300 border border-black/5" 
+                                   onClick={() => setLightboxMedia({ url: msg.mediaUrl || msg.content, type: 'IMAGE', caption: msg.mediaUrl ? msg.content : msg.metadata?.caption })} 
+                                 />
+                                 {(msg.mediaUrl ? msg.content : msg.metadata?.caption) && (
+                                   <p className="text-[13px] leading-relaxed whitespace-pre-wrap">{formatWhatsappText(msg.mediaUrl ? msg.content : msg.metadata?.caption)}</p>
+                                 )}
+                               </div>
+                             )}
+                             {msg.type === 'AUDIO' && <audio src={msg.mediaUrl || msg.content} controls className="h-8 w-full py-2 min-w-[200px]" />}
+                             {msg.type === 'VIDEO' && (
+                               <div className="flex flex-col gap-2">
+                                 <div 
+                                   className="relative max-w-[300px] overflow-hidden rounded-xl border border-black/5 cursor-pointer group/video hover:opacity-95 transition-all shadow-sm"
+                                   onClick={() => setLightboxMedia({ url: msg.mediaUrl || msg.content, type: 'VIDEO', caption: msg.mediaUrl ? msg.content : msg.metadata?.caption })}
+                                 >
+                                   {msg.thumbnailUrl ? (
+                                      <div className="relative">
+                                        <img src={msg.thumbnailUrl} className="w-full h-auto max-h-[400px] object-cover" alt="Video preview" />
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover/video:bg-black/40 transition-all">
+                                           <div className="h-14 w-14 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/40 shadow-2xl scale-110 group-hover/video:scale-125 transition-transform"><ChevronDown size={32} className="-rotate-90 ml-1" /></div>
+                                        </div>
+                                      </div>
+                                   ) : (
+                                      <video src={msg.mediaUrl || msg.content} className="w-full h-auto max-h-[400px] pointer-events-none" />
+                                   )}
+                                   <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/60 backdrop-blur-md rounded text-[9px] font-black text-white uppercase tracking-widest border border-white/10 shadow-lg">Vídeo</div>
+                                 </div>
+                                 {(msg.mediaUrl ? msg.content : msg.metadata?.caption) && (
+                                   <p className="text-[13px] leading-relaxed whitespace-pre-wrap">{formatWhatsappText(msg.mediaUrl ? msg.content : msg.metadata?.caption)}</p>
+                                 )}
+                               </div>
+                             )}
                             {msg.type === 'CONTACT' && (
                                <div className="flex flex-col gap-3 rounded-xl bg-white border border-slate-100 p-4 min-w-[240px] shadow-sm">
                                   <div className="flex items-center gap-4">
@@ -574,7 +609,24 @@ export const ChatWindow = () => {
                                </div>
                             )}
                             {msg.type === 'DOCUMENT' && (
-                              <a href={msg.content} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-lg bg-black/5 p-3 text-blue-600 font-bold decoration-none"><FileText size={20} /><span className="text-xs truncate max-w-[150px]">{msg.metadata?.fileName || 'Documento'}</span></a>
+                               <a 
+                                 href={msg.mediaUrl || msg.content} 
+                                 target="_blank" 
+                                 rel="noreferrer" 
+                                 className="flex items-center gap-4 group/doc rounded-xl bg-black/5 p-4 hover:bg-black/10 transition-all border border-black/5 min-w-[200px] max-w-full no-underline"
+                               >
+                                 <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg group-hover/doc:scale-105 transition-transform shrink-0">
+                                   <FileText size={24} />
+                                 </div>
+                                 <div className="flex-1 overflow-hidden">
+                                   <p className="text-[12px] font-black text-slate-800 truncate leading-tight group-hover/doc:text-blue-600 transition-colors">{msg.fileName || msg.metadata?.fileName || 'Documento'}</p>
+                                   <div className="flex items-center gap-2 mt-1 whitespace-nowrap overflow-hidden">
+                                      <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest">{msg.fileSize ? `${(msg.fileSize / 1024 / 1024).toFixed(2)} MB` : (msg.mimeType?.split('/').pop()?.toUpperCase() || msg.metadata?.mimeType?.split('/').pop()?.toUpperCase() || 'ARQUIVO')}</span>
+                                      <span className="h-1 w-1 rounded-full bg-slate-300 shrink-0" />
+                                      <span className="text-[9px] font-black uppercase text-blue-600">Baixar</span>
+                                   </div>
+                                 </div>
+                               </a>
                             )}
                           </>
                         )}
@@ -605,6 +657,57 @@ export const ChatWindow = () => {
           </>
         )}
       </div>
+
+      {/* Lightbox Modal (Image & Video) */}
+      {lightboxMedia && (
+        <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 md:p-12 animate-in fade-in duration-300">
+          <button 
+            onClick={() => setLightboxMedia(null)}
+            className="absolute top-6 right-6 p-3 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all z-[110]"
+          >
+            <X size={28} />
+          </button>
+          
+          <div className="relative w-full max-w-5xl h-full flex flex-col items-center justify-center gap-6">
+            {lightboxMedia.type === 'IMAGE' ? (
+              <img 
+                src={lightboxMedia.url} 
+                alt="Ampliada" 
+                className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-500"
+              />
+            ) : (
+              <video 
+                src={lightboxMedia.url} 
+                controls 
+                autoPlay
+                className="max-w-full max-h-[80vh] rounded-xl shadow-2xl animate-in zoom-in-95 duration-500 bg-black"
+              />
+            )}
+            
+            {lightboxMedia.caption && (
+              <div className="max-w-2xl bg-black/40 backdrop-blur-md p-6 rounded-[24px] border border-white/10 text-center animate-in slide-in-from-bottom-4 duration-500">
+                 <p className="text-white text-lg font-medium leading-relaxed">{formatWhatsappText(lightboxMedia.caption)}</p>
+              </div>
+            )}
+            <div className="flex gap-4">
+              <a 
+                href={lightboxMedia.url} 
+                download
+                target="_blank"
+                className="px-6 py-2.5 bg-white text-slate-900 rounded-xl font-black uppercase text-xs hover:bg-slate-100 transition-all shadow-lg active:scale-95"
+              >
+                Abrir Original
+              </a>
+              <button 
+                onClick={() => setLightboxMedia(null)}
+                className="px-6 py-2.5 bg-white/10 text-white border border-white/20 rounded-xl font-black uppercase text-xs hover:bg-white/20 transition-all shadow-lg active:scale-95"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Closed Warning */}
       {isClosed && (
