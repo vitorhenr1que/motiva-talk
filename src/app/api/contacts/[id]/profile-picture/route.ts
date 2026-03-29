@@ -3,7 +3,7 @@ import { ContactService } from '@/services/contacts'
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { channelId } = await req.json()
@@ -11,7 +11,7 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'channelId is required' }, { status: 400 })
     }
 
-    const id = params.id
+    const { id } = await params
     console.log(`[API_PROFILE_PICTURE] Iniciando busca para contato ${id} e canal ${channelId}`)
     
     const profilePictureUrl = await ContactService.getAndUpdateProfilePicture(id, channelId)
