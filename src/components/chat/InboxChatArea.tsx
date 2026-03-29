@@ -14,7 +14,7 @@ import { twMerge } from 'tailwind-merge';
 import { formatPhone } from '@/lib/utils';
 import { formatDateDivider, formatTimeBahia, parseSafeDate } from '@/lib/date-utils';
 
-const CustomAudioPlayer = ({ url, duration, fileName }: { url: string, duration?: number, fileName?: string }) => {
+const CustomAudioPlayer = ({ url, duration, fileName, mimeType, mediaUrl }: { url: string, duration?: number, fileName?: string, mimeType?: string, mediaUrl?: string }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -48,7 +48,25 @@ const CustomAudioPlayer = ({ url, duration, fileName }: { url: string, duration?
   };
 
   const handleError = () => {
-    console.error("Audio Load Error:", url);
+    if (audioRef.current) {
+      console.error("Audio Load Error Details:", {
+        url,
+        currentSrc: audioRef.current.currentSrc,
+        networkState: audioRef.current.networkState,
+        readyState: audioRef.current.readyState,
+        error: audioRef.current.error,
+        mimeType,
+        fileName,
+        mediaUrl
+      });
+    } else {
+      console.error("Audio Load Error (no ref):", {
+        url,
+        mimeType,
+        fileName,
+        mediaUrl
+      });
+    }
     setHasError(true);
     setIsPlaying(false);
   };
@@ -96,8 +114,11 @@ const CustomAudioPlayer = ({ url, duration, fileName }: { url: string, duration?
             onTimeUpdate={onTimeUpdate} 
             onEnded={onEnded} 
             onError={handleError}
+            preload="metadata"
             className="hidden" 
-          />
+          >
+            {mimeType && <source src={url} type={mimeType} />}
+          </audio>
         )}
         
         <button 
@@ -130,7 +151,7 @@ const CustomAudioPlayer = ({ url, duration, fileName }: { url: string, duration?
             hasError ? "text-red-400" : "text-slate-400"
           )}>
             <span className={isPlaying ? "text-blue-600 animate-pulse font-black" : ""}>
-               {hasError ? "Falha no áudio" : formatTimeText(currentTime)}
+               {hasError ? "Não foi possível carregar este áudio" : formatTimeText(currentTime)}
             </span>
             <span>{hasError ? "!" : (totalDuration ? formatTimeText(totalDuration) : '--:--')}</span>
           </div>
@@ -145,6 +166,18 @@ const CustomAudioPlayer = ({ url, duration, fileName }: { url: string, duration?
             <div className="text-[8px] font-black text-blue-600/40 tracking-tighter uppercase">Voz</div>
           </div>
         )}
+      {hasError && (
+        <div className="px-1 mt-1">
+          <a 
+            href={url} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline flex items-center gap-1"
+          >
+            <Volume2 size={10} /> Tentar baixar áudio manualmente
+          </a>
+        </div>
+      )}
       </div>
     </div>
   );
@@ -708,7 +741,7 @@ export const ChatWindow = () => {
                                  )}
                                </div>
                              )}
-                             {msg.type === 'AUDIO' && <CustomAudioPlayer url={msg.mediaUrl || msg.content} duration={msg.duration} fileName={msg.fileName} />}
+                             {msg.type === 'AUDIO' && <CustomAudioPlayer url={msg.mediaUrl || msg.content} duration={msg.duration} fileName={msg.fileName} mimeType={msg.mimeType} mediaUrl={msg.mediaUrl} />}
                              {msg.type === 'VIDEO' && (
                                <div className="flex flex-col gap-2">
                                  <div 

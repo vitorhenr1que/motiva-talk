@@ -389,6 +389,8 @@ export class EvolutionProvider implements WhatsAppProvider {
           fileName: (normalized as any).fileName,
           mimeType: (normalized as any).mimeType,
           fileSize: (normalized as any).fileSize,
+          duration: (normalized as any).duration,
+          base64: (normalized as any).base64,
           thumbnailUrl: (normalized as any).thumbnailUrl,
           metadata: { 
             ...normalized.raw, 
