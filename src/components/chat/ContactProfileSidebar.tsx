@@ -116,8 +116,12 @@ export const ContactProfileSidebar = () => {
         <div className="absolute -bottom-12 left-1/2 -translate-x-1/2">
            <div className="relative group">
               <div className="h-24 w-24 rounded-[2.5rem] bg-white p-1.5 shadow-2xl transition-transform duration-500 group-hover:scale-105">
-                 <div className="h-full w-full rounded-[2rem] bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center text-3xl font-black text-slate-400 overflow-hidden relative">
-                    {contact.name?.[0] || '?'}
+                 <div className="h-full w-full rounded-[2rem] bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center text-3xl font-black text-slate-400 overflow-hidden relative border border-slate-100 shadow-sm">
+                    {contact.profilePictureUrl ? (
+                       <img src={contact.profilePictureUrl} className="h-full w-full object-cover" alt={contact.name} />
+                    ) : (
+                       contact.name?.[0] || '?'
+                    )}
                     <div className="absolute bottom-1 right-1 h-5 w-5 rounded-full bg-emerald-500 border-4 border-white shadow-sm" />
                  </div>
               </div>

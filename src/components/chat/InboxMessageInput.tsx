@@ -11,6 +11,9 @@ import { QuickReplyMenu } from '@/components/quick-replies/Menu';
 import { QuickReplyManagerModal } from '@/components/quick-replies/ManagerModal';
 import { uploadFile } from '@/lib/supabase-utils';
 import { supabase } from '@/lib/supabase';
+import { getFileTypeInfo, mapKindToMessageType } from '@/lib/file-type';
+import { FileKind, PendingFile } from '@/types/chat';
+import { useChatFileDrop } from '@/hooks/useChatFileDrop';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -28,9 +31,15 @@ export const MessageInput = () => {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
-  const [fileType, setFileType] = useState<'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'AUDIO' | null>(null);
-  const [pendingFile, setPendingFile] = useState<{ file: File, previewUrl: string, type: 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'AUDIO', duration?: number } | null>(null);
-  const [mediaCaption, setMediaCaption] = useState('');
+  
+  const { 
+    activeConversation, addMessage, upsertMessage, messages, 
+    replyToMessage, setReplyToMessage,
+    pendingFile, setPendingFile,
+    mediaCaption, setMediaCaption
+  } = useChatStore();
+
+  const { isDragging, onDragOver, onDragLeave, onDrop, processFile } = useChatFileDrop();
 
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [repliesOpen, setRepliesOpen] = useState(false);
@@ -44,8 +53,6 @@ export const MessageInput = () => {
     autoIdentifyAgent: true,
     allowAgentNameEdit: false
   });
-
-  const { activeConversation, addMessage, upsertMessage, messages, replyToMessage, setReplyToMessage } = useChatStore();
 
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isTyping, setIsTyping] = useState(false);
@@ -154,63 +161,28 @@ export const MessageInput = () => {
     } catch (error) {}
   };
 
-  const openFileSearch = (type: 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'AUDIO') => {
-    setFileType(type);
+  const openFileSearch = (accept?: string) => {
     setAttachmentMenuOpen(false);
     if (fileInputRef.current) {
-      if (type === 'IMAGE') fileInputRef.current.accept = 'image/*';
-      else if (type === 'VIDEO') fileInputRef.current.accept = 'video/*';
-      else if (type === 'AUDIO') fileInputRef.current.accept = 'audio/*';
-      else fileInputRef.current.accept = '.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip,.rar';
+      fileInputRef.current.accept = accept || '*/*';
       fileInputRef.current.click();
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !activeConversation || activeConversation.status === 'CLOSED') return;
-
-    // Mapa de limites recomendados para WhatsApp e Supabase
-    const limits: Record<string, number> = {
-      IMAGE: 10 * 1024 * 1024,    // 10MB
-      VIDEO: 64 * 1024 * 1024,    // 64MB
-      AUDIO: 16 * 1024 * 1024,    // 16MB
-      DOCUMENT: 100 * 1024 * 1024 // 100MB
-    };
-
-    const type = fileType || 'DOCUMENT';
-    const currentLimit = limits[type] || limits.DOCUMENT;
-
-    if (file.size > currentLimit) {
-      const sizeInMB = (currentLimit / 1024 / 1024).toFixed(0);
-      alert(`⚠️ Arquivo muito grande para enviar como ${type}.\n\nO limite máximo é de ${sizeInMB}MB para garantir a entrega no WhatsApp.`);
+    if (file) {
+      processFile(file);
       e.target.value = ''; // Reset input
-      return;
     }
-
-    const previewUrl = URL.createObjectURL(file);
-    
-    // Extração de duração para Áudio e Vídeo
-    if (type === 'AUDIO' || type === 'VIDEO') {
-      const media = type === 'AUDIO' ? new Audio(previewUrl) : document.createElement('video');
-      media.src = previewUrl;
-      media.onloadedmetadata = () => {
-        const roundedDuration = Math.round(media.duration);
-        setPendingFile(prev => prev ? { ...prev, duration: roundedDuration } : null);
-        console.log(`[MEDIA_DEBUG] Duração extraída: ${roundedDuration}s`);
-      };
-    }
-    
-    setPendingFile({ file, previewUrl, type, duration: 0 });
-    setMediaCaption('');
-    e.target.value = ''; // Reset input so same file can be selected again if needed
   };
 
   const handleSendMedia = async () => {
     if (!pendingFile || !activeConversation || activeConversation.status === 'CLOSED') return;
     
     setUploading(true);
-    const { file, type, previewUrl, duration } = pendingFile;
+    const { file, kind, previewUrl, duration } = pendingFile;
+    const msgType = mapKindToMessageType(kind);
     
     try {
       // 1. Upload to Storage
@@ -219,7 +191,7 @@ export const MessageInput = () => {
       // 2. Prepare metadata
       const metadata = {
         fileName: file.name,
-        mimeType: file.type,
+        mimeType: file.type || 'application/octet-stream',
         fileSize: file.size,
         duration: duration,
         caption: mediaCaption
@@ -234,10 +206,10 @@ export const MessageInput = () => {
           channelId: activeConversation.channel.id,
           senderType: 'AGENT',
           content: mediaCaption || file.name, // Use caption as main content
-          type: type,
+          type: msgType,
           mediaUrl: publicUrl,
           fileName: file.name,
-          mimeType: file.type,
+          mimeType: metadata.mimeType,
           fileSize: file.size,
           duration: duration,
           metadata: { ...metadata, caption: mediaCaption }
@@ -348,7 +320,22 @@ export const MessageInput = () => {
   }
 
   return (
-    <div className="border-t bg-white relative">
+    <div 
+      className={cn(
+        "border-t bg-white relative transition-all",
+        isDragging && "ring-8 ring-blue-500/20 bg-blue-50/50"
+      )}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {isDragging && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-600/10 backdrop-blur-[2px] pointer-events-none">
+           <div className="bg-white px-8 py-4 rounded-3xl shadow-2xl border-2 border-dashed border-blue-400 animate-in zoom-in-95 duration-300">
+             <p className="text-blue-600 font-black uppercase tracking-[0.2em] text-sm pointer-events-none">Solte para enviar arquivo</p>
+           </div>
+        </div>
+      )}
        {/* Media Preview Overlay */}
        {pendingFile && (
          <div className="absolute bottom-0 left-0 right-0 z-[100] bg-slate-900 flex flex-col items-center justify-center p-6 animate-in slide-in-from-bottom duration-300 min-h-[400px]">
@@ -360,22 +347,41 @@ export const MessageInput = () => {
             </button>
 
             <div className="flex-1 w-full max-w-2xl flex flex-col items-center justify-center gap-6">
-              {pendingFile.type === 'IMAGE' && (
+              {pendingFile.kind === 'IMAGE' && (
                 <img src={pendingFile.previewUrl} className="max-h-[300px] rounded-2xl shadow-2xl object-contain border-4 border-white/10" alt="Preview" />
               )}
-              {pendingFile.type === 'VIDEO' && (
+              {pendingFile.kind === 'VIDEO' && (
                 <video src={pendingFile.previewUrl} controls className="max-h-[300px] rounded-2xl shadow-2xl bg-black border-4 border-white/10" />
               )}
-              {pendingFile.type === 'DOCUMENT' && (
-                <div className="flex flex-col items-center gap-4 p-12 bg-slate-800 rounded-[32px] border border-white/5 shadow-2xl">
-                   <div className="p-6 bg-orange-500/10 rounded-3xl text-orange-500">
-                     <FileText size={64} />
-                   </div>
+              {(pendingFile.kind === 'DOCUMENT' || pendingFile.kind === 'PDF') && (
+                <div className="flex flex-col items-center gap-4 p-12 bg-slate-800 rounded-[32px] border border-white/5 shadow-2xl w-full text-center">
+                   {pendingFile.kind === 'PDF' && (
+                     <div className="w-full h-[400px] rounded-2xl overflow-hidden bg-white mb-4">
+                       <iframe src={pendingFile.previewUrl} className="w-full h-full border-none" title="PDF Preview" />
+                     </div>
+                   )}
+                   {(pendingFile.kind === 'DOCUMENT') && (
+                      <div className="p-6 bg-orange-500/10 rounded-3xl text-orange-500 mb-2">
+                        <FileText size={64} />
+                      </div>
+                   )}
                    <div className="text-center">
-                     <p className="text-white font-black text-lg truncate max-w-[300px]">{pendingFile.file.name}</p>
+                     <p className="text-white font-black text-lg truncate max-w-[400px] inline-block">{pendingFile.file.name}</p>
                      <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">{(pendingFile.file.size / 1024 / 1024).toFixed(2)} MB • {pendingFile.file.name.split('.').pop()?.toUpperCase()}</p>
                    </div>
                 </div>
+              )}
+              {pendingFile.kind === 'AUDIO' && (
+                 <div className="flex flex-col items-center gap-4 p-12 bg-slate-800 rounded-[32px] border border-white/5 shadow-2xl w-full">
+                   <div className="p-6 bg-red-500/10 rounded-3xl text-red-500">
+                     <Mic size={64} />
+                   </div>
+                   <audio src={pendingFile.previewUrl} controls className="w-full max-w-md" />
+                   <div className="text-center">
+                     <p className="text-white font-black text-lg truncate max-w-[400px] inline-block">{pendingFile.file.name}</p>
+                     <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">Áudio detectado</p>
+                   </div>
+                 </div>
               )}
 
               <div className="w-full relative group">
@@ -509,19 +515,19 @@ export const MessageInput = () => {
 
           {attachmentMenuOpen && (
             <div className="absolute bottom-full left-0 mb-4 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-[60] animate-in fade-in slide-in-from-bottom-2 duration-200">
-               <button onClick={() => openFileSearch('IMAGE')} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors">
+               <button onClick={() => openFileSearch('image/*')} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors">
                  <ImageIcon size={16} className="text-purple-500" />
                  Foto
                </button>
-               <button onClick={() => openFileSearch('VIDEO')} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors">
+               <button onClick={() => openFileSearch('video/*')} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors">
                  <Video size={16} className="text-blue-500" />
                  Vídeo
                </button>
-               <button onClick={() => openFileSearch('DOCUMENT')} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors">
+               <button onClick={() => openFileSearch('.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip,.rar')} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors">
                  <FileText size={16} className="text-orange-500" />
                  Documento
                </button>
-               <button onClick={() => openFileSearch('AUDIO')} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors">
+               <button onClick={() => openFileSearch('audio/*')} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors">
                  <Mic size={16} className="text-red-500" />
                  Áudio
                </button>

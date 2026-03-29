@@ -157,14 +157,61 @@ export class MessageService {
   }
 
   /**
-   * Apaga mensagem apenas para o atendente (localmente)
+   * Executa a limpeza física e marcação de remoção local de uma mensagem
    */
-  static async deleteForMe(id: string) {
-    return await MessageRepository.update(id, { deletedForMe: true })
+  private static async performLocalRemoval(message: any, mode: 'me' | 'everyone') {
+    const { id, mediaUrl } = message;
+    console.log(`[MSG_SERVICE] Iniciando soft-delete local da mensagem: ${id} Modo: ${mode}`);
+
+    // 1. Remover arquivo do Storage para economizar espaço
+    if (mediaUrl) {
+      try {
+        const { supabaseAdmin } = await import('@/lib/supabase-admin');
+        const bucket = 'chat-media';
+        let path = mediaUrl;
+        if (mediaUrl.includes(`${bucket}/`)) {
+          path = mediaUrl.split(`${bucket}/`).pop() || mediaUrl;
+        }
+        await supabaseAdmin.storage.from(bucket).remove([path]);
+        console.log(`[MSG_SERVICE] Mídia removida: ${path}`);
+      } catch (e) {
+        console.error('[MSG_SERVICE] Erro ao limpar storage:', e);
+      }
+    }
+
+    // 2. Atualizar o registro no Banco (Manter rastro mas zerar conteúdo e mídia)
+    const updateData: any = {
+      mediaUrl: null,
+      thumbnailUrl: null,
+      fileName: null,
+      mimeType: null,
+      fileSize: null,
+      duration: null,
+      metadata: null
+    };
+
+    if (mode === 'everyone') {
+       updateData.deletedForEveryone = true;
+       updateData.content = '🚫 Esta mensagem foi apagada';
+    } else {
+       updateData.deletedForMe = true;
+       // O conteúdo para "mim" será decidido na UI baseada em quem enviou
+    }
+
+    return await MessageRepository.update(id, updateData);
   }
 
   /**
-   * Apaga mensagem para todos (Evolution API + Banco)
+   * Apaga mensagem (Soft-Delete) apenas para este sistema local
+   */
+  static async deleteForMe(id: string) {
+    const message = await MessageRepository.findById(id);
+    if (!message) throw new Error('Mensagem não encontrada');
+    return await this.performLocalRemoval(message, 'me');
+  }
+
+  /**
+   * Apaga mensagem para todos (Evolution API + Soft-Delete)
    */
   static async deleteForEveryone(id: string) {
     const message = await MessageRepository.findById(id);
@@ -173,10 +220,10 @@ export class MessageService {
     // 1. Apagar no WhatsApp via Evolution API se tiver ID externo
     if (message.externalMessageId) {
       try {
-        const { ConversationRepository } = await import('@/repositories/conversationRepository');
         const { evolutionProvider } = await import('@/services/whatsapp/evolution-provider');
-        
+        const { ConversationRepository } = await import('@/repositories/conversationRepository');
         const conversation = await ConversationRepository.findById(message.conversationId);
+        
         if (conversation && conversation.contact && conversation.channel) {
            await evolutionProvider.deleteMessage(
              conversation.channel, 
@@ -185,16 +232,14 @@ export class MessageService {
              message.senderType === 'AGENT'
            );
         }
-      } catch (error) {
-        console.error('[MSG_SERVICE] Erro ao apagar no WhatsApp:', error);
+      } catch (error: any) {
+        console.error('[API_DELETE_EVERYONE] Falha na Evolution API:', error.message);
+        throw new Error(`WhatsApp não permitiu apagar: ${error.message}`);
       }
     }
 
-    // 2. Atualizar no Banco (Marcamos como deletada para todos)
-    return await MessageRepository.update(id, { 
-      deletedForEveryone: true,
-      content: '🚫 Mensagem apagada' 
-    });
+    // 2. Soft-delete local
+    return await this.performLocalRemoval(message, 'everyone');
   }
 
   /**

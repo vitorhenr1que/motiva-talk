@@ -5,6 +5,8 @@ interface ChatState {
   conversations: Conversation[]
   activeConversation: Conversation | null
   replyToMessage: Message | null
+  pendingFile: any | null // Avoiding full typing in interface briefly for simplicity if preferred, or use PendingFile
+  mediaCaption: string
   messages: Message[]
   channels: Channel[]
   selectedChannelId: string | null
@@ -24,6 +26,8 @@ interface ChatState {
   setConversations: (conversations: any[]) => void
   setActiveConversation: (conversation: any | null) => void
   setReplyToMessage: (message: any | null) => void
+  setPendingFile: (file: any | null) => void
+  setMediaCaption: (caption: string) => void
   setMessages: (data: { messages: any[], nextCursor?: string | null, hasMore?: boolean }) => void
   addMoreMessages: (data: { messages: any[], nextCursor?: string | null, hasMore?: boolean }) => void
   addMessage: (message: any) => void;
@@ -49,6 +53,8 @@ export const useChatStore = create<ChatState>((set) => ({
   conversations: [],
   activeConversation: null,
   replyToMessage: null,
+  pendingFile: null,
+  mediaCaption: '',
   messages: [],
   channels: [],
   tags: [],
@@ -91,6 +97,8 @@ export const useChatStore = create<ChatState>((set) => ({
     }
   },
   setReplyToMessage: (message) => set({ replyToMessage: message }),
+  setPendingFile: (file) => set({ pendingFile: file }),
+  setMediaCaption: (caption) => set({ mediaCaption: caption }),
   setMessages: (data) => {
     const { messages, nextCursor = null, hasMore = false } = data;
     const uniqueMap = new Map();
@@ -218,15 +226,19 @@ export const useChatStore = create<ChatState>((set) => ({
   }),
 
   deleteMessageLocally: (id, mode) => set((state) => {
-    if (mode === 'me') {
-      return { messages: state.messages.filter(m => m.id !== id) };
-    } else {
-      return { 
-        messages: state.messages.map(m => 
-          m.id === id ? { ...m, content: '🚫 Mensagem apagada', deletedForEveryone: true } : m
-        )
-      };
-    }
+    const isReplyingToThis = state.replyToMessage?.id === id;
+    return {
+      replyToMessage: isReplyingToThis ? null : state.replyToMessage,
+      messages: state.messages.map(m => {
+        if (m.id !== id) return m;
+        
+        if (mode === 'everyone') {
+           return { ...m, content: '🚫 Esta mensagem foi apagada', deletedForEveryone: true, mediaUrl: undefined };
+        } else {
+           return { ...m, deletedForMe: true, mediaUrl: undefined };
+        }
+      })
+    };
   }),
 
   setChannels: (channels) => set({ channels }),

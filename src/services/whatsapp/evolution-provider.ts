@@ -242,6 +242,20 @@ export class EvolutionProvider implements WhatsAppProvider {
   }
 
   /**
+   * Busca a URL da foto de perfil de um contato
+   */
+  async fetchProfilePictureUrl(channel: Channel, recipient: string): Promise<string | null> {
+    const instanceName = this.getInstanceName(channel);
+    const cleanNumber = recipient.replace(/\D/g, '');
+    
+    try {
+      return await evolutionApi.fetchProfilePictureUrl(instanceName, cleanNumber);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
    * Normaliza o payload bruto da Evolution API para um formato padronizado interno.
    */
   private normalizeIncomingEvolutionMessage(payload: any) {

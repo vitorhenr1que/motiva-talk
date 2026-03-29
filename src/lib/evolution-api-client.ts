@@ -232,6 +232,22 @@ class EvolutionApiClient {
 
   // --- Chat Advanced ---
 
+  async fetchProfilePictureUrl(instanceName: string, number: string) {
+    try {
+      console.log(`[EVO_DEBUG] Buscando foto de perfil para ${number} na instância ${instanceName}...`);
+      const response = await this.request<any>(`/chat/fetchProfilePictureUrl/${instanceName}`, {
+        method: 'POST',
+        body: JSON.stringify({ number }),
+      });
+      
+      // A Evolution API pode retornar em diferentes formatos dependendo da versão
+      return response.profilePictureUrl || response.url || response.response?.url || null;
+    } catch (error: any) {
+      console.error(`[EVO_DEBUG] Erro ao buscar foto de perfil:`, error.message);
+      return null;
+    }
+  }
+
   async deleteMessage(instanceName: string, payload: { remoteJid: string; id: string; fromMe: boolean; participant?: string }) {
     return this.request<any>(`/chat/deleteMessageForEveryone/${instanceName}`, {
       method: 'DELETE',

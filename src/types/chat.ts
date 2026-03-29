@@ -2,6 +2,14 @@ export type UserRole = 'ADMIN' | 'SUPERVISOR' | 'AGENT';
 export type ConversationStatus = 'OPEN' | 'IN_PROGRESS' | 'CLOSED';
 export type MessageType = 'TEXT' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'DOCUMENT' | 'CONTACT';
 export type SenderType = 'USER' | 'AGENT' | 'SYSTEM';
+export type FileKind = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'PDF' | 'DOCUMENT' | 'UNKNOWN';
+
+export interface PendingFile {
+  file: File;
+  previewUrl: string;
+  kind: FileKind;
+  duration?: number;
+}
 
 export interface User {
   id: string;
@@ -15,6 +23,8 @@ export interface Contact {
   id: string;
   name: string;
   phone: string;
+  profilePictureUrl?: string;
+  lastProfilePictureFetchAt?: string;
   createdAt: string;
 }
 
@@ -74,6 +84,8 @@ export interface Message {
   fileSize?: number;
   duration?: number;
   thumbnailUrl?: string;
+  deletedForMe?: boolean;
+  deletedForEveryone?: boolean;
   replyToMessage?: {
     id: string;
     content: string;

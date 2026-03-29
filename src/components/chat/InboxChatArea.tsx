@@ -5,7 +5,7 @@ import { useChatStore } from '@/store/useChatStore';
 import { 
   MoreVertical, Search, MessageCircle, FileText, Reply, Trash2, 
   Loader2, Check, Pin, UserPlus, CheckCircle2, XCircle, X, ChevronDown, UserPlus as ContactIcon, 
-  Mic, Play, Pause, Volume2
+  Mic, Play, Pause, Volume2, Eye
 } from 'lucide-react';
 import { TagSelector } from './TagSelector';
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
@@ -13,6 +13,8 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { formatPhone } from '@/lib/utils';
 import { formatDateDivider, formatTimeBahia, parseSafeDate } from '@/lib/date-utils';
+import { useChatFileDrop } from '@/hooks/useChatFileDrop';
+import { Send } from 'lucide-react';
 
 const CustomAudioPlayer = ({ url, duration, fileName, mimeType, mediaUrl }: { url: string, duration?: number, fileName?: string, mimeType?: string, mediaUrl?: string }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -117,7 +119,6 @@ const CustomAudioPlayer = ({ url, duration, fileName, mimeType, mediaUrl }: { ur
             crossOrigin="anonymous"
             className="hidden" 
           >
-            {/* Várias tentativas de fonte para maior compatibilidade */}
             {mimeType && <source src={url} type={mimeType} />}
             <source src={url} type="audio/ogg" />
             <source src={url} />
@@ -219,6 +220,8 @@ export const ChatWindow = () => {
     isProfileOpen,
     setIsProfileOpen
   } = useChatStore();
+
+  const { isDragging, onDragOver, onDragLeave, onDrop } = useChatFileDrop();
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const [deleteMenuId, setDeleteMenuId] = useState<string | null>(null);
@@ -232,17 +235,14 @@ export const ChatWindow = () => {
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [lightboxMedia, setLightboxMedia] = useState<{ url: string, type: 'IMAGE' | 'VIDEO', caption?: string } | null>(null);
+  const [lightboxMedia, setLightboxMedia] = useState<{ url: string, type: 'IMAGE' | 'VIDEO' | 'PDF', fileName?: string, caption?: string } | null>(null);
 
   const scrollToAndHighlight = (id: string) => {
     const element = document.getElementById(`msg-${id}`);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setHighlightedMessageId(id);
-      console.log(`[SEARCH_DEBUG] Scroll executado para msg: ${id}`);
       setTimeout(() => setHighlightedMessageId(null), 3000);
-    } else {
-      console.warn(`[SEARCH_DEBUG] Elemento msg-${id} não encontrado no DOM.`);
     }
   };
 
@@ -251,16 +251,11 @@ export const ChatWindow = () => {
     setSearchQuery('');
     setSearchResults([]);
     
-    console.log(`[SEARCH_DEBUG] Navegando para id: ${msgId}`);
-
     const existingMsg = messages.find(m => m.id === msgId);
     
     if (existingMsg) {
-       console.log(`[SEARCH_DEBUG] Mensagem já está carregada na lista.`);
        setTimeout(() => scrollToAndHighlight(msgId), 100);
     } else {
-       console.log(`[SEARCH_DEBUG] Mensagem não carregada. Buscando contexto...`);
-       // Buscamos um pouco após a data da msg para garantir que ela venha no lote DESC
        const targetDate = new Date(createdAt);
        targetDate.setSeconds(targetDate.getSeconds() + 2);
        const beforeCursor = targetDate.toISOString();
@@ -275,7 +270,6 @@ export const ChatWindow = () => {
               nextCursor: data.nextCursor,
               hasMore: data.hasMore
             });
-            console.log(`[SEARCH_DEBUG] Contexto carregado. Tentando scroll...`);
             setTimeout(() => scrollToAndHighlight(msgId), 300);
          }
        } catch (e) {
@@ -303,13 +297,11 @@ export const ChatWindow = () => {
     }
     
     setIsSearching(true);
-    console.log(`[UI_SEARCH] Termo digitado: ${query}`);
     try {
       const resp = await fetch(`/api/messages/search?conversationId=${activeConversation.id}&query=${encodeURIComponent(query)}`);
       if (resp.ok) {
         const data = await resp.json();
         setSearchResults(data.data || []);
-        console.log(`[UI_SEARCH] Busca disparada | Resultados: ${data.data?.length || 0}`);
       }
     } catch (e) {
       console.error('Erro na busca:', e);
@@ -357,7 +349,6 @@ export const ChatWindow = () => {
 
     setLoadingMore(true);
     try {
-      console.log(`[PAGINATION_DEBUG] [UI] Carregando mensagens antes de: ${nextCursor}`);
       const encodedCursor = encodeURIComponent(nextCursor);
       const resp = await fetch(`/api/messages?conversationId=${activeConversation.id}&limit=20&before=${encodedCursor}`);
       if (resp.ok) {
@@ -368,15 +359,11 @@ export const ChatWindow = () => {
           hasMore: data.hasMore
         });
         
-        // Ajuste de Scroll para evitar salto (Jitter Prevention)
         setTimeout(() => {
           if (scrollContainer) {
             const newScrollHeight = scrollContainer.scrollHeight;
             const heightDiff = newScrollHeight - oldScrollHeight;
             const finalScrollTop = oldScrollTop + heightDiff;
-            
-            console.log(`[SCROLL_DEBUG] Ajustando: OldH: ${oldScrollHeight} | NewH: ${newScrollHeight} | Diff: ${heightDiff} | Scroll: ${finalScrollTop}`);
-            
             scrollContainer.scrollTop = finalScrollTop;
           }
         }, 10);
@@ -389,17 +376,11 @@ export const ChatWindow = () => {
   };
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    // Se estiver carregando inicialmente ou rolando para baixo, ignoramos a paginação reverso
     if (loadingMessages || loadingMore) return;
-    
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-
-    // Paginação para cima (reverso)
     if (scrollTop < 100) {
       handleLoadMore();
     }
-
-    // Mostrar ou esconder botão de scroll para baixo (distância do fundo > 300px)
     const distanceToBottom = scrollHeight - scrollTop - clientHeight;
     setShowScrollBottom(distanceToBottom > 300);
   };
@@ -478,7 +459,6 @@ export const ChatWindow = () => {
     const fetchMessages = async () => {
       setLoadingMessages(true);
       try {
-        console.log(`[PAGINATION_DEBUG] [UI] Carregamento inicial da conversa: ${activeConversation.id}`);
         const resp = await fetch(`/api/messages?conversationId=${activeConversation.id}&limit=20`);
         if (resp.ok) {
           const data = await resp.json();
@@ -496,6 +476,42 @@ export const ChatWindow = () => {
     };
     fetchMessages();
   }, [activeConversation?.id, setMessages, setLoadingMessages]);
+
+  // Efeito para disparar a busca da foto de perfil (estratégia de cache)
+  useEffect(() => {
+    if (!activeConversation?.contact?.id || !activeConversation?.channelId) return;
+
+    const contact = activeConversation.contact;
+    const lastFetch = contact.lastProfilePictureFetchAt ? new Date(contact.lastProfilePictureFetchAt) : null;
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // Só dispara se não tiver URL ou se o cache expirou (> 24h)
+    if (!contact.profilePictureUrl || !lastFetch || lastFetch < twentyFourHoursAgo) {
+      const triggerFetch = async () => {
+        try {
+          console.log(`[UI_DEBUG] Disparando busca de foto para: ${contact.phone}`);
+          const res = await fetch(`/api/contacts/${contact.id}/profile-picture`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ channelId: activeConversation.channelId })
+          });
+          const data = await res.json();
+          if (data.success && data.profilePictureUrl) {
+            updateConversationLocally(activeConversation.id, {
+               contact: { 
+                 ...contact, 
+                 profilePictureUrl: data.profilePictureUrl, 
+                 lastProfilePictureFetchAt: new Date().toISOString() 
+               }
+            });
+          }
+        } catch (e) {
+          console.error('[PROFILE_PICTURE_TRIGGER] Falha:', e);
+        }
+      };
+      triggerFetch();
+    }
+  }, [activeConversation?.id, activeConversation?.contact?.id, activeConversation?.channelId]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -544,7 +560,27 @@ export const ChatWindow = () => {
   const isClosed = activeConversation.status === 'CLOSED';
 
   return (
-    <div className="flex flex-1 flex-col bg-[#efeae2] relative overflow-hidden">
+    <div 
+      className="flex flex-1 flex-col bg-[#efeae2] relative overflow-hidden"
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {/* Drag & Drop Global Overlay */}
+      {isDragging && (
+        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-blue-600/10 backdrop-blur-md pointer-events-none animate-in fade-in duration-300">
+           <div className="bg-white p-12 rounded-[48px] shadow-2xl border-4 border-dashed border-blue-400 flex flex-col items-center gap-6 animate-in zoom-in-95 duration-300">
+              <div className="h-24 w-24 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-xl shadow-blue-200">
+                <Send size={48} className="-rotate-12" />
+              </div>
+              <div className="text-center">
+                <p className="text-blue-600 font-black uppercase tracking-[0.3em] text-xl">Solte para Enviar</p>
+                <p className="text-slate-400 font-bold uppercase tracking-widest text-xs mt-2">Imagem • Vídeo • Áudio • PDF</p>
+              </div>
+           </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex h-16 items-center justify-between border-b bg-white px-6 shadow-sm z-30 shrink-0 relative">
         {isSearchOpen ? (
@@ -570,7 +606,6 @@ export const ChatWindow = () => {
               Cancelar
             </button>
             
-            {/* Resultados da Busca (Dropdown flutuante) */}
             {searchQuery.trim().length >= 2 && (
               <div className="absolute top-14 left-0 right-0 bg-white shadow-2xl rounded-2xl border border-slate-100 max-h-[400px] overflow-y-auto z-50 p-2 animate-in fade-in slide-in-from-top-2">
                 <div className="px-4 py-2 border-b border-slate-50 flex justify-between items-center">
@@ -608,8 +643,12 @@ export const ChatWindow = () => {
           <>
             <div className="flex items-center gap-4 overflow-hidden">
               <div onClick={() => setIsProfileOpen(!isProfileOpen)} className={cn("flex items-center gap-4 cursor-pointer px-2 py-1 rounded-xl transition-all hover:bg-slate-50 group/header-profile shrink-0", isProfileOpen && "bg-slate-50 shadow-inner")}>
-                <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200 shadow-sm overflow-hidden">
-                   <span className="font-bold text-slate-500 uppercase text-lg">{activeConversation.contact?.name?.[0] || '?'}</span>
+                <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200 shadow-sm overflow-hidden text-lg font-bold text-slate-500">
+                   {activeConversation.contact?.profilePictureUrl ? (
+                     <img src={activeConversation.contact.profilePictureUrl} className="h-full w-full object-cover" alt={activeConversation.contact.name} />
+                   ) : (
+                     <span className="uppercase">{activeConversation.contact?.name?.[0] || '?'}</span>
+                   )}
                 </div>
                 <div className="leading-tight">
                   <div className="flex items-center gap-2">
@@ -720,14 +759,22 @@ export const ChatWindow = () => {
                   >
                     <div className={cn("relative max-w-[80%] md:max-w-[70%] rounded-2xl p-1.5 shadow-sm transition-all hover:shadow-md", isSentByUs ? "bg-[#d9fdd3] text-slate-800 rounded-tr-none" : "bg-white text-slate-800 rounded-tl-none border border-slate-100", msg.status === 'sending' && "opacity-60 grayscale-[0.2]")}>
                       <div className="px-2.5 py-1">
-                        {msg.replyToMessage && !isEveryoneDeleted && (
+                        {msg.replyToMessage && !(isEveryoneDeleted || msg.deletedForMe) && (
                           <div className="mb-2 border-l-4 border-blue-400 bg-black/10 p-2 rounded-r-lg text-[11px] opacity-90 cursor-pointer hover:bg-black/20 transition-colors">
                             <span className="block font-bold text-blue-600 mb-0.5">{msg.replyToMessage.senderType === 'USER' ? activeConversation.contact?.name : 'Você'}</span>
                             <span className="block truncate max-w-xs italic text-slate-500">{msg.replyToMessage.content}</span>
                           </div>
                         )}
-                        {isEveryoneDeleted ? (
-                          <div className="flex items-center gap-2 py-0.5 italic text-slate-400 text-[12px] opacity-70"><Trash2 size={12} className="opacity-40" /><span>Esta mensagem foi apagada</span></div>
+
+                        {(isEveryoneDeleted || msg.deletedForMe) ? (
+                          <div className="flex items-center gap-2 py-1.5 italic text-slate-400 text-[12px] opacity-80 min-w-[200px]">
+                            <Trash2 size={12} className="opacity-40" />
+                            <span>
+                              {isEveryoneDeleted 
+                                ? "Esta mensagem foi apagada" 
+                                : (isSentByUs ? "Você apagou esta mensagem" : "O usuário apagou esta mensagem")}
+                            </span>
+                          </div>
                         ) : (
                           <>
                             {msg.type === 'TEXT' && <p className="whitespace-pre-wrap leading-relaxed text-[13px]">{formatWhatsappText(msg.content)}</p>}
@@ -786,13 +833,22 @@ export const ChatWindow = () => {
                                </div>
                             )}
                             {msg.type === 'DOCUMENT' && (
-                               <a 
-                                 href={msg.mediaUrl || msg.content} 
-                                 target="_blank" 
-                                 rel="noreferrer" 
-                                 className="flex items-center gap-4 group/doc rounded-xl bg-black/5 p-4 hover:bg-black/10 transition-all border border-black/5 min-w-[200px] max-w-full no-underline"
+                             <div className="flex flex-col gap-2">
+                               <button 
+                                 onClick={() => {
+                                    const isPdf = msg.mimeType?.includes('pdf') || msg.fileName?.toLowerCase().endsWith('.pdf');
+                                    if (isPdf) {
+                                      setLightboxMedia({ url: msg.mediaUrl || msg.content, type: 'PDF', fileName: msg.fileName || 'Documento.pdf' });
+                                    } else {
+                                      window.open(msg.mediaUrl || msg.content, '_blank');
+                                    }
+                                 }}
+                                 className="flex items-center gap-4 group/doc rounded-xl bg-black/5 p-4 hover:bg-slate-100 transition-all border border-black/5 min-w-[240px] max-w-full text-left no-underline w-full"
                                >
-                                 <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg group-hover/doc:scale-105 transition-transform shrink-0">
+                                 <div className={cn(
+                                   "p-3 rounded-2xl text-white shadow-lg group-hover/doc:scale-105 transition-transform shrink-0",
+                                   (msg.mimeType?.includes('pdf') || msg.fileName?.toLowerCase().endsWith('.pdf')) ? "bg-red-500" : "bg-blue-600"
+                                 )}>
                                    <FileText size={24} />
                                  </div>
                                  <div className="flex-1 overflow-hidden">
@@ -800,19 +856,42 @@ export const ChatWindow = () => {
                                    <div className="flex items-center gap-2 mt-1 whitespace-nowrap overflow-hidden">
                                       <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest">{msg.fileSize ? `${(msg.fileSize / 1024 / 1024).toFixed(2)} MB` : (msg.mimeType?.split('/').pop()?.toUpperCase() || msg.metadata?.mimeType?.split('/').pop()?.toUpperCase() || 'ARQUIVO')}</span>
                                       <span className="h-1 w-1 rounded-full bg-slate-300 shrink-0" />
-                                      <span className="text-[9px] font-black uppercase text-blue-600">Baixar</span>
+                                      <span className="text-[9px] font-black uppercase text-blue-600">{(msg.mimeType?.includes('pdf') || msg.fileName?.toLowerCase().endsWith('.pdf')) ? 'Visualizar' : 'Baixar'}</span>
                                    </div>
                                  </div>
-                               </a>
+                               </button>
+                               
+                               {(msg.mimeType?.includes('pdf') || msg.fileName?.toLowerCase().endsWith('.pdf')) && (
+                                  <div 
+                                    onClick={() => setLightboxMedia({ url: msg.mediaUrl || msg.content, type: 'PDF', fileName: msg.fileName || 'Documento.pdf' })}
+                                    className="rounded-xl overflow-hidden border border-black/5 bg-white/40 backdrop-blur-sm cursor-pointer hover:bg-white/60 transition-all relative group/pdf-mini"
+                                  >
+                                     <div className="aspect-[3/4] max-h-[140px] w-full flex items-center justify-center bg-slate-100/50">
+                                        <iframe 
+                                          src={`${msg.mediaUrl}#view=FitH&toolbar=0&navpanes=0&scrollbar=0`} 
+                                          className="w-full h-full border-none pointer-events-none scale-100"
+                                          title="Mini PDF Preview"
+                                        />
+                                        <div className="absolute inset-0 bg-transparent" />
+                                     </div>
+                                     <div className="absolute inset-0 bg-black/0 group-hover/pdf-mini:bg-black/5 flex items-center justify-center transition-all">
+                                        <div className="bg-white/90 p-2 rounded-full shadow-lg opacity-0 group-hover/pdf-mini:opacity-100 transition-all transform scale-90 group-hover/pdf-mini:scale-100">
+                                           <Eye size={18} className="text-blue-600" />
+                                        </div>
+                                     </div>
+                                  </div>
+                               )}
+                             </div>
                             )}
                           </>
                         )}
                         <div className="mt-1 flex items-center justify-end gap-1.5">
                           <span className="text-[9px] text-slate-400 font-bold opacity-60">{formatTimeBahia(msg.createdAt)}</span>
-                          {isSentByUs && !isEveryoneDeleted && <Check size={10} className={cn("opacity-60", msg.status === 'sending' ? "animate-pulse" : "text-blue-500")} />}
+                          {isSentByUs && !(isEveryoneDeleted || msg.deletedForMe) && <Check size={10} className={cn("opacity-60", msg.status === 'sending' ? "animate-pulse" : "text-blue-500")} />}
                         </div>
                       </div>
-                      {!isEveryoneDeleted && !isClosed && (
+
+                      {!(isEveryoneDeleted || msg.deletedForMe) && !isClosed && (
                         <div className={cn(
                           "absolute top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all z-[30]", 
                           isSentByUs ? "right-full mr-2" : "left-full ml-2"
@@ -841,7 +920,9 @@ export const ChatWindow = () => {
                                   isSentByUs ? "right-0" : "left-0"
                                 )}>
                                   <button onClick={() => handleDeleteMessage(msg.id, 'me')} className="w-full text-left px-4 py-2.5 text-[11px] font-black uppercase tracking-tight text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-2 transition-colors">Apagar para mim</button>
-                                  <button onClick={() => handleDeleteMessage(msg.id, 'everyone')} className="w-full text-left px-4 py-2.5 text-[11px] font-black uppercase tracking-tight text-red-600 hover:bg-red-50 rounded-xl flex items-center gap-2 transition-colors">Apagar para todos</button>
+                                  {msg.senderType === 'AGENT' && (
+                                    <button onClick={() => handleDeleteMessage(msg.id, 'everyone')} className="w-full text-left px-4 py-2.5 text-[11px] font-black uppercase tracking-tight text-red-600 hover:bg-red-50 rounded-xl flex items-center gap-2 transition-colors">Apagar para todos</button>
+                                  )}
                                 </div>
                               )}
                            </div>
@@ -856,7 +937,7 @@ export const ChatWindow = () => {
         )}
       </div>
 
-      {/* Lightbox Modal (Image & Video) */}
+      {/* Lightbox Modal (Image & Video & PDF) */}
       {lightboxMedia && (
         <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 md:p-12 animate-in fade-in duration-300">
           <button 
@@ -873,13 +954,28 @@ export const ChatWindow = () => {
                 alt="Ampliada" 
                 className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-500"
               />
-            ) : (
+            ) : lightboxMedia.type === 'VIDEO' ? (
               <video 
                 src={lightboxMedia.url} 
                 controls 
                 autoPlay
                 className="max-w-full max-h-[80vh] rounded-xl shadow-2xl animate-in zoom-in-95 duration-500 bg-black"
               />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center animate-in zoom-in-95 duration-500">
+                <div className="w-full max-w-4xl h-[80vh] bg-white rounded-3xl overflow-hidden shadow-2xl border-4 border-white/5 relative group/pdf-full">
+                  <iframe 
+                    src={lightboxMedia.url} 
+                    className="w-full h-full border-none"
+                    title="PDF Viewer"
+                  />
+                </div>
+                {lightboxMedia.fileName && (
+                   <div className="mt-4 px-6 py-2 bg-white/10 backdrop-blur-sm rounded-full border border-white/20 text-white text-[10px] font-black uppercase tracking-widest">
+                     {lightboxMedia.fileName}
+                   </div>
+                )}
+              </div>
             )}
             
             {lightboxMedia.caption && (

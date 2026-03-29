@@ -2,8 +2,23 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateId } from '@/lib/utils'
 
 export class ContactRepository {
-  static async findMany(where?: any) {
+  static async findMany(where?: { OR: any[] } | any) {
     let query = supabaseAdmin.from('Contact').select('*').order('name', { ascending: true })
+    
+    // Suporte básico para o filtro OR usado no service (name or phone)
+    if (where?.OR) {
+      const nameFilter = where.OR.find((f: any) => f.name)?.name?.contains;
+      const phoneFilter = where.OR.find((f: any) => f.phone)?.phone?.contains;
+      
+      if (nameFilter && phoneFilter) {
+        query = query.or(`name.ilike.%${nameFilter}%,phone.ilike.%${phoneFilter}%`)
+      } else if (nameFilter) {
+        query = query.ilike('name', `%${nameFilter}%`)
+      } else if (phoneFilter) {
+        query = query.ilike('phone', `%${phoneFilter}%`)
+      }
+    }
+    
     const { data, error } = await query
     if (error) throw error
     return data

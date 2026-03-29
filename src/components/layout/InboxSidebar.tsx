@@ -149,7 +149,11 @@ export const Sidebar = () => {
                 )}
               >
                 <div className="relative h-12 w-12 shrink-0 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 shadow-sm transition-transform group-hover:scale-105 overflow-hidden border border-slate-100">
-                  {conv.contact.name[0]}
+                  {conv.contact.profilePictureUrl ? (
+                    <img src={conv.contact.profilePictureUrl} className="h-full w-full object-cover" alt={conv.contact.name} />
+                  ) : (
+                    conv.contact.name[0]
+                  )}
                 </div>
                 
                 <div className="flex flex-1 flex-col overflow-hidden">
