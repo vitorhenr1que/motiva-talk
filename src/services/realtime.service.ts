@@ -1,18 +1,36 @@
+import { supabaseAdmin } from '@/lib/supabase-admin';
+
 /**
  * Generic Realtime Service for broadcasting events to the frontend.
- * Placeholder for future implementation with Pusher, Socket.io, or Supabase Realtime.
+ * Uses Supabase Realtime Broadcast for instant updates.
  */
 export class RealtimeService {
-  static async publish(channel: string, event: string, data: any) {
-    console.log(`[REALTIME_BROADCAST] Channel: ${channel}, Event: ${event}`, data);
+  static async publish(channelName: string, event: string, payload: any) {
+    console.log(`[REALTIME_BROADCAST] Channel: ${channelName}, Event: ${event}`);
     
-    // In a real implementation, you would trigger your websocket provider here:
-    // Pusher.trigger(channel, event, data);
+    try {
+      const channel = supabaseAdmin.channel(channelName);
+      await channel.subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.send({
+            type: 'broadcast',
+            event,
+            payload
+          });
+          // Cleanup
+          supabaseAdmin.removeChannel(channel);
+        }
+      });
+    } catch (err) {
+      console.error(`[REALTIME_ERROR] Failed to publish on ${channelName}:`, err);
+    }
   }
 
   static async notifyNewMessage(conversationId: string, message: any) {
-    await this.publish(`conversation-${conversationId}`, 'NEW_MESSAGE', message);
-    await this.publish('inbox', 'INBOX_UPDATE', { conversationId });
+    // 1. Notificar a conversa específica
+    await this.publish(`conversation:${conversationId}`, 'message:new', { message });
+    // 2. Notificar o inbox geral (sidebar)
+    await this.publish('inbox:all', 'inbox:update', { conversationId, message });
   }
 
   static async notifyConversationUpdate(conversationId: string) {

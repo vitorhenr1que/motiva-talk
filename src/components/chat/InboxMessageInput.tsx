@@ -191,18 +191,17 @@ export const MessageInput = () => {
     const previewUrl = URL.createObjectURL(file);
     
     // Extração de duração para Áudio e Vídeo
-    let duration = 0;
     if (type === 'AUDIO' || type === 'VIDEO') {
       const media = type === 'AUDIO' ? new Audio(previewUrl) : document.createElement('video');
       media.src = previewUrl;
       media.onloadedmetadata = () => {
-        duration = Math.round(media.duration);
-        setPendingFile({ file, previewUrl, type, duration });
+        const roundedDuration = Math.round(media.duration);
+        setPendingFile(prev => prev ? { ...prev, duration: roundedDuration } : null);
+        console.log(`[MEDIA_DEBUG] Duração extraída: ${roundedDuration}s`);
       };
-    } else {
-      setPendingFile({ file, previewUrl, type });
     }
-
+    
+    setPendingFile({ file, previewUrl, type, duration: 0 });
     setMediaCaption('');
     e.target.value = ''; // Reset input so same file can be selected again if needed
   };

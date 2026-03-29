@@ -31,10 +31,26 @@ const CustomAudioPlayer = ({ url, duration, fileName }: { url: string, duration?
     setIsPlaying(!isPlaying);
   };
 
+  const [hasError, setHasError] = useState(false);
+
+  const formatTimeText = (time: number) => {
+    if (isNaN(time) || time === Infinity || time < 0) return '0:00';
+    const mins = Math.floor(time / 60);
+    const secs = Math.floor(time % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const onLoadedMetadata = () => {
-    if (audioRef.current && !totalDuration) {
+    if (audioRef.current) {
       setTotalDuration(audioRef.current.duration);
+      setHasError(false);
     }
+  };
+
+  const handleError = () => {
+    console.error("Audio Load Error:", url);
+    setHasError(true);
+    setIsPlaying(false);
   };
 
   const onTimeUpdate = () => {
@@ -50,18 +66,11 @@ const CustomAudioPlayer = ({ url, duration, fileName }: { url: string, duration?
   };
 
   const handleProgressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!audioRef.current) return;
+    if (!audioRef.current || hasError) return;
     const value = parseFloat(e.target.value);
     const newTime = (value / 100) * audioRef.current.duration;
     audioRef.current.currentTime = newTime;
     setProgress(value);
-  };
-
-  const formatTimeText = (time: number) => {
-    if (isNaN(time) || time === Infinity || time < 0) return '0:00';
-    const mins = Math.floor(time / 60);
-    const secs = Math.floor(time % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -75,7 +84,10 @@ const CustomAudioPlayer = ({ url, duration, fileName }: { url: string, duration?
         </div>
       )}
       
-      <div className="flex items-center gap-3 bg-white/40 dark:bg-slate-800/40 backdrop-blur-sm p-3 rounded-2xl border border-slate-200/60 dark:border-white/10 shadow-sm group/audio relative overflow-hidden transition-all hover:bg-white/60 dark:hover:bg-slate-800/60">
+      <div className={twMerge(
+        "flex items-center gap-3 bg-white/40 dark:bg-slate-800/40 backdrop-blur-sm p-3 rounded-2xl border border-slate-200/60 dark:border-white/10 shadow-sm group/audio relative overflow-hidden transition-all hover:bg-white/60 dark:hover:bg-slate-800/60",
+        hasError && "border-red-200/60 bg-red-50/40"
+      )}>
         {url && url.startsWith('http') && (
           <audio 
             ref={audioRef} 
@@ -83,16 +95,20 @@ const CustomAudioPlayer = ({ url, duration, fileName }: { url: string, duration?
             onLoadedMetadata={onLoadedMetadata}
             onTimeUpdate={onTimeUpdate} 
             onEnded={onEnded} 
-            onError={(e) => console.error("Audio Load Error:", url, e)}
+            onError={handleError}
             className="hidden" 
           />
         )}
         
         <button 
-          onClick={togglePlay}
-          className="h-10 w-10 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md active:scale-90 transition-all hover:bg-blue-700 shrink-0"
+          onClick={hasError ? undefined : togglePlay}
+          disabled={hasError}
+          className={twMerge(
+            "h-10 w-10 rounded-full flex items-center justify-center shadow-md active:scale-90 transition-all shrink-0",
+            hasError ? "bg-red-100 text-red-500 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"
+          )}
         >
-          {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
+          {hasError ? <X size={18} /> : (isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />)}
         </button>
 
         <div className="flex-1 flex flex-col gap-1 pr-1">
@@ -103,23 +119,32 @@ const CustomAudioPlayer = ({ url, duration, fileName }: { url: string, duration?
             max="100"
             step="0.1"
             onChange={handleProgressChange}
-            className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600 hover:accent-blue-700 transition-all"
+            disabled={hasError}
+            className={twMerge(
+              "w-full h-1 rounded-lg appearance-none cursor-pointer transition-all",
+              hasError ? "bg-red-200 accent-red-400" : "bg-slate-200 dark:bg-slate-700 accent-blue-600 hover:accent-blue-700"
+            )}
           />
-          <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+          <div className={twMerge(
+            "flex justify-between items-center text-[10px] font-black uppercase tracking-widest",
+            hasError ? "text-red-400" : "text-slate-400"
+          )}>
             <span className={isPlaying ? "text-blue-600 animate-pulse font-black" : ""}>
-              {formatTimeText(currentTime)}
+               {hasError ? "Falha no áudio" : formatTimeText(currentTime)}
             </span>
-            <span>{totalDuration ? formatTimeText(totalDuration) : '--:--'}</span>
+            <span>{hasError ? "!" : (totalDuration ? formatTimeText(totalDuration) : '--:--')}</span>
           </div>
         </div>
 
-        <div className="flex flex-col items-center gap-1 shrink-0 px-1">
-          <div className="relative">
-            <Mic size={16} className={isPlaying ? "text-blue-600 animate-bounce" : "text-slate-300"} />
-            {isPlaying && <div className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500 border-2 border-white animate-pulse" />}
+        {!hasError && (
+          <div className="flex flex-col items-center gap-1 shrink-0 px-1">
+            <div className="relative">
+              <Mic size={16} className={isPlaying ? "text-blue-600 animate-bounce" : "text-slate-300"} />
+              {isPlaying && <div className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500 border-2 border-white animate-pulse" />}
+            </div>
+            <div className="text-[8px] font-black text-blue-600/40 tracking-tighter uppercase">Voz</div>
           </div>
-          <div className="text-[8px] font-black text-blue-600/40 tracking-tighter uppercase">Voz</div>
-        </div>
+        )}
       </div>
     </div>
   );

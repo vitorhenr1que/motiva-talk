@@ -28,22 +28,39 @@ export class WebhookIngestionService {
     }
 
     // --- TRATAMENTO DE MÍDIA: Download do WhatsApp -> Upload pro Nosso Storage (Supabase) ---
-    if (event.mediaUrl && !event.mediaUrl.includes('supabase.co')) {
+    if ((event.mediaUrl || event.base64) && !event.mediaUrl?.includes('supabase.co')) {
       try {
-        console.log(`[INGEST] Detectada mídia externa (${messageType}): ${event.mediaUrl}. Transferindo para o Supabase Storage...`);
-        const { generateId } = await import('@/lib/utils');
+        const { generateId: genId } = await import('@/lib/utils');
+        let buffer: ArrayBuffer;
+        let mimeType = event.mimeType || 'application/octet-stream';
+
+        if (event.base64) {
+          console.log(`[INGEST] Usando Base64 para mídia (${messageType})...`);
+          const base64Data = event.base64.split(',').pop() || event.base64;
+          const binaryBuffer = Buffer.from(base64Data, 'base64');
+          buffer = binaryBuffer.buffer.slice(binaryBuffer.byteOffset, binaryBuffer.byteOffset + binaryBuffer.byteLength) as ArrayBuffer;
+        } else if (event.mediaUrl) {
+          console.log(`[INGEST] Baixando mídia externa via URL (${messageType}): ${event.mediaUrl}...`);
+          
+          const fetchHeaders: any = {};
+          // Se o URL for do nosso servidor Evolution, precisamos da API Key
+          if (event.mediaUrl.includes('evolution.fazag.edu.br')) {
+            fetchHeaders['apikey'] = process.env.EVOLUTION_API_KEY;
+          }
+
+          const response = await fetch(event.mediaUrl, { headers: fetchHeaders });
+          if (!response.ok) throw new Error(`Falha no download da mídia: ${response.statusText}`);
+          buffer = await response.arrayBuffer();
+          mimeType = response.headers.get('content-type') || mimeType;
+        } else {
+          throw new Error('Nenhuma fonte de mídia (URL ou Base64) disponível.');
+        }
         
-        // 1. Download do arquivo
-        const response = await fetch(event.mediaUrl);
-        if (!response.ok) throw new Error(`Falha no download da mídia: ${response.statusText}`);
-        
-        const buffer = await response.arrayBuffer();
-        const mimeType = event.mimeType || response.headers.get('content-type') || 'application/octet-stream';
         const extension = mimeType.split('/')[1]?.split(';')[0] || 'bin';
-        const fileName = `${generateId()}.${extension}`;
+        const fileName = `${genId()}.${extension}`;
         const filePath = `received/${channel.id}/${fileName}`;
         
-        // 2. Upload para o Supabase Storage (Bucket: chat-media)
+        // Upload para o Supabase Storage (Bucket: chat-media)
         const { error: uploadError } = await supabaseAdmin.storage
           .from('chat-media')
           .upload(filePath, buffer, {
@@ -54,7 +71,7 @@ export class WebhookIngestionService {
           
         if (uploadError) throw uploadError;
         
-        // 3. Obter URL pública
+        // Obter URL pública
         const { data: { publicUrl } } = supabaseAdmin.storage
           .from('chat-media')
           .getPublicUrl(filePath);
@@ -62,8 +79,8 @@ export class WebhookIngestionService {
         console.log(`[INGEST] Transferência concluída. Novo URL: ${publicUrl}`);
         event.mediaUrl = publicUrl;
       } catch (err) {
-        console.error(`[INGEST] Erro crítico ao transferir mídia externa:`, err);
-        // Mantemos o URL original se falhar, na esperança de que ainda funcione temporariamente
+        console.error(`[INGEST] Erro (não impeditivo) ao transferir mídia para storage permanente:`, err);
+        // O fluxo continua - mantemos o URL original se a persistência falhar
       }
     }
     // --------------------------------------------------------------------------------------
@@ -85,14 +102,14 @@ export class WebhookIngestionService {
       const { ConversationRepository } = await import('@/repositories/conversationRepository');
       const { generateId } = await import('@/lib/utils');
 
-      console.log(`[INGEST] 1. Canal encontrado: ${channel.name} (${channel.id})`);
+      console.log(`[INGEST] 1. Canal validado e pronto: ${channel.name} (${channel.id})`);
 
       // 2. Extrair metadados normalizados
       const isFromMe = !!metadata?.fromMe;
       const senderType = isFromMe ? 'AGENT' : 'USER';
       const externalId = metadata?.externalId;
-
-      // 3. Deduplicação por externalId
+      
+      console.log(`[INGEST] Processando mensagem ${externalId || 'sem ID'} do ${senderType}...`);
       if (externalId) {
         const { data: existing } = await supabaseAdmin
           .from('Message')
@@ -136,6 +153,8 @@ export class WebhookIngestionService {
       }
 
       // 6. Salvar Mensagem
+      console.log(`[INGEST] Salvando no banco: Conv:${conversation.id} | Tipo:${messageType || 'TEXT'} | ExternalId:${externalId || 'NONE'}`);
+      
       const { data: newMessage, error: msgError } = await supabaseAdmin
         .from('Message')
         .insert([{
@@ -143,7 +162,7 @@ export class WebhookIngestionService {
           conversationId: conversation.id,
           channelId: channel.id,
           senderType,
-          content: content,
+          content: content || '',
           type: messageType || 'TEXT',
           externalMessageId: externalId,
           replyToMessageId: replyToMessageId,
@@ -158,27 +177,30 @@ export class WebhookIngestionService {
         .select('*, replyTo:replyToMessageId(*)')
         .single()
 
-      if (msgError) throw msgError
-      console.log(`[INGEST] 4. Mensagem salva com sucesso! (ID: ${newMessage.id})`);
+      if (msgError) {
+        console.error(`[INGEST] ERRO ao inserir mensagem:`, msgError);
+        throw msgError;
+      }
+      console.log(`[INGEST] Mensagem persistida! ID: ${newMessage.id} | Media: ${!!newMessage.mediaUrl}`);
 
       // 7. Atualizar lastMessageAt e unreadCount da Conversa
       const updateData: any = { 
         lastMessageAt: new Date(event.timestamp).toISOString() 
       };
       
-      // Incrementa não lidas se a mensagem for do usuário e não estivermos com a conversa aberta no momento
-      // (A lógica de resetar pra 0 ao ler será feita no frontend/API de leitura)
       if (senderType === 'USER') {
         const currentUnread = conversation.unreadCount || 0;
         updateData.unreadCount = currentUnread + 1;
-        console.log(`[INGEST] Incrementando não lidas para conversa ${conversation.id}: ${currentUnread} -> ${updateData.unreadCount}`);
+        console.log(`[INGEST] Novo unreadCount: ${updateData.unreadCount}`);
       }
       
       await ConversationRepository.update(conversation.id, updateData);
 
       // 8. Notificação em Tempo Real
       const { RealtimeService } = await import('@/services/realtime.service');
+      console.log(`[INGEST] Disparando Realtime para conversa ${conversation.id}...`);
       await RealtimeService.notifyNewMessage(conversation.id, newMessage);
+      console.log(`[INGEST] Fluxo concluído com sucesso para ${newMessage.id}.`);
 
       return { conversation, message: newMessage };
 

@@ -285,7 +285,8 @@ export class EvolutionProvider implements WhatsAppProvider {
       mimeType?: string, 
       fileSize?: number, 
       duration?: number,
-      thumbnailUrl?: string 
+      thumbnailUrl?: string,
+      base64?: string 
     } = {};
 
     const inner = message.message || message;
@@ -296,7 +297,8 @@ export class EvolutionProvider implements WhatsAppProvider {
         mediaUrl: inner.imageMessage.url,
         mimeType: inner.imageMessage.mimetype,
         fileSize: inner.imageMessage.fileLength,
-        thumbnailUrl: inner.imageMessage.jpegThumbnail ? `data:image/jpeg;base64,${inner.imageMessage.jpegThumbnail}` : undefined
+        thumbnailUrl: inner.imageMessage.jpegThumbnail ? `data:image/jpeg;base64,${inner.imageMessage.jpegThumbnail}` : undefined,
+        base64: inner.imageMessage.base64
       };
     } else if (inner.videoMessage) {
       type = 'VIDEO';
@@ -305,7 +307,8 @@ export class EvolutionProvider implements WhatsAppProvider {
         mimeType: inner.videoMessage.mimetype,
         fileSize: inner.videoMessage.fileLength,
         duration: inner.videoMessage.seconds,
-        thumbnailUrl: inner.videoMessage.jpegThumbnail ? `data:image/jpeg;base64,${inner.videoMessage.jpegThumbnail}` : undefined
+        thumbnailUrl: inner.videoMessage.jpegThumbnail ? `data:image/jpeg;base64,${inner.videoMessage.jpegThumbnail}` : undefined,
+        base64: inner.videoMessage.base64
       };
     } else if (inner.audioMessage) {
       type = 'AUDIO';
@@ -313,16 +316,18 @@ export class EvolutionProvider implements WhatsAppProvider {
         mediaUrl: inner.audioMessage.url,
         mimeType: inner.audioMessage.mimetype,
         fileSize: inner.audioMessage.fileLength,
-        duration: inner.audioMessage.seconds
+        duration: inner.audioMessage.seconds,
+        base64: inner.audioMessage.base64
       };
-      console.log(`[EVO_WEBHOOK] Áudio detectado! URL: ${mediaFields.mediaUrl}, Duração: ${mediaFields.duration}s`);
+      console.log(`[EVO_WEBHOOK] Áudio detectado! Base64: ${!!mediaFields.base64}, Duração: ${mediaFields.duration}s`);
     } else if (inner.documentMessage) {
       type = 'DOCUMENT';
       mediaFields = {
         mediaUrl: inner.documentMessage.url,
         fileName: inner.documentMessage.fileName || 'arquivo.pdf',
         mimeType: inner.documentMessage.mimetype,
-        fileSize: inner.documentMessage.fileLength
+        fileSize: inner.documentMessage.fileLength,
+        base64: inner.documentMessage.base64
       };
     } else if (inner.contactMessage || inner.contactsArrayMessage) {
       type = 'CONTACT';

@@ -65,7 +65,8 @@ export class MessageService {
       fileName,
       mimeType,
       fileSize,
-      thumbnailUrl
+      thumbnailUrl,
+      duration
     } = data
     
     let externalMessageId: string | undefined = data.externalMessageId
@@ -105,7 +106,8 @@ export class MessageService {
             mediaUrl: mediaUrl || content, // content pode ser a URL se for mídia
             fileName,
             mimeType,
-            fileSize
+            fileSize,
+            duration
           }
         )
 
@@ -136,6 +138,7 @@ export class MessageService {
       mimeType,
       fileSize,
       thumbnailUrl,
+      duration,
       createdAt: new Date().toISOString()
     })
 
@@ -146,6 +149,9 @@ export class MessageService {
         unreadCount: 0 
       })
     }
+
+    const { RealtimeService } = await import('@/services/realtime.service');
+    await RealtimeService.notifyNewMessage(conversationId, newMessage);
 
     return newMessage
   }

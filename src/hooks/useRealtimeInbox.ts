@@ -61,12 +61,46 @@ export const useRealtimeInbox = () => {
   }, [selectedChannelId]);
 
   /**
-   * SUBSCRIPTION: MESSAGES (Listen to ALL messages for the selected channel)
+   * SUBSCRIPTION: BROADCAST (Direct messages and inbox updates)
+   */
+  useEffect(() => {
+    // 1. Escuta Global do Inbox (para atualizar a ordem lateral e previews)
+    const inboxChannel = supabase
+      .channel('inbox:all')
+      .on('broadcast', { event: 'inbox:update' }, (payload) => {
+        console.log('[REALTIME_BROADCAST] Inbox update received:', payload.payload);
+        // Recarregar lista para garantir ordem e metadados atualizados
+        if (selectedChannelId) refreshConversations(selectedChannelId);
+      })
+      .subscribe();
+
+    // 2. Escuta da Conversa Ativa (para adicionar mensagem na tela instantaneamente)
+    let convChannel: any = null;
+    if (activeConversation?.id) {
+      console.log(`[REALTIME_BROADCAST] Subscribed to active conversation: ${activeConversation.id}`);
+      convChannel = supabase
+        .channel(`conversation:${activeConversation.id}`)
+        .on('broadcast', { event: 'message:new' }, (payload) => {
+          const { message } = payload.payload;
+          console.log('[REALTIME_BROADCAST] New message received for active chat:', message.id);
+          addMessage(message);
+        })
+        .subscribe();
+    }
+
+    return () => {
+      supabase.removeChannel(inboxChannel);
+      if (convChannel) supabase.removeChannel(convChannel);
+    };
+  }, [selectedChannelId, activeConversation?.id, addMessage]);
+
+  /**
+   * SUBSCRIPTION: MESSAGES (Listen to ALL messages for the selected channel - Postgres Changes)
    */
   useEffect(() => {
     if (!selectedChannelId) return;
 
-    console.log(`[REALTIME_SUB] Iniciando escuta de Mensagens para o CANAL: ${selectedChannelId}`);
+    console.log(`[REALTIME_SUB] Iniciando escuta de Mensagens (DB) para o CANAL: ${selectedChannelId}`);
 
     const channel = supabase
       .channel(`public:Message:channelId=eq.${selectedChannelId}`)
@@ -80,25 +114,17 @@ export const useRealtimeInbox = () => {
         },
         (payload) => {
           const newMessage = payload.new as Message;
-          console.log(`[REALTIME_EVENT] Nova mensagem no canal ${selectedChannelId}:`, newMessage.content.substring(0, 20) + '...');
+          console.log(`[REALTIME_DB] Nova mensagem via DB insert:`, newMessage.id);
           
-          // 1. Adicionar no chat se for a conversa atual
-          if (activeConversation?.id === newMessage.conversationId) {
-             addMessage(newMessage); 
-          } else {
-             // 2. Se não for a atual, ainda chamamos addMessage para atualizar a LISTA LATERAL (preview/unread)
-             // O addMessage já tem a lógica de não duplicar se receber de novo pela subscription da conversa
-             addMessage(newMessage);
-          }
+          // O addMessage já tem proteção contra duplicatas, então podemos chamar sem medo.
+          // Isso serve como backup (o broadcast é mais rápido, o DB é a verdade final)
+          addMessage(newMessage); 
         }
       )
-      .subscribe((status) => {
-        console.log(`[REALTIME_STATUS] Mensagens Canal Subscription Status: ${status}`);
-      });
+      .subscribe();
 
     return () => {
-      console.log(`[REALTIME_SUB] Encerrando escuta de Mensagens do Canal: ${selectedChannelId}`);
       supabase.removeChannel(channel);
     };
-  }, [selectedChannelId, activeConversation?.id, addMessage]);
+  }, [selectedChannelId, addMessage]);
 };

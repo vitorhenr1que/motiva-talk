@@ -52,7 +52,8 @@ export async function POST(req: Request) {
       fileName,
       mimeType,
       fileSize,
-      thumbnailUrl
+      thumbnailUrl,
+      duration
     } = body
 
     const message = await MessageService.createMessage({
@@ -67,7 +68,8 @@ export async function POST(req: Request) {
       fileName,
       mimeType,
       fileSize,
-      thumbnailUrl
+      thumbnailUrl,
+      duration
     })
 
     return NextResponse.json({ success: true, data: message }, { status: 201 })
