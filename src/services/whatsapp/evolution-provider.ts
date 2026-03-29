@@ -284,6 +284,7 @@ export class EvolutionProvider implements WhatsAppProvider {
       fileName?: string, 
       mimeType?: string, 
       fileSize?: number, 
+      duration?: number,
       thumbnailUrl?: string 
     } = {};
 
@@ -303,6 +304,7 @@ export class EvolutionProvider implements WhatsAppProvider {
         mediaUrl: inner.videoMessage.url,
         mimeType: inner.videoMessage.mimetype,
         fileSize: inner.videoMessage.fileLength,
+        duration: inner.videoMessage.seconds,
         thumbnailUrl: inner.videoMessage.jpegThumbnail ? `data:image/jpeg;base64,${inner.videoMessage.jpegThumbnail}` : undefined
       };
     } else if (inner.audioMessage) {
@@ -310,8 +312,10 @@ export class EvolutionProvider implements WhatsAppProvider {
       mediaFields = {
         mediaUrl: inner.audioMessage.url,
         mimeType: inner.audioMessage.mimetype,
-        fileSize: inner.audioMessage.fileLength
+        fileSize: inner.audioMessage.fileLength,
+        duration: inner.audioMessage.seconds
       };
+      console.log(`[EVO_WEBHOOK] Áudio detectado! URL: ${mediaFields.mediaUrl}, Duração: ${mediaFields.duration}s`);
     } else if (inner.documentMessage) {
       type = 'DOCUMENT';
       mediaFields = {

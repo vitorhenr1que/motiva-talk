@@ -72,6 +72,7 @@ export interface Message {
   fileName?: string;
   mimeType?: string;
   fileSize?: number;
+  duration?: number;
   thumbnailUrl?: string;
   replyToMessage?: {
     id: string;

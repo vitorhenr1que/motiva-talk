@@ -22,6 +22,7 @@ export interface WebhookEvent {
   fileName?: string;
   mimeType?: string;
   fileSize?: number;
+  duration?: number;
   thumbnailUrl?: string;
   metadata?: any;
 }

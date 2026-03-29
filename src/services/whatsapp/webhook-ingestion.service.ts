@@ -9,10 +9,64 @@ export class WebhookIngestionService {
     const { channelId, senderPhone, senderName, content, messageType, metadata } = event;
     const externalMessageId = metadata?.key?.id;
 
-    if (!senderPhone || !content) {
-      console.warn('Skipping message ingestion: missing senderPhone or content');
+    if (!senderPhone || (!content && !event.mediaUrl)) {
+      console.warn('Skipping message ingestion: missing senderPhone or content/media');
       return;
     }
+
+    // --- Identificar ou Criar Canal (antes de qualquer coisa pra ter o ID) ---
+    const { data: channels } = await supabaseAdmin.from('Channel').select('*');
+    const channel = channels?.find(c => 
+      c.id === channelId || 
+      c.id.replace(/-/g, '') === channelId ||
+      c.providerSessionId === channelId
+    );
+
+    if (!channel) {
+      console.error(`[INGEST] ERRO: Canal ${channelId} não encontrado no banco.`);
+      return;
+    }
+
+    // --- TRATAMENTO DE MÍDIA: Download do WhatsApp -> Upload pro Nosso Storage (Supabase) ---
+    if (event.mediaUrl && !event.mediaUrl.includes('supabase.co')) {
+      try {
+        console.log(`[INGEST] Detectada mídia externa (${messageType}): ${event.mediaUrl}. Transferindo para o Supabase Storage...`);
+        const { generateId } = await import('@/lib/utils');
+        
+        // 1. Download do arquivo
+        const response = await fetch(event.mediaUrl);
+        if (!response.ok) throw new Error(`Falha no download da mídia: ${response.statusText}`);
+        
+        const buffer = await response.arrayBuffer();
+        const mimeType = event.mimeType || response.headers.get('content-type') || 'application/octet-stream';
+        const extension = mimeType.split('/')[1]?.split(';')[0] || 'bin';
+        const fileName = `${generateId()}.${extension}`;
+        const filePath = `received/${channel.id}/${fileName}`;
+        
+        // 2. Upload para o Supabase Storage (Bucket: chat-media)
+        const { error: uploadError } = await supabaseAdmin.storage
+          .from('chat-media')
+          .upload(filePath, buffer, {
+            contentType: mimeType,
+            cacheControl: '3600',
+            upsert: true
+          });
+          
+        if (uploadError) throw uploadError;
+        
+        // 3. Obter URL pública
+        const { data: { publicUrl } } = supabaseAdmin.storage
+          .from('chat-media')
+          .getPublicUrl(filePath);
+          
+        console.log(`[INGEST] Transferência concluída. Novo URL: ${publicUrl}`);
+        event.mediaUrl = publicUrl;
+      } catch (err) {
+        console.error(`[INGEST] Erro crítico ao transferir mídia externa:`, err);
+        // Mantemos o URL original se falhar, na esperança de que ainda funcione temporariamente
+      }
+    }
+    // --------------------------------------------------------------------------------------
 
     // --- FILTER: Only Personal Contacts (roughly 12 digits, exclude groups/status) ---
     const jid = metadata?.jid || '';
@@ -31,21 +85,6 @@ export class WebhookIngestionService {
       const { ConversationRepository } = await import('@/repositories/conversationRepository');
       const { generateId } = await import('@/lib/utils');
 
-      // 1. Identificar canal (handles UUID dash differences)
-      const { data: channels } = await supabaseAdmin
-        .from('Channel')
-        .select('*')
-
-      const channel = channels?.find(c => 
-        c.id === channelId || 
-        c.id.replace(/-/g, '') === channelId ||
-        c.providerSessionId === channelId
-      );
-
-      if (!channel) {
-        console.error(`[INGEST] ERRO: Canal ${channelId} não encontrado no banco.`);
-        return;
-      }
       console.log(`[INGEST] 1. Canal encontrado: ${channel.name} (${channel.id})`);
 
       // 2. Extrair metadados normalizados
@@ -112,6 +151,7 @@ export class WebhookIngestionService {
           fileName: event.fileName,
           mimeType: event.mimeType,
           fileSize: event.fileSize,
+          duration: event.duration,
           thumbnailUrl: event.thumbnailUrl,
           createdAt: new Date(event.timestamp).toISOString()
         }])

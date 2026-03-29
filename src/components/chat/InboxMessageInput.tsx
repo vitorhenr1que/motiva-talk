@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useChatStore } from '@/store/useChatStore';
 import { 
   Send, Smile, Paperclip, Zap, Loader2, X, Edit2, Check, Lock, 
-  Image as ImageIcon, Video, FileText, UserPlus as ContactIcon 
+  Image as ImageIcon, Video, FileText, UserPlus as ContactIcon, Mic 
 } from 'lucide-react';
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
 import { QuickReplyMenu } from '@/components/quick-replies/Menu';
@@ -28,8 +28,8 @@ export const MessageInput = () => {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
-  const [fileType, setFileType] = useState<'IMAGE' | 'VIDEO' | 'DOCUMENT' | null>(null);
-  const [pendingFile, setPendingFile] = useState<{ file: File, previewUrl: string, type: 'IMAGE' | 'VIDEO' | 'DOCUMENT' } | null>(null);
+  const [fileType, setFileType] = useState<'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'AUDIO' | null>(null);
+  const [pendingFile, setPendingFile] = useState<{ file: File, previewUrl: string, type: 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'AUDIO', duration?: number } | null>(null);
   const [mediaCaption, setMediaCaption] = useState('');
 
   const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -154,12 +154,13 @@ export const MessageInput = () => {
     } catch (error) {}
   };
 
-  const openFileSearch = (type: 'IMAGE' | 'VIDEO' | 'DOCUMENT') => {
+  const openFileSearch = (type: 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'AUDIO') => {
     setFileType(type);
     setAttachmentMenuOpen(false);
     if (fileInputRef.current) {
       if (type === 'IMAGE') fileInputRef.current.accept = 'image/*';
       else if (type === 'VIDEO') fileInputRef.current.accept = 'video/*';
+      else if (type === 'AUDIO') fileInputRef.current.accept = 'audio/*';
       else fileInputRef.current.accept = '.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip,.rar';
       fileInputRef.current.click();
     }
@@ -169,24 +170,48 @@ export const MessageInput = () => {
     const file = e.target.files?.[0];
     if (!file || !activeConversation || activeConversation.status === 'CLOSED') return;
 
-    // Validation
-    const maxSize = 64 * 1024 * 1024; // 64MB
-    if (file.size > maxSize) {
-      alert('Arquivo muito grande. O limite é 64MB.');
+    // Mapa de limites recomendados para WhatsApp e Supabase
+    const limits: Record<string, number> = {
+      IMAGE: 10 * 1024 * 1024,    // 10MB
+      VIDEO: 64 * 1024 * 1024,    // 64MB
+      AUDIO: 16 * 1024 * 1024,    // 16MB
+      DOCUMENT: 100 * 1024 * 1024 // 100MB
+    };
+
+    const type = fileType || 'DOCUMENT';
+    const currentLimit = limits[type] || limits.DOCUMENT;
+
+    if (file.size > currentLimit) {
+      const sizeInMB = (currentLimit / 1024 / 1024).toFixed(0);
+      alert(`⚠️ Arquivo muito grande para enviar como ${type}.\n\nO limite máximo é de ${sizeInMB}MB para garantir a entrega no WhatsApp.`);
+      e.target.value = ''; // Reset input
       return;
     }
 
-    const type = fileType || 'DOCUMENT';
     const previewUrl = URL.createObjectURL(file);
-    setPendingFile({ file, previewUrl, type });
+    
+    // Extração de duração para Áudio e Vídeo
+    let duration = 0;
+    if (type === 'AUDIO' || type === 'VIDEO') {
+      const media = type === 'AUDIO' ? new Audio(previewUrl) : document.createElement('video');
+      media.src = previewUrl;
+      media.onloadedmetadata = () => {
+        duration = Math.round(media.duration);
+        setPendingFile({ file, previewUrl, type, duration });
+      };
+    } else {
+      setPendingFile({ file, previewUrl, type });
+    }
+
     setMediaCaption('');
+    e.target.value = ''; // Reset input so same file can be selected again if needed
   };
 
   const handleSendMedia = async () => {
     if (!pendingFile || !activeConversation || activeConversation.status === 'CLOSED') return;
     
     setUploading(true);
-    const { file, type, previewUrl } = pendingFile;
+    const { file, type, previewUrl, duration } = pendingFile;
     
     try {
       // 1. Upload to Storage
@@ -197,6 +222,7 @@ export const MessageInput = () => {
         fileName: file.name,
         mimeType: file.type,
         fileSize: file.size,
+        duration: duration,
         caption: mediaCaption
       };
 
@@ -214,6 +240,7 @@ export const MessageInput = () => {
           fileName: file.name,
           mimeType: file.type,
           fileSize: file.size,
+          duration: duration,
           metadata: { ...metadata, caption: mediaCaption }
         })
       });
@@ -494,6 +521,10 @@ export const MessageInput = () => {
                <button onClick={() => openFileSearch('DOCUMENT')} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors">
                  <FileText size={16} className="text-orange-500" />
                  Documento
+               </button>
+               <button onClick={() => openFileSearch('AUDIO')} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors">
+                 <Mic size={16} className="text-red-500" />
+                 Áudio
                </button>
                <div className="h-px bg-slate-100 my-1 mx-2" />
                <button onClick={handleSendContact} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors">

@@ -13,6 +13,7 @@ export interface CreateMessageData {
   fileName?: string;
   mimeType?: string;
   fileSize?: number;
+  duration?: number;
   thumbnailUrl?: string;
   metadata?: any;
 }

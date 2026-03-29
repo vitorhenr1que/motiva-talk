@@ -4,7 +4,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useChatStore } from '@/store/useChatStore';
 import { 
   MoreVertical, Search, MessageCircle, FileText, Reply, Trash2, 
-  Loader2, Check, Pin, UserPlus, CheckCircle2, XCircle, X, ChevronDown, UserPlus as ContactIcon
+  Loader2, Check, Pin, UserPlus, CheckCircle2, XCircle, X, ChevronDown, UserPlus as ContactIcon, 
+  Mic, Play, Pause, Volume2
 } from 'lucide-react';
 import { TagSelector } from './TagSelector';
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
@@ -12,6 +13,117 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { formatPhone } from '@/lib/utils';
 import { formatDateDivider, formatTimeBahia, parseSafeDate } from '@/lib/date-utils';
+
+const CustomAudioPlayer = ({ url, duration, fileName }: { url: string, duration?: number, fileName?: string }) => {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [totalDuration, setTotalDuration] = useState(duration || 0);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const onLoadedMetadata = () => {
+    if (audioRef.current && !totalDuration) {
+      setTotalDuration(audioRef.current.duration);
+    }
+  };
+
+  const onTimeUpdate = () => {
+    if (!audioRef.current) return;
+    setCurrentTime(audioRef.current.currentTime);
+    setProgress((audioRef.current.currentTime / audioRef.current.duration) * 100);
+  };
+
+  const onEnded = () => {
+    setIsPlaying(false);
+    setProgress(0);
+    setCurrentTime(0);
+  };
+
+  const handleProgressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!audioRef.current) return;
+    const value = parseFloat(e.target.value);
+    const newTime = (value / 100) * audioRef.current.duration;
+    audioRef.current.currentTime = newTime;
+    setProgress(value);
+  };
+
+  const formatTimeText = (time: number) => {
+    if (isNaN(time) || time === Infinity || time < 0) return '0:00';
+    const mins = Math.floor(time / 60);
+    const secs = Math.floor(time % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5 min-w-[320px]">
+      {fileName && (
+        <div className="px-1 flex items-center gap-2">
+          <div className="h-4 w-4 rounded bg-slate-100 flex items-center justify-center text-slate-400 group-hover/audio:text-blue-500 transition-colors">
+            <Volume2 size={10} />
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 truncate max-w-[200px]">{fileName}</span>
+        </div>
+      )}
+      
+      <div className="flex items-center gap-3 bg-white/40 dark:bg-slate-800/40 backdrop-blur-sm p-3 rounded-2xl border border-slate-200/60 dark:border-white/10 shadow-sm group/audio relative overflow-hidden transition-all hover:bg-white/60 dark:hover:bg-slate-800/60">
+        {url && url.startsWith('http') && (
+          <audio 
+            ref={audioRef} 
+            src={url} 
+            onLoadedMetadata={onLoadedMetadata}
+            onTimeUpdate={onTimeUpdate} 
+            onEnded={onEnded} 
+            onError={(e) => console.error("Audio Load Error:", url, e)}
+            className="hidden" 
+          />
+        )}
+        
+        <button 
+          onClick={togglePlay}
+          className="h-10 w-10 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md active:scale-90 transition-all hover:bg-blue-700 shrink-0"
+        >
+          {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
+        </button>
+
+        <div className="flex-1 flex flex-col gap-1 pr-1">
+          <input 
+            type="range" 
+            value={progress} 
+            min="0"
+            max="100"
+            step="0.1"
+            onChange={handleProgressChange}
+            className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600 hover:accent-blue-700 transition-all"
+          />
+          <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+            <span className={isPlaying ? "text-blue-600 animate-pulse font-black" : ""}>
+              {formatTimeText(currentTime)}
+            </span>
+            <span>{totalDuration ? formatTimeText(totalDuration) : '--:--'}</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center gap-1 shrink-0 px-1">
+          <div className="relative">
+            <Mic size={16} className={isPlaying ? "text-blue-600 animate-bounce" : "text-slate-300"} />
+            {isPlaying && <div className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500 border-2 border-white animate-pulse" />}
+          </div>
+          <div className="text-[8px] font-black text-blue-600/40 tracking-tighter uppercase">Voz</div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -571,7 +683,7 @@ export const ChatWindow = () => {
                                  )}
                                </div>
                              )}
-                             {msg.type === 'AUDIO' && <audio src={msg.mediaUrl || msg.content} controls className="h-8 w-full py-2 min-w-[200px]" />}
+                             {msg.type === 'AUDIO' && <CustomAudioPlayer url={msg.mediaUrl || msg.content} duration={msg.duration} fileName={msg.fileName} />}
                              {msg.type === 'VIDEO' && (
                                <div className="flex flex-col gap-2">
                                  <div 
