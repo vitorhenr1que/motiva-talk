@@ -212,8 +212,9 @@ export class EvolutionProvider implements WhatsAppProvider {
     console.log(`[EVO_PROVIDER] Apagando mensagem para todos: Inst[${instanceName}] MsgID[${externalId}]`);
     
     try {
+      const remoteJid = recipient.includes('@') ? recipient : `${recipient.replace(/\D/g, '')}@s.whatsapp.net`;
       await evolutionApi.deleteMessage(instanceName, {
-        number: cleanNumber,
+        remoteJid,
         id: externalId,
         fromMe: fromMe
       });

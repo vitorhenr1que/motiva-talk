@@ -109,15 +109,18 @@ const CustomAudioPlayer = ({ url, duration, fileName, mimeType, mediaUrl }: { ur
         {url && url.startsWith('http') && (
           <audio 
             ref={audioRef} 
-            src={url} 
             onLoadedMetadata={onLoadedMetadata}
             onTimeUpdate={onTimeUpdate} 
             onEnded={onEnded} 
             onError={handleError}
-            preload="metadata"
+            preload="auto"
+            crossOrigin="anonymous"
             className="hidden" 
           >
+            {/* Várias tentativas de fonte para maior compatibilidade */}
             {mimeType && <source src={url} type={mimeType} />}
+            <source src={url} type="audio/ogg" />
+            <source src={url} />
           </audio>
         )}
         
@@ -741,7 +744,11 @@ export const ChatWindow = () => {
                                  )}
                                </div>
                              )}
-                             {msg.type === 'AUDIO' && <CustomAudioPlayer url={msg.mediaUrl || msg.content} duration={msg.duration} fileName={msg.fileName} mimeType={msg.mimeType} mediaUrl={msg.mediaUrl} />}
+                             {msg.type === 'AUDIO' && (
+                               <div className="flex flex-col gap-2">
+                                 <CustomAudioPlayer url={msg.mediaUrl || msg.content} duration={msg.duration} fileName={msg.fileName} mimeType={msg.mimeType} mediaUrl={msg.mediaUrl} />
+                               </div>
+                             )}
                              {msg.type === 'VIDEO' && (
                                <div className="flex flex-col gap-2">
                                  <div 
@@ -806,14 +813,35 @@ export const ChatWindow = () => {
                         </div>
                       </div>
                       {!isEveryoneDeleted && !isClosed && (
-                        <div className={cn("absolute top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all z-20", isSentByUs ? "-left-12 pr-2" : "-right-12 pl-2")}>
-                           <button onClick={() => useChatStore.getState().setReplyToMessage(msg)} className="p-2 rounded-xl bg-white shadow-sm hover:bg-blue-600 hover:text-white transition-all transform hover:scale-110" title="Responder"><Reply size={16} /></button>
+                        <div className={cn(
+                          "absolute top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all z-[30]", 
+                          isSentByUs ? "right-full mr-2" : "left-full ml-2"
+                        )}>
+                           <button 
+                             onClick={() => useChatStore.getState().setReplyToMessage(msg)} 
+                             className="p-2 rounded-xl bg-white shadow-md border border-slate-100 text-slate-400 hover:bg-blue-600 hover:text-white transition-all transform hover:scale-110" 
+                             title="Responder"
+                           >
+                             <Reply size={16} />
+                           </button>
                            <div className="relative">
-                              <button onClick={() => setDeleteMenuId(deleteMenuId === msg.id ? null : msg.id)} className="p-2 rounded-xl bg-white shadow-sm hover:text-red-600 hover:bg-red-50 transition-colors" title="Opções de exclusão"><Trash2 size={16} /></button>
+                              <button 
+                                onClick={() => setDeleteMenuId(deleteMenuId === msg.id ? null : msg.id)} 
+                                className={cn(
+                                  "p-2 rounded-xl bg-white shadow-md border border-slate-100 transition-all transform hover:scale-110",
+                                  deleteMenuId === msg.id ? "bg-red-500 text-white" : "text-slate-400 hover:bg-red-50 hover:text-red-600"
+                                )}
+                                title="Opções de exclusão"
+                              >
+                                <Trash2 size={16} />
+                              </button>
                               {deleteMenuId === msg.id && (
-                                <div className={cn("absolute bottom-full mb-2 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-[100]", isSentByUs ? "right-0" : "left-0")}>
-                                  <button onClick={() => handleDeleteMessage(msg.id, 'me')} className="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-2">Apagar para mim</button>
-                                  <button onClick={() => handleDeleteMessage(msg.id, 'everyone')} className="w-full text-left px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 rounded-xl flex items-center gap-2">Apagar para todos</button>
+                                <div className={cn(
+                                  "absolute bottom-full mb-2 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-[100] animate-in fade-in zoom-in-95 duration-200", 
+                                  isSentByUs ? "right-0" : "left-0"
+                                )}>
+                                  <button onClick={() => handleDeleteMessage(msg.id, 'me')} className="w-full text-left px-4 py-2.5 text-[11px] font-black uppercase tracking-tight text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-2 transition-colors">Apagar para mim</button>
+                                  <button onClick={() => handleDeleteMessage(msg.id, 'everyone')} className="w-full text-left px-4 py-2.5 text-[11px] font-black uppercase tracking-tight text-red-600 hover:bg-red-50 rounded-xl flex items-center gap-2 transition-colors">Apagar para todos</button>
                                 </div>
                               )}
                            </div>

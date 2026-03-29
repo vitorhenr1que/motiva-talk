@@ -18,12 +18,18 @@ export const useRealtimeInbox = () => {
       console.log(`[REALTIME_SYNC] Sincronizando lista de conversas para o canal: ${channelId}`);
       const res = await fetch(`/api/conversations?channelId=${channelId}`);
       if (res.ok) {
-        const data = await res.json();
-        setConversations(data.data || []);
-        console.log(`[REALTIME_SYNC] Lista de conversas atualizada com ${data.data?.length} registros.`);
+        try {
+          const data = await res.json();
+          setConversations(data.data || []);
+          console.log(`[REALTIME_SYNC] Lista de conversas atualizada com ${data.data?.length} registros.`);
+        } catch (jsonErr) {
+          console.error('[REALTIME_SYNC] Falha ao processar JSON da API de conversas:', jsonErr);
+        }
+      } else {
+        console.warn(`[REALTIME_SYNC] Resposta não OK ao buscar conversas: ${res.status} ${res.statusText}`);
       }
     } catch (e) {
-      console.error('[REALTIME_SYNC] Erro ao atualizar lista de conversas:', e);
+      console.error('[REALTIME_SYNC] Exceção na atualização de conversas:', e);
     }
   };
 

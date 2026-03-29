@@ -232,9 +232,10 @@ class EvolutionApiClient {
 
   // --- Chat Advanced ---
 
-  async deleteMessage(instanceName: string, payload: { number: string; id: string; fromMe: boolean }) {
-    return this.request<any>(`/chat/deleteMessage/${instanceName}`, {
-      method: 'POST',
+  async deleteMessage(instanceName: string, payload: { remoteJid: string; id: string; fromMe: boolean; participant?: string }) {
+    return this.request<any>(`/chat/deleteMessageForEveryone/${instanceName}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
   }

@@ -45,13 +45,23 @@ export class WebhookIngestionService {
         const { generateId: genId } = await import('@/lib/utils');
         let buffer: any;
 
+        // Normalização do localBase64 (caso venha objeto da Evolution ou com prefixo data:)
         if (localBase64) {
-          console.log(`[INGEST] Sucesso: Usando Base64 descriptografado (AUDIO/MEDIA)...`);
-          const base64Data = localBase64.split(',').pop() || localBase64;
-          buffer = Buffer.from(base64Data, 'base64');
-          console.log(`[INGEST] Buffer criado via Base64: ${buffer.length} bytes`);
+          console.log(`[INGEST] Processando localBase64...`);
+          
+          let rawBase64 = '';
+          const obj = localBase64 as any;
+          if (typeof localBase64 === 'object') {
+             rawBase64 = obj.base64 || obj.response?.base64 || JSON.stringify(localBase64);
+          } else {
+             rawBase64 = localBase64 as string;
+          }
+
+          const base64Clean = rawBase64.split(',').pop() || '';
+          buffer = Buffer.from(base64Clean, 'base64');
+          console.log(`[INGEST] Buffer criado via Base64. Tamanho: ${buffer.length} bytes`);
         } else if (finalMediaUrl) {
-          console.log(`[INGEST] Download direto via URL (Não recomendado p/ WhatsApp Criptografado): ${finalMediaUrl}...`);
+          console.log(`[INGEST] Baixando mídia via URL: ${finalMediaUrl}...`);
           
           const fetchHeaders: any = {};
           if (finalMediaUrl.includes('evolution.fazag.edu.br')) {
@@ -60,41 +70,60 @@ export class WebhookIngestionService {
 
           const response = await fetch(finalMediaUrl, { headers: fetchHeaders });
           if (!response.ok) throw new Error(`Falha no download da mídia: ${response.statusText}`);
-          buffer = await response.arrayBuffer();
+          
+          const arrayBuffer = await response.arrayBuffer();
+          buffer = Buffer.from(arrayBuffer);
+          
           const contentType = response.headers.get('content-type');
-          console.log(`[INGEST] Download concluído via URL. Status=${response.status}, ContentType=${contentType}, Size=${buffer.byteLength} bytes`);
+          console.log(`[INGEST] Download concluído. Status=${response.status}, ContentType=${contentType}, Size=${buffer.length} bytes`);
+          
           if (contentType && contentType !== 'application/octet-stream') {
             finalMimeType = contentType;
           }
-        } else {
-          throw new Error('Nenhuma fonte de mídia (URL ou Base64) disponível.');
         }
 
-        // --- Normalização do MimeType e Extensão ---
-        // Se for áudio, garantimos um mime type que o navegador consiga lidar melhor
+        if (!buffer || buffer.length === 0) {
+          throw new Error('Buffer de mídia está vazio após processamento.');
+        }
+
+        // --- Diagnóstico de Conteúdo (Magic Bytes) ---
+        const magic = buffer.slice(0, 4).toString('hex');
+        console.log(`[INGEST] Diagnóstico de Buffer - Magic Bytes: ${magic} | ASCII: ${buffer.slice(0, 4).toString()}`);
+
         if (messageType === 'AUDIO') {
-          // WhatsApp costuma enviar audio/ogg; codecs=opus ou audio/mp4
-          // Se vier genérico, forçamos audio/ogg que é o padrão do WhatsApp
-          if (finalMimeType === 'application/octet-stream' || !finalMimeType.includes('audio')) {
-            finalMimeType = 'audio/ogg';
+          // WhatsApp Audio standard is OGG/Opus. Magic: 4f676753 (OggS)
+          if (magic === '4f676753') {
+             console.log(`[INGEST] Detectado container OGG válido.`);
+             finalMimeType = 'audio/ogg';
+          } else if (magic.startsWith('1a45df')) {
+             console.log(`[INGEST] Detectado container WebM.`);
+             finalMimeType = 'audio/webm';
+          } else if (magic.includes('66747970')) {
+             console.log(`[INGEST] Detectado container MP4.`);
+             finalMimeType = 'audio/mp4';
+          } else if (finalMimeType === 'application/octet-stream' || !finalMimeType.includes('audio')) {
+             // Fallback se não detectou magic conhecido mas é audio
+             finalMimeType = 'audio/ogg'; 
           }
         }
         
-        // Determinar extensão
-        let extension = finalMimeType.split('/')[1]?.split(';')[0] || 'bin';
-        if (extension === 'octet-stream' || extension === 'bin') {
-          extension = messageType === 'AUDIO' ? 'ogg' : 'bin';
+        // --- Custom normalization for extensions ---
+        let extension = 'bin';
+        if (finalMimeType.includes('audio/ogg') || finalMimeType.includes('audio/opus')) extension = 'ogg';
+        else if (finalMimeType.includes('audio/mp4')) extension = 'mp4';
+        else if (finalMimeType.includes('audio/mpeg')) extension = 'mp3';
+        else if (finalMimeType.includes('image/jpeg')) extension = 'jpg';
+        else if (finalMimeType.includes('image/png')) extension = 'png';
+        else if (finalMimeType.includes('video/mp4')) extension = 'mp4';
+        else {
+          extension = finalMimeType.split('/')[1]?.split(';')[0] || 'bin';
+          if (extension === 'octet-stream') extension = 'bin';
         }
-
-        // Correção de extensões comuns
-        if (extension === 'opus') extension = 'ogg'; // Opus geralmente é encapsulado em Ogg
-        if (extension === 'vnd.wave' || extension === 'wav') extension = 'wav';
 
         const fileName = `${genId()}.${extension}`;
         const filePath = `received/${channel.id}/${fileName}`;
         
-        const bufferSize = buffer instanceof ArrayBuffer ? buffer.byteLength : (buffer as Buffer).length;
-        console.log(`[INGEST] Preparando Upload: Path=${filePath}, Mime=${finalMimeType}, Size=${bufferSize} bytes`);
+        console.log(`[INGEST] Enviando para Supabase: ${filePath} | Mime: ${finalMimeType}`);
 
         // Upload para o Supabase Storage (Bucket: chat-media)
         const { error: uploadError } = await supabaseAdmin.storage
@@ -107,15 +136,14 @@ export class WebhookIngestionService {
           
         if (uploadError) throw uploadError;
         
-        // Obter URL pública
         const { data: { publicUrl } } = supabaseAdmin.storage
           .from('chat-media')
           .getPublicUrl(filePath);
           
-        console.log(`[INGEST] Transferência concluída. Novo URL: ${publicUrl}`);
+        console.log(`[INGEST] Sucesso! URL Final: ${publicUrl}`);
         finalMediaUrl = publicUrl;
       } catch (err) {
-        console.error(`[INGEST] Erro (não impeditivo) ao transferir mídia para storage permanente:`, err);
+        console.error(`[INGEST] Erro crítico no pipeline de mídia:`, err);
       }
     }
     // --------------------------------------------------------------------------------------

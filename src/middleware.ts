@@ -24,9 +24,16 @@ export async function middleware(req: NextRequest) {
   const token = req.cookies.get('sb-access-token')?.value
 
   if (!token) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { success: false, message: 'Não autorizado', code: 'AUTH_REQUIRED' },
+        { status: 401 }
+      )
+    }
+
     const url = req.nextUrl.clone()
     url.pathname = '/login'
-    // Preservar a URL original para redirecionamento pós-login
+    // Preservar a URL original para redirecionamento pós login
     url.searchParams.set('redirect', pathname)
     return NextResponse.redirect(url)
   }
