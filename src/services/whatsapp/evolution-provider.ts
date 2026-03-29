@@ -358,7 +358,7 @@ export class EvolutionProvider implements WhatsAppProvider {
       quotedMessageExternalId,
       fullJid,
       ...mediaFields,
-      raw: payload
+      raw: rawMessage
     };
   }
 
