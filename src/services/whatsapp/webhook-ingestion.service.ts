@@ -27,23 +27,24 @@ export class WebhookIngestionService {
       return;
     }
 
+    let finalMediaUrl = event.mediaUrl;
+    let finalMimeType = event.mimeType || 'application/octet-stream';
+
     // --- TRATAMENTO DE MÍDIA: Download do WhatsApp -> Upload pro Nosso Storage (Supabase) ---
     if ((event.mediaUrl || event.base64) && !event.mediaUrl?.includes('supabase.co')) {
       try {
         const { generateId: genId } = await import('@/lib/utils');
         let buffer: ArrayBuffer;
-        let mimeType = event.mimeType || 'application/octet-stream';
 
         if (event.base64) {
-          console.log(`[INGEST] Usando Base64 para mídia (${messageType})...`);
+          console.log(`[INGEST] Usando Base64 para mídia (${event.messageType})...`);
           const base64Data = event.base64.split(',').pop() || event.base64;
           const binaryBuffer = Buffer.from(base64Data, 'base64');
           buffer = binaryBuffer.buffer.slice(binaryBuffer.byteOffset, binaryBuffer.byteOffset + binaryBuffer.byteLength) as ArrayBuffer;
         } else if (event.mediaUrl) {
-          console.log(`[INGEST] Baixando mídia externa via URL (${messageType}): ${event.mediaUrl}...`);
+          console.log(`[INGEST] Baixando mídia externa via URL (${event.messageType}): ${event.mediaUrl}...`);
           
           const fetchHeaders: any = {};
-          // Se o URL for do nosso servidor Evolution, precisamos da API Key
           if (event.mediaUrl.includes('evolution.fazag.edu.br')) {
             fetchHeaders['apikey'] = process.env.EVOLUTION_API_KEY;
           }
@@ -51,12 +52,12 @@ export class WebhookIngestionService {
           const response = await fetch(event.mediaUrl, { headers: fetchHeaders });
           if (!response.ok) throw new Error(`Falha no download da mídia: ${response.statusText}`);
           buffer = await response.arrayBuffer();
-          mimeType = response.headers.get('content-type') || mimeType;
+          finalMimeType = response.headers.get('content-type') || finalMimeType;
         } else {
           throw new Error('Nenhuma fonte de mídia (URL ou Base64) disponível.');
         }
         
-        const extension = mimeType.split('/')[1]?.split(';')[0] || 'bin';
+        const extension = finalMimeType.split('/')[1]?.split(';')[0] || 'bin';
         const fileName = `${genId()}.${extension}`;
         const filePath = `received/${channel.id}/${fileName}`;
         
@@ -64,7 +65,7 @@ export class WebhookIngestionService {
         const { error: uploadError } = await supabaseAdmin.storage
           .from('chat-media')
           .upload(filePath, buffer, {
-            contentType: mimeType,
+            contentType: finalMimeType,
             cacheControl: '3600',
             upsert: true
           });
@@ -77,10 +78,9 @@ export class WebhookIngestionService {
           .getPublicUrl(filePath);
           
         console.log(`[INGEST] Transferência concluída. Novo URL: ${publicUrl}`);
-        event.mediaUrl = publicUrl;
+        finalMediaUrl = publicUrl;
       } catch (err) {
         console.error(`[INGEST] Erro (não impeditivo) ao transferir mídia para storage permanente:`, err);
-        // O fluxo continua - mantemos o URL original se a persistência falhar
       }
     }
     // --------------------------------------------------------------------------------------
@@ -108,6 +108,7 @@ export class WebhookIngestionService {
       const isFromMe = !!metadata?.fromMe;
       const senderType = isFromMe ? 'AGENT' : 'USER';
       const externalId = metadata?.externalId;
+      const dbMessageType = event.messageType || 'TEXT';
       
       console.log(`[INGEST] Processando mensagem ${externalId || 'sem ID'} do ${senderType}...`);
       if (externalId) {
@@ -148,13 +149,16 @@ export class WebhookIngestionService {
 
       // 5.5 Identificar se é uma resposta (Reply)
       const replyToMessageId = metadata?.resolvedReplyToId;
-      if (replyToMessageId) {
-        console.log(`[INGEST] Persistindo vínculo com mensagem original: DB ID ${replyToMessageId}`);
-      }
 
       // 6. Salvar Mensagem
-      console.log(`[INGEST] Salvando no banco: Conv:${conversation.id} | Tipo:${messageType || 'TEXT'} | ExternalId:${externalId || 'NONE'}`);
+      console.log(`[INGEST] Salvando no banco: Conv:${conversation.id} | Tipo:${dbMessageType} | ExternalId:${externalId || 'NONE'}`);
       
+      // Normalização de campos que podem vir como objetos da Evolution (Long/Int64)
+      const normalizeNumber = (val: any) => {
+        if (val && typeof val === 'object' && 'low' in val) return val.low;
+        return typeof val === 'number' ? val : null;
+      };
+
       const { data: newMessage, error: msgError } = await supabaseAdmin
         .from('Message')
         .insert([{
@@ -162,15 +166,15 @@ export class WebhookIngestionService {
           conversationId: conversation.id,
           channelId: channel.id,
           senderType,
-          content: content || '',
-          type: messageType || 'TEXT',
+          content: content || '[Arquivo de Mídia]',
+          type: dbMessageType,
           externalMessageId: externalId,
           replyToMessageId: replyToMessageId,
-          mediaUrl: event.mediaUrl,
+          mediaUrl: finalMediaUrl,
           fileName: event.fileName,
-          mimeType: event.mimeType,
-          fileSize: event.fileSize,
-          duration: event.duration,
+          mimeType: finalMimeType,
+          fileSize: normalizeNumber(event.fileSize),
+          duration: normalizeNumber(event.duration),
           thumbnailUrl: event.thumbnailUrl,
           createdAt: new Date(event.timestamp).toISOString()
         }])
