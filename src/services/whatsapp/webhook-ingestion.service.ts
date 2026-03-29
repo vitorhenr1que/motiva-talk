@@ -52,12 +52,23 @@ export class WebhookIngestionService {
           const response = await fetch(event.mediaUrl, { headers: fetchHeaders });
           if (!response.ok) throw new Error(`Falha no download da mídia: ${response.statusText}`);
           buffer = await response.arrayBuffer();
-          finalMimeType = response.headers.get('content-type') || finalMimeType;
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType !== 'application/octet-stream') {
+            finalMimeType = contentType;
+          }
         } else {
           throw new Error('Nenhuma fonte de mídia (URL ou Base64) disponível.');
         }
+
+        // --- Normalização do MimeType e Extensão ---
+        if (event.messageType === 'AUDIO' && (finalMimeType === 'application/octet-stream' || !finalMimeType.includes('audio'))) {
+          finalMimeType = 'audio/ogg'; // Default para WhatsApp
+        }
         
-        const extension = finalMimeType.split('/')[1]?.split(';')[0] || 'bin';
+        let extension = finalMimeType.split('/')[1]?.split(';')[0] || 'bin';
+        if (extension === 'octet-stream' || extension === 'bin') {
+          extension = event.messageType === 'AUDIO' ? 'ogg' : 'bin';
+        }
         const fileName = `${genId()}.${extension}`;
         const filePath = `received/${channel.id}/${fileName}`;
         
