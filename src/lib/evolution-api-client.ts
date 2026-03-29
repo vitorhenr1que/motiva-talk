@@ -262,20 +262,16 @@ class EvolutionApiClient {
     events: string[];
   }) {
     const payload = {
-      instance: instanceName, // Algumas versões exigem no corpo
       webhook: {
-        // Tenta todos os formatos possíveis dentro do objeto 'webhook' para máxima compatibilidade
-        instanceName,
         url: data.url,
         enabled: data.enabled,
-        webhook_url: data.url,
-        webhook_enabled: data.enabled,
-        webhook_by_events: data.webhookByEvents ?? true,
-        webhook_by_base64: data.webhookBase64 ?? true,
-        webhook_by_status: data.webhookByStatus ?? false,
         webhookByEvents: data.webhookByEvents ?? true,
         webhookBase64: data.webhookBase64 ?? true,
         webhookByStatus: data.webhookByStatus ?? false,
+        // Fallback para versões que exigem underscore
+        webhook_by_events: data.webhookByEvents ?? true,
+        webhook_by_base64: data.webhookBase64 ?? true,
+        webhook_by_status: data.webhookByStatus ?? false,
         events: data.events
       }
     };
