@@ -268,10 +268,16 @@ class EvolutionApiClient {
         webhookByEvents: data.webhookByEvents ?? true,
         webhookBase64: data.webhookBase64 ?? true,
         webhookByStatus: data.webhookByStatus ?? false,
-        // Fallback para versões que exigem underscore
+        
+        // Fallback para versões com underscore (padrão principal)
         webhook_by_events: data.webhookByEvents ?? true,
         webhook_by_base64: data.webhookBase64 ?? true,
         webhook_by_status: data.webhookByStatus ?? false,
+
+        // Variantes extras de compatibilidade profunda
+        webhook_base64: data.webhookBase64 ?? true,
+        base64: data.webhookBase64 ?? true,
+        
         events: data.events
       }
     };
