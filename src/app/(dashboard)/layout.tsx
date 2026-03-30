@@ -68,7 +68,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             />
           )}
           
-          {isVisible('reports') && (role === 'ADMIN' || role === 'SUPERVISOR') && (
+          {isVisible('reports') && (
             <SidebarItem 
               href="/reports" 
               iconName="reports" 
@@ -76,7 +76,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             />
           )}
 
-          {isVisible('reports') && (role === 'ADMIN' || role === 'SUPERVISOR') && (
+          {isVisible('reports') && (
             <SidebarItem 
               href="/reports/feedbacks" 
               iconName="feedback" 
@@ -84,7 +84,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             />
           )}
 
-          {isVisible('channels') && (role === 'ADMIN' || role === 'SUPERVISOR') && (
+          {isVisible('channels') && (
             <SidebarItem 
               href="/channels" 
               iconName="channels" 
@@ -92,7 +92,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             />
           )}
 
-          {isVisible('contacts') && (role === 'ADMIN' || role === 'SUPERVISOR') && (
+          {isVisible('contacts') && (
             <SidebarItem 
               href="/contacts" 
               iconName="contacts" 
