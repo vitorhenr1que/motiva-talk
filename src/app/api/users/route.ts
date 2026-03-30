@@ -15,7 +15,7 @@ export async function GET(req: Request) {
     if (!userSession) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
 
     const role = await getUserRole(userSession.email!)
-    if (role !== 'ADMIN') throw new AppError('Acesso negado', 403, 'FORBIDDEN');
+    if (role !== 'ADMIN' && role !== 'SUPERVISOR') throw new AppError('Acesso negado', 403, 'FORBIDDEN');
 
     const users = await UserService.listAll()
     return NextResponse.json({ success: true, data: users })

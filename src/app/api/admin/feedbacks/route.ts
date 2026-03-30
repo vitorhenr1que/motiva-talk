@@ -21,8 +21,9 @@ export async function GET(req: NextRequest) {
     const endDate = searchParams.get('endDate') || undefined;
     const minScore = searchParams.get('minScore') ? parseInt(searchParams.get('minScore')!) : undefined;
     const maxScore = searchParams.get('maxScore') ? parseInt(searchParams.get('maxScore')!) : undefined;
+    const agentId = searchParams.get('agentId') || undefined;
 
-    const filters = { startDate, endDate, minScore, maxScore };
+    const filters = { startDate, endDate, minScore, maxScore, agentId };
     
     const [list, summary] = await Promise.all([
       FeedbackService.listFeedbacks(filters),

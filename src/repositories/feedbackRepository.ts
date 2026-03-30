@@ -96,7 +96,8 @@ export class FeedbackRepository {
     startDate?: string, 
     endDate?: string, 
     minScore?: number, 
-    maxScore?: number 
+    maxScore?: number,
+    agentId?: string | null
   }) {
     let query = supabaseAdmin
       .from('Feedback')
@@ -120,13 +121,16 @@ export class FeedbackRepository {
     if (filters.maxScore !== undefined) {
       query = query.lte('score', filters.maxScore);
     }
+    if (filters.agentId) {
+      query = query.eq('agentId', filters.agentId);
+    }
 
     const { data, error } = await query;
     if (error) throw error;
     return data;
   }
 
-  static async getSummary(filters: { startDate?: string, endDate?: string }) {
+  static async getSummary(filters: { startDate?: string, endDate?: string, agentId?: string | null }) {
     let query = supabaseAdmin
       .from('Feedback')
       .select('score')
@@ -137,6 +141,9 @@ export class FeedbackRepository {
     }
     if (filters.endDate) {
       query = query.lte('submittedAt', filters.endDate);
+    }
+    if (filters.agentId) {
+      query = query.eq('agentId', filters.agentId);
     }
 
     const { data, error } = await query;

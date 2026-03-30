@@ -20,13 +20,15 @@ const cn = (...inputs: any[]) => twMerge(clsx(inputs));
 
 export default function ReportsFeedbacksPage() {
   const [data, setData] = useState<{ list: any[], summary: any } | null>(null);
+  const [users, setUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     startDate: '',
     endDate: '',
     minScore: '',
-    maxScore: ''
+    maxScore: '',
+    agentId: ''
   });
 
   const fetchData = async () => {
@@ -38,6 +40,7 @@ export default function ReportsFeedbacksPage() {
       if (filters.endDate) params.append('endDate', filters.endDate);
       if (filters.minScore) params.append('minScore', filters.minScore);
       if (filters.maxScore) params.append('maxScore', filters.maxScore);
+      if (filters.agentId) params.append('agentId', filters.agentId);
 
       const res = await fetch(`/api/admin/feedbacks?${params.toString()}`);
       const json = await res.json();
@@ -52,8 +55,19 @@ export default function ReportsFeedbacksPage() {
     }
   };
 
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch('/api/users');
+      const json = await res.json();
+      if (res.ok) setUsers(json.data || []);
+    } catch (err) {
+      console.warn('Erro ao carregar usuários:', err);
+    }
+  };
+
   useEffect(() => {
     fetchData();
+    fetchUsers();
   }, []);
 
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -82,7 +96,7 @@ export default function ReportsFeedbacksPage() {
   };
 
   const clearFilters = () => {
-    setFilters({ startDate: '', endDate: '', minScore: '', maxScore: '' });
+    setFilters({ startDate: '', endDate: '', minScore: '', maxScore: '', agentId: '' });
   };
 
   return (
@@ -126,7 +140,7 @@ export default function ReportsFeedbacksPage() {
            </div>
         </div>
 
-        <form onSubmit={handleApplyFilters} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
+        <form onSubmit={handleApplyFilters} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 items-end">
            <div className="space-y-2">
              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Data Início</label>
              <div className="relative">
@@ -167,6 +181,21 @@ export default function ReportsFeedbacksPage() {
                 <option value="9">Promotores (9-10)</option>
                 <option value="7">Neutros (7-8)</option>
                 <option value="0">Detratores (0-6)</option>
+             </select>
+           </div>
+
+           <div className="space-y-2">
+             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Atendente</label>
+             <select 
+               name="agentId" 
+               value={filters.agentId}
+               onChange={handleFilterChange}
+               className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:bg-white focus:border-indigo-400 focus:ring-0 outline-none transition-all shadow-inner appearance-none pr-10"
+             >
+                <option value="">Todos os Atendentes</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
              </select>
            </div>
 
