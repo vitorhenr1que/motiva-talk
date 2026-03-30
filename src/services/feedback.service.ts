@@ -6,7 +6,7 @@ export class FeedbackService {
    * Generates a new feedback request for a contact.
    * If there's an active (PENDING) request in the last 24h, returns it.
    */
-  static async requestFeedback(contactId: string, phone: string, conversationId?: string) {
+  static async requestFeedback(contactId: string, phone: string, conversationId?: string, agentId?: string | null, agentName?: string | null) {
     const last = await FeedbackRepository.findLastByContact(contactId);
     
     if (last) {
@@ -17,11 +17,6 @@ export class FeedbackService {
       // If there's a PENDING feedback from the last 24h, reuse it
       if (diffHours < 24 && last.status === 'PENDING') {
          return last;
-      }
-
-      // If it's already SUBMITTED in the last 24h, block new submission
-      if (diffHours < 24 && last.status === 'SUBMITTED') {
-         throw new Error('RECENT_SUBMISSION');
       }
     }
 
@@ -35,6 +30,8 @@ export class FeedbackService {
       contactId,
       contactPhone: phone,
       conversationId,
+      agentId,
+      agentName,
       token,
       expiresAt,
       status: 'PENDING'
@@ -60,14 +57,6 @@ export class FeedbackService {
     if (isExpired && feedback.status === 'PENDING') {
       console.log(`[FEEDBACK_LOG] Token expired: ${token}`);
       return { ...feedback, status: 'EXPIRED' };
-    }
-
-    // Check if this contact already submitted ANY feedback in the last 24h
-    // This handles both the case where THIS token was already used or another token for same contact was used
-    const recent = await FeedbackRepository.findLastSubmittedByContact(feedback.contactId, feedback.contactPhone);
-    if (recent && feedback.status === 'PENDING') {
-      console.log(`[FEEDBACK_LOG] 24h block active for contact ${feedback.contactId} / ${feedback.contactPhone}. Last submission: ${recent.submittedAt}`);
-      return { ...feedback, status: 'RECENT_SUBMISSION' };
     }
 
     return feedback;
@@ -97,12 +86,7 @@ export class FeedbackService {
       throw new Error('FEEDBACK_EXPIRED');
     }
 
-    // Double check 24h block during submission
-    const recent = await FeedbackRepository.findLastSubmittedByContact(feedback.contactId, feedback.contactPhone);
-    if (recent) {
-      console.log(`[FEEDBACK_LOG] 24h block triggered during submission for contact ${feedback.contactId} / ${feedback.contactPhone}`);
-      throw new Error('RECENT_SUBMISSION');
-    }
+    // Checks for duplicate submission or expiration are already done above
 
     const updated = await FeedbackRepository.update(feedback.id, {
       score: data.score,

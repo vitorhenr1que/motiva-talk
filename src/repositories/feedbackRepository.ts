@@ -4,6 +4,8 @@ export interface FeedbackData {
   conversationId?: string;
   contactId: string;
   contactPhone: string;
+  agentId?: string | null;
+  agentName?: string | null;
   score?: number;
   categoryOptions?: string[];
   comment?: string;

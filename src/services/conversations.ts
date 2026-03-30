@@ -45,8 +45,14 @@ export class ConversationService {
         const { SettingRepository } = await import('@/repositories/settingRepository');
         const { MessageService } = await import('@/services/messages');
 
-        // 1. Gera o link público
-        const feedback = await FeedbackService.requestFeedback(updated.contactId, updated.contact.phone, conversationId);
+        // 1. Gera o link público com o atendente responsável
+        const feedback = await FeedbackService.requestFeedback(
+          updated.contactId, 
+          updated.contact.phone, 
+          conversationId,
+          updated.assignedTo,
+          updated.agent?.name
+        );
         
         // Constrói a URL do feedback (pode ser configurada via env)
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motiva-talk.vercel.app';
@@ -121,8 +127,14 @@ export class ConversationService {
         const { SettingRepository } = await import('@/repositories/settingRepository');
         const { MessageService } = await import('@/services/messages');
 
-        // 1. Gera o link público
-        const feedback = await FeedbackService.requestFeedback(updated.contactId, updated.contact.phone, id);
+        // 1. Gera o link público com o atendente responsável
+        const feedback = await FeedbackService.requestFeedback(
+          updated.contactId, 
+          updated.contact.phone, 
+          id,
+          updated.assignedTo,
+          updated.agent?.name
+        );
         
         // Constrói a URL do feedback
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motiva-talk.vercel.app';

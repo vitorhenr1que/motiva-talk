@@ -60,7 +60,7 @@ export function FeedbackList({ feedbacks }: FeedbackListProps) {
                       <Calendar size={12} />
                       {format(new Date(f.submittedAt), "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}
                       <span className="text-slate-200 mx-1">•</span>
-                      <span>Atendente: {f.conversation?.agent?.name || 'Sistema'}</span>
+                      <span>Atendente: {f.agentName || f.conversation?.agent?.name || 'Sistema'}</span>
                     </div>
                   </div>
 
