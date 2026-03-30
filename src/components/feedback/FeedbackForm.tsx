@@ -161,10 +161,6 @@ export function FeedbackForm({ token, contactName, agentName }: FeedbackFormProp
               </button>
             ))}
           </div>
-          <div className="flex justify-between max-w-[480px] mx-auto text-[10px] font-black text-slate-400 px-1 uppercase tracking-widest bg-slate-50/50 py-2 rounded-full border border-slate-100">
-            <span className="pl-4">Nada Provável</span>
-            <span className="pr-4">Muito Provável</span>
-          </div>
         </div>
 
         {/* Conditional Question & Options */}
@@ -190,7 +186,7 @@ export function FeedbackForm({ token, contactName, agentName }: FeedbackFormProp
             </h3>
 
             <div className="flex flex-wrap justify-center gap-3">
-              {REASONS[range].map((option) => {
+              {range && REASONS[range as keyof typeof REASONS].map((option: string) => {
                 const isSelected = selectedOptions.includes(option);
                 return (
                   <button
