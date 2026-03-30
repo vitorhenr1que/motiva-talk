@@ -56,9 +56,7 @@ export function FeedbackForm({ token, contactName, agentName }: FeedbackFormProp
   const range = getRatingRange(score);
 
   const toggleOption = (option: string) => {
-    setSelectedOptions((prev) =>
-      prev.includes(option) ? prev.filter((o) => o !== option) : [...prev, option]
-    );
+    setSelectedOptions([option]);
   };
 
   const handleScoreSelect = (val: number) => {
