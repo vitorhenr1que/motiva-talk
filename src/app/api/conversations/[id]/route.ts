@@ -31,8 +31,8 @@ export async function PATCH(
 
     let updated;
     
-    // Se for atribuição de agente específica
-    if (assignedTo) {
+    // Se for atribuição de agente específica (sem alteração de status)
+    if (assignedTo && !status) {
       updated = await ConversationService.assignAgent(id, assignedTo)
     } 
     // Atualização genérica de campos (status, pinnedNote, unreadCount)
