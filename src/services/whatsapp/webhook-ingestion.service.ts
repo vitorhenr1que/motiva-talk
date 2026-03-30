@@ -163,7 +163,7 @@ export class WebhookIngestionService {
     try {
       const { ContactRepository } = await import('@/repositories/contactRepository');
       const { ConversationRepository } = await import('@/repositories/conversationRepository');
-      const { generateId } = await import('@/lib/utils');
+      const { generateId, formatPhone } = await import('@/lib/utils');
 
       console.log(`[INGEST] 1. Canal validado e pronto: ${channel.name} (${channel.id})`);
 
@@ -190,7 +190,7 @@ export class WebhookIngestionService {
       // 4. Identificar ou Criar Contato
       const contact = await ContactRepository.findOrCreateByPhone(
         senderPhone, 
-        senderName || senderPhone
+        senderName || formatPhone(senderPhone)
       );
       console.log(`[INGEST] 2. Contato encontrado/criado: ${contact.name} (${contact.id})`);
 

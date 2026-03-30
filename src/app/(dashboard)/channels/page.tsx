@@ -40,22 +40,35 @@ export default function ChannelsPage() {
     }
   }, []);
 
+  const [deletingChannels, setDeletingChannels] = useState<Set<string>>(new Set());
+
   const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(`Tem certeza que deseja remover o canal "${name}"? Isso apagará a instância no WhatsApp também.`)) {
+    const confirmMessage = `ATENÇÃO: Você está prestes a apagar completamente o canal "${name}".\n\nEssa ação irá remover de forma permanente:\n- A instância conectada no WhatsApp\n- Todas as conversas e mensagens deste canal\n- Arquivos de imagem, vídeo e áudio hospedados\n- Contatos e notas exclusivos desse canal\n\nTem absoluta certeza que deseja prosseguir?`;
+    
+    if (!window.confirm(confirmMessage)) {
       return;
     }
+
+    setDeletingChannels(prev => new Set(prev).add(id));
 
     try {
       const res = await fetch(`/api/channels/${id}`, { method: 'DELETE' });
       const data = await res.json();
       
-      if (data.success) {
+      if (res.ok && data.success) {
+        alert('Canal e todos os seus dados vinculados foram removidos com sucesso.');
         fetchChannels();
       } else {
-        alert('Erro ao remover canal: ' + data.error);
+        alert(`Erro ao remover canal: ${data.message || data.error || 'Falha desconhecida.'}`);
       }
     } catch (err) {
-      alert('Falha na comunicação com o servidor');
+      alert('Falha crítica na comunicação com o servidor ao tentar remover o canal.');
+    } finally {
+      setDeletingChannels(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -124,10 +137,15 @@ export default function ChannelsPage() {
                 </div>
                 <button 
                   onClick={() => handleDelete(channel.id, channel.name)}
-                  className="p-2 text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 rounded-xl transition-colors group/del"
+                  disabled={deletingChannels.has(channel.id)}
+                  className={`p-2 rounded-xl transition-all group/del ${deletingChannels.has(channel.id) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-300 hover:text-rose-600 dark:hover:text-rose-400'}`}
                   title="Remover Canal"
                 >
-                  <Trash2 size={20} className="group-hover/del:scale-110 transition-transform" />
+                  {deletingChannels.has(channel.id) ? (
+                    <Loader2 size={20} className="animate-spin text-rose-500" />
+                  ) : (
+                    <Trash2 size={20} className="group-hover/del:scale-110 transition-transform" />
+                  )}
                 </button>
               </div>
 
