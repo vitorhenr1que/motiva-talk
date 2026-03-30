@@ -279,14 +279,13 @@ export class EvolutionProvider implements WhatsAppProvider {
     const jid = key.remoteJid || key.participant || '';
     const senderPhone = jid.split('@')[0];
     
-    // Se fui EU quem enviei a msg inicial, o pushName vai apontar pra mm, não pro lead de destino. Apenas ignoro.
-    let senderName = fromMe ? '' : (rawMessage.pushName || data.pushName);
-    
-    // Fallback: Se não tem pushName ou se a API por engano repassou o nome do canal (instância)
-    if (!senderName || senderName === instanceName || senderName.includes(instanceName)) {
-      senderName = formatPhone(senderPhone);
-    }
-    
+    // ATENÇÃO: Se a mensagem foi enviada pelo próprio sistema/atendente (fromMe = true),
+    // o "pushName" retornado pelo Webhook seria o NOSSO nome de perfil, e não o do cliente final.
+    // Portanto, para "fromMe", descartamos o pushName e usamos o número do cliente destino.
+    const senderName = fromMe 
+       ? formatPhone(senderPhone) 
+       : (rawMessage.pushName || data.pushName || formatPhone(senderPhone));
+       
     const fullJid = jid;
 
     // Content/Caption discovery
