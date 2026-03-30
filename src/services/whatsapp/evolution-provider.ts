@@ -1,6 +1,7 @@
 import { Channel, MessageType } from '@/types/chat';
 import { WhatsAppProvider, SessionStatus, QrCodeData, WebhookEvent } from './provider';
 import { evolutionApi } from '@/lib/evolution-api-client';
+import { formatPhone } from '@/lib/utils';
 
 export class EvolutionProvider implements WhatsAppProvider {
   /**
@@ -192,9 +193,15 @@ export class EvolutionProvider implements WhatsAppProvider {
 
     if (type === 'CONTACT') {
       const contactInfo = metadata?.contact || { fullName: 'Contato', wuid: cleanNumber };
+      const finalContact = {
+        fullName: contactInfo.fullName,
+        wuid: contactInfo.wuid || cleanNumber,
+        phoneNumber: contactInfo.phoneNumber || contactInfo.wuid || cleanNumber
+      };
+
       return evolutionApi.sendContact(instanceName, {
         number: cleanNumber,
-        contact: [contactInfo],
+        contact: [finalContact],
         quoted: quotedPayload
       });
     }
@@ -271,7 +278,7 @@ export class EvolutionProvider implements WhatsAppProvider {
     const fromMe = !!key.fromMe;
     const jid = key.remoteJid || key.participant || '';
     const senderPhone = jid.split('@')[0];
-    const senderName = rawMessage.pushName || data.pushName || 'Contato WhatsApp';
+    const senderName = rawMessage.pushName || data.pushName || formatPhone(senderPhone);
     const fullJid = jid;
 
     // Content/Caption discovery

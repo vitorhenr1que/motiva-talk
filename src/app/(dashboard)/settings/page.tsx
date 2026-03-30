@@ -15,7 +15,16 @@ export default function SettingsPage() {
   const [profileName, setProfileName] = useState('');
   const [chatSettings, setChatSettings] = useState({
     autoIdentifyAgent: true,
-    allowAgentNameEdit: false
+    allowAgentNameEdit: false,
+    agentMenuVisibility: {
+      conversations: true,
+      funnel: true,
+      reports: false,
+      channels: false,
+      contacts: false,
+      suggestions: true,
+      settings: true
+    }
   });
 
   const fetchData = async () => {
@@ -251,6 +260,66 @@ export default function SettingsPage() {
                       Salvar Regras de Chat
                    </button>
                 </div>
+             </section>
+           )}
+
+           {/* Seção Administrativa de Visibilidade do Menu */}
+           {isAdmin && (
+             <section className="bg-white rounded-3xl border border-slate-200 p-8 shadow-xl ring-1 ring-slate-900/5 animate-in fade-in zoom-in-95 duration-300">
+               <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 bg-slate-100 text-slate-600 rounded-2xl">
+                     <Shield size={24} />
+                  </div>
+                  <div>
+                     <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">Visibilidade do Menu (Agente)</h2>
+                     <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-0.5">Escolha o que os atendentes podem ver no menu lateral</p>
+                  </div>
+               </div>
+
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                 {[
+                   { id: 'conversations', label: 'Conversas', desc: 'Acesso ao chat e caixa de entrada' },
+                   { id: 'funnel', label: 'Fluxo Kanban', desc: 'Visualização das etapas do funil' },
+                   { id: 'reports', label: 'Relatórios', desc: 'Estatísticas e métricas (Não recomendado)' },
+                   { id: 'channels', label: 'Canais', desc: 'Configuração de WhatsApp' },
+                   { id: 'contacts', label: 'Contatos', desc: 'Lista global de clientes' },
+                   { id: 'suggestions', label: 'Sugestões', desc: 'Gerenciamento de respostas rápidas' },
+                   { id: 'settings', label: 'Configurações', desc: 'Acesso ao perfil e ajustes' },
+                 ].map((menu) => (
+                   <div key={menu.id} className="flex items-center justify-between p-4 rounded-2xl border border-slate-50 bg-slate-50/30 hover:bg-slate-50 transition-all">
+                     <div>
+                       <p className="text-sm font-bold text-slate-800">{menu.label}</p>
+                       <p className="text-[10px] text-slate-500 font-medium">{menu.desc}</p>
+                     </div>
+                     <label className="relative inline-flex items-center cursor-pointer">
+                       <input 
+                         type="checkbox" 
+                         className="sr-only peer"
+                         checked={(chatSettings.agentMenuVisibility as any)[menu.id]}
+                         onChange={(e) => setChatSettings({
+                           ...chatSettings, 
+                           agentMenuVisibility: {
+                             ...chatSettings.agentMenuVisibility,
+                             [menu.id]: e.target.checked
+                           }
+                         })}
+                       />
+                       <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600 shadow-inner"></div>
+                     </label>
+                   </div>
+                 ))}
+               </div>
+
+               <div className="mt-8 flex justify-end">
+                 <button 
+                   onClick={handleSaveGlobalSettings}
+                   disabled={saving}
+                   className="flex items-center gap-2 rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-slate-200 hover:shadow-2xl transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                 >
+                   {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+                   Salvar Permissões de Menu
+                 </button>
+               </div>
              </section>
            )}
         </div>

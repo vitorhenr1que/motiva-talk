@@ -221,6 +221,7 @@ class EvolutionApiClient {
     contact: {
       fullName: string;
       wuid: string;
+      phoneNumber: string;
     }[];
     quoted?: any;
   }) {

@@ -1,3 +1,10 @@
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
 /**
  * Formata um número de telefone para o padrão brasileiro (75) 9xxxx-xxxx.
  * Trata casos com e sem o nono dígito e remove o código do país (55).
@@ -18,7 +25,7 @@ export function formatPhone(phone: string): string {
     cleaned = cleaned.substring(0, 2) + '9' + cleaned.substring(2);
   }
 
-  // Se tiver 11 dígitos (DDD + 9), aplica a máscara
+  // Se tiver 11 dígitos (DDD + 9), aplica a máscara: (XX) 9XXXX-XXXX
   if (cleaned.length === 11) {
     return `(${cleaned.substring(0, 2)}) ${cleaned.substring(2, 7)}-${cleaned.substring(7)}`;
   }

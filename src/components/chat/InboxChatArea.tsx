@@ -232,6 +232,8 @@ export const ChatWindow = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [removingTag, setRemovingTag] = useState<string | null>(null);
+  const [deletingMsgId, setDeletingMsgId] = useState<string | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -439,9 +441,14 @@ export const ChatWindow = () => {
   };
 
   const handleDeleteMessage = async (id: string, mode: 'me' | 'everyone') => {
+    if (deletingMsgId) return;
+    setDeletingMsgId(id);
     setDeleteMenuId(null);
     const confirmText = mode === 'everyone' ? 'Deseja apagar esta mensagem para TODOS?' : 'Deseja remover esta mensagem apenas para você?';
-    if (!confirm(confirmText)) return;
+    if (!confirm(confirmText)) {
+      setDeletingMsgId(null);
+      return;
+    }
     try {
       const resp = await fetch(`/api/messages/${id}/delete`, { 
         method: 'POST',
@@ -451,6 +458,8 @@ export const ChatWindow = () => {
       if (resp.ok) deleteMessageLocally(id, mode);
     } catch (e) {
       console.error('Erro ao deletar msg:', e);
+    } finally {
+      setDeletingMsgId(null);
     }
   };
 
@@ -530,7 +539,8 @@ export const ChatWindow = () => {
   };
 
   const handleRemoveTag = async (tagName: string) => {
-    if (!activeConversation) return;
+    if (!activeConversation || removingTag) return;
+    setRemovingTag(tagName);
     const currentTags = activeConversation.tags || [];
     const nextTags = currentTags.map(ct => ct.tag.name).filter(n => n !== tagName);
     try {
@@ -539,9 +549,11 @@ export const ChatWindow = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tags: nextTags })
       });
-      if (res.ok) refetchConversations();
+      if (res.ok) await refetchConversations();
     } catch (e) {
       console.error('Falha ao remover etiqueta:', e);
+    } finally {
+      setRemovingTag(null);
     }
   };
 
@@ -663,15 +675,36 @@ export const ChatWindow = () => {
               </div>
               <div className="h-4 w-px bg-slate-100 mx-1 shrink-0" />
               <div className="flex gap-1 items-center overflow-x-auto no-scrollbar max-w-[300px]">
-                 {activeConversation.tags?.map((ct) => (
+                  {activeConversation.tags?.map((ct) => (
                     <div key={ct.tagId} className="relative group/tag-badge flex items-center">
-                      <span style={{ color: ct.tag.color, backgroundColor: `${ct.tag.color}10`, borderColor: `${ct.tag.color}30` }} className="px-1.5 py-0.5 rounded-lg text-[8px] font-black uppercase border whitespace-nowrap">
-                         {ct.tag.emoji && <span className="mr-0.5">{ct.tag.emoji}</span>}
+                      <span 
+                        style={{ 
+                          color: ct.tag.color, 
+                          backgroundColor: `${ct.tag.color}15`, 
+                          borderColor: `${ct.tag.color}30` 
+                        }} 
+                        className="px-2.5 py-1 rounded-xl text-[9px] font-black uppercase border whitespace-nowrap shadow-sm transition-all group-hover/tag-badge:pr-7 group-hover/tag-badge:bg-white"
+                      >
+                         {ct.tag.emoji && <span className="mr-1">{ct.tag.emoji}</span>}
                          {ct.tag.name}
                       </span>
-                      <button onClick={(e) => { e.stopPropagation(); handleRemoveTag(ct.tag.name); }} className="absolute -top-1 -right-1 h-3.5 w-3.5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/tag-badge:opacity-100 scale-0 group-hover/tag-badge:scale-100 transition-all shadow-sm z-10 hover:bg-red-600"><X size={8} /></button>
+                      <button 
+                        disabled={removingTag === ct.tag.name}
+                        onClick={(e) => { e.stopPropagation(); handleRemoveTag(ct.tag.name); }} 
+                        className={cn(
+                          "absolute right-1.5 h-4 w-4 rounded-full flex items-center justify-center opacity-0 group-hover/tag-badge:opacity-100 scale-0 group-hover/tag-badge:scale-100 transition-all text-slate-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-50",
+                          removingTag === ct.tag.name && "opacity-100 scale-100"
+                        )}
+                        title="Remover etiqueta"
+                      >
+                        {removingTag === ct.tag.name ? (
+                          <Loader2 size={10} className="animate-spin" />
+                        ) : (
+                          <X size={10} strokeWidth={3} />
+                        )}
+                      </button>
                     </div>
-                 ))}
+                  ))}
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -905,14 +938,19 @@ export const ChatWindow = () => {
                            </button>
                            <div className="relative">
                               <button 
+                                disabled={deletingMsgId === msg.id}
                                 onClick={() => setDeleteMenuId(deleteMenuId === msg.id ? null : msg.id)} 
                                 className={cn(
                                   "p-2 rounded-xl bg-white shadow-md border border-slate-100 transition-all transform hover:scale-110",
-                                  deleteMenuId === msg.id ? "bg-red-500 text-white" : "text-slate-400 hover:bg-red-50 hover:text-red-600"
+                                  (deleteMenuId === msg.id || deletingMsgId === msg.id) ? "bg-red-500 text-white" : "text-slate-400 hover:bg-red-50 hover:text-red-600"
                                 )}
                                 title="Opções de exclusão"
                               >
-                                <Trash2 size={16} />
+                                {deletingMsgId === msg.id ? (
+                                  <Loader2 size={16} className="animate-spin" />
+                                ) : (
+                                  <Trash2 size={16} />
+                                )}
                               </button>
                               {deleteMenuId === msg.id && (
                                 <div className={cn(

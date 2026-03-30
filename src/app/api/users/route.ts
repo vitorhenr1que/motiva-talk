@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     console.log(`[API] ${req.method} ${ROUTE}:`, body);
     
     validateBody(body, ['name', 'email', 'role', 'password'])
-    const { name, email, role, password } = body
+    const { name, email, role, password, channelIds } = body
 
     // 1. Criar no Supabase Auth via Admin SDK
     const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -53,7 +53,8 @@ export async function POST(req: Request) {
       id: authUser.user.id,
       name,
       email,
-      role
+      role,
+      channelIds
     })
     
     return NextResponse.json({ success: true, data: newUser }, { status: 201 })

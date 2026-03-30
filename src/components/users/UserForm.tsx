@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { X, Save, Shield, Mail, User as UserIcon, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export const UserForm = ({ item, channels, onClose, onSuccess }: any) => {
   const [loading, setLoading] = useState(false);
@@ -10,7 +11,17 @@ export const UserForm = ({ item, channels, onClose, onSuccess }: any) => {
     email: item?.email || '',
     role: item?.role || 'AGENT',
     password: '',
+    channelIds: item?.userChannels?.map((uc: any) => uc.channelId) || [] as string[],
   });
+
+  const toggleChannel = (id: string) => {
+    setFormData(prev => ({
+      ...prev,
+      channelIds: prev.channelIds.includes(id) 
+        ? prev.channelIds.filter((cid: string) => cid !== id)
+        : [...prev.channelIds, id]
+    }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,7 +69,7 @@ export const UserForm = ({ item, channels, onClose, onSuccess }: any) => {
           </button>
         </header>
 
-        <form onSubmit={handleSubmit} className="p-8 space-y-6">
+        <form onSubmit={handleSubmit} className="p-8 space-y-6 max-h-[80vh] overflow-y-auto personalized-scrollbar">
           <div className="space-y-4">
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Nome Completo</label>
@@ -128,6 +139,50 @@ export const UserForm = ({ item, channels, onClose, onSuccess }: any) => {
                  {formData.role === 'SUPERVISOR' && "Pode gerenciar conversas e ver relatórios de todos os canais."}
                  {formData.role === 'ADMIN' && "Acesso total: gestão de canais, usuários e configurações globais."}
               </p>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Canais de Atendimento</label>
+              <div className="grid grid-cols-1 gap-2">
+                {channels.map((ch: any) => (
+                  <label 
+                    key={ch.id} 
+                    className={cn(
+                      "flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer group",
+                      formData.channelIds.includes(ch.id) 
+                        ? "bg-blue-50 border-blue-200 ring-2 ring-blue-500/10" 
+                        : "bg-white border-slate-100 hover:border-slate-200"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "h-4 w-4 rounded border flex items-center justify-center transition-all",
+                        formData.channelIds.includes(ch.id) ? "bg-blue-600 border-blue-600" : "bg-white border-slate-300"
+                      )}>
+                        {formData.channelIds.includes(ch.id) && <Save size={10} className="text-white" />}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-700">{ch.name}</p>
+                        <p className="text-[10px] text-slate-400 font-mono">{ch.phoneNumber}</p>
+                      </div>
+                    </div>
+                    {ch.isActive ? (
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                    ) : (
+                      <span className="h-2 w-2 rounded-full bg-slate-300" />
+                    )}
+                    <input 
+                      type="checkbox" 
+                      className="hidden" 
+                      checked={formData.channelIds.includes(ch.id)}
+                      onChange={() => toggleChannel(ch.id)}
+                    />
+                  </label>
+                ))}
+                {channels.length === 0 && (
+                  <p className="text-xs text-slate-400 text-center py-4 bg-slate-50 rounded-xl border border-dashed">Nenhum canal ativo encontrado.</p>
+                )}
+              </div>
             </div>
           </div>
 

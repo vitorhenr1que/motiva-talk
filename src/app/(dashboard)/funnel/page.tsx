@@ -2,8 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  TrendingUp, Calendar, Filter, Search, 
+import { Tag, TrendingUp, Calendar, Filter, Search, 
   ChevronRight, ArrowRight, User as UserIcon,
   Phone, MessageSquare, Clock, GraduationCap,
   Award, Loader2, RefreshCw, Grab, X
@@ -11,6 +10,7 @@ import {
 import { FunnelStage } from '@/types/chat';
 import { useChatStore } from '@/store/useChatStore';
 import { ContactProfileSidebar } from '@/components/chat/ContactProfileSidebar';
+import { TagSelector } from '@/components/chat/TagSelector';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { format, parseISO } from 'date-fns';
@@ -268,10 +268,18 @@ export default function FunnelKanbanPage() {
 
                                  <div className="flex items-center gap-3 mb-3">
                                     <div className={cn(
-                                       "h-9 w-9 rounded-xl flex items-center justify-center text-sm font-black transition-all duration-300",
+                                       "h-9 w-9 rounded-xl flex items-center justify-center text-sm font-black transition-all duration-300 overflow-hidden",
                                        activeConversation?.id === item.conversation.id ? "bg-indigo-600 text-white" : "bg-indigo-50 text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white"
                                     )}>
-                                       {item.conversation.contact.name?.[0] || '?'}
+                                       {item.conversation.contact.profilePictureUrl ? (
+                                          <img 
+                                             src={item.conversation.contact.profilePictureUrl} 
+                                             alt={item.conversation.contact.name} 
+                                             className="h-full w-full object-cover"
+                                          />
+                                       ) : (
+                                          item.conversation.contact.name?.[0] || '?'
+                                       )}
                                     </div>
                                     <div className="flex-1 min-w-0">
                                        <h3 className="text-xs font-black text-slate-800 tracking-tight truncate group-hover:text-indigo-600 transition-colors uppercase">
@@ -284,21 +292,74 @@ export default function FunnelKanbanPage() {
                                  </div>
 
                                  <div className="flex items-center justify-between pt-2.5 border-t border-slate-50">
-                                    <div className="flex -space-x-1.5 translate-y-0.5">
-                                       {kanbanData
-                                         .filter(f => f.conversation?.id === item.conversation.id && f.stage?.type === 'SELECT' && f.value)
-                                         .slice(0, 2)
-                                         .map(sel => (
-                                            <div key={sel.id} title={`${sel.stage?.name}: ${sel.value}`} className="h-5 w-5 rounded-full bg-white border-2 border-indigo-50 flex items-center justify-center text-indigo-500 shadow-sm">
-                                               {sel.stage?.name.toLowerCase().includes('curso') ? <GraduationCap size={10} /> : <Award size={10} />}
-                                            </div>
-                                         ))
-                                       }
+                                    <div className="flex flex-col gap-1.5 flex-1 min-w-0 pr-2">
+                                        <div className="flex flex-wrap gap-1 mb-1">
+                                           {kanbanData
+                                              .filter(f => f.conversation?.id === item.conversation.id && f.stage?.type === 'SELECT' && f.value)
+                                              .map(sel => {
+                                                 if (sel.stageId === 'stage_2') {
+                                                    return (
+                                                       <div 
+                                                          key={sel.id} 
+                                                          title={`${sel.stage?.name}: ${sel.value}`} 
+                                                          className="px-2 py-0.5 rounded-lg bg-indigo-50 border border-indigo-100 text-[8px] font-black text-indigo-600 uppercase flex items-center gap-1 shadow-sm"
+                                                       >
+                                                          <GraduationCap size={10} className="text-indigo-400" />
+                                                          <span className="truncate max-w-[120px]">{sel.value}</span>
+                                                       </div>
+                                                    );
+                                                 }
+                                                 return (
+                                                    <div key={sel.id} title={`${sel.stage?.name}: ${sel.value}`} className="h-6 w-6 rounded-full bg-white border-2 border-indigo-50 flex items-center justify-center text-[10px] text-indigo-500 shadow-sm font-black uppercase overflow-hidden">
+                                                       <span className="scale-90">{sel.value?.[0]}</span>
+                                                    </div>
+                                                 );
+                                              })}
+                                        </div>
+                                       
+                                       <div className="flex flex-wrap gap-1">
+                                          {item.conversation.tags?.slice(0, 2).map((ct: any) => (
+                                             <span 
+                                                key={ct.tag.id} 
+                                                style={{ 
+                                                   backgroundColor: `${ct.tag.color}15`,
+                                                   color: ct.tag.color,
+                                                   borderColor: `${ct.tag.color}30`
+                                                }}
+                                                className="px-1.5 py-0.5 rounded-lg text-[7px] font-black uppercase border leading-none shadow-sm"
+                                             >
+                                                {ct.tag.emoji && <span className="mr-0.5 grayscale-0">{ct.tag.emoji}</span>}
+                                                {ct.tag.name}
+                                             </span>
+                                          ))}
+                                          {(item.conversation.tags?.length || 0) > 2 && (
+                                             <span className="px-1 py-0.5 rounded-lg bg-slate-50 text-[7px] font-bold text-slate-400 border border-slate-100 uppercase">
+                                                +{(item.conversation.tags?.length || 0) - 2}
+                                             </span>
+                                          )}
+                                       </div>
                                     </div>
-                                    <div className="text-[8px] font-black text-slate-300 uppercase tracking-tighter flex items-center gap-1">
-                                       <Clock size={8} />
-                                       {format(parseISO(item.completedAt), 'HH:mm', { locale: ptBR })}
-                                     </div>
+                                    
+                                    <div className="flex flex-col items-end gap-1.5">
+                                       <TagSelector 
+                                          conversationId={item.conversation.id} 
+                                          currentTags={item.conversation.tags || []} 
+                                          onUpdate={fetchData}
+                                          dropdownAlign="right"
+                                          renderButton={(toggle: () => void) => (
+                                             <button 
+                                                onClick={(e) => { e.stopPropagation(); toggle(); }}
+                                                className="h-7 w-7 rounded-xl bg-slate-50 flex items-center justify-center text-slate-300 hover:bg-indigo-50 hover:text-indigo-500 transition-all border border-slate-100 hover:border-indigo-100 shrink-0"
+                                             >
+                                                <Tag size={12} />
+                                             </button>
+                                          )}
+                                       />
+                                       <div className="text-[8px] font-black text-slate-300 uppercase tracking-tighter flex items-center gap-1">
+                                          <Clock size={8} />
+                                          {format(parseISO(item.completedAt), 'HH:mm', { locale: ptBR })}
+                                       </div>
+                                    </div>
                                  </div>
                               </div>
                             );

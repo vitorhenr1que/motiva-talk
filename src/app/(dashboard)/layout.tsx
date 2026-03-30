@@ -14,10 +14,32 @@ import { headers, cookies } from 'next/headers';
 import { getServerSession, getUserRole } from '@/lib/auth-server';
 import { LogoutButton } from '@/components/auth/LogoutButton';
 import { SidebarItem } from '@/components/layout/SidebarItem';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await getServerSession();
   const role = user ? await getUserRole(user.email!) : 'AGENT';
+
+  // Buscar configurações de visibilidade do menu
+  const { data: settings } = await supabaseAdmin
+    .from('ChatSetting')
+    .select('agentMenuVisibility')
+    .single();
+
+  const visibility = settings?.agentMenuVisibility || {
+    conversations: true,
+    funnel: true,
+    reports: false,
+    channels: false,
+    contacts: false,
+    suggestions: true,
+    settings: true
+  };
+
+  const isVisible = (key: string) => {
+    if (role === 'ADMIN' || role === 'SUPERVISOR') return true;
+    return !!(visibility as any)[key];
+  };
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
@@ -30,51 +52,69 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </div>
         
         <nav className="flex-1 space-y-1 p-4">
-          <SidebarItem 
-            href="/inbox" 
-            iconName="inbox" 
-            label="Conversas" 
-          />
-
-          <SidebarItem 
-            href="/funnel" 
-            iconName="trending" 
-            label="Fluxo Kanban" 
-          />
-          
-          {(role === 'ADMIN' || role === 'SUPERVISOR') && (
-            <>
-              <SidebarItem 
-                href="/channels" 
-                iconName="channels" 
-                label="Canais" 
-              />
-              <SidebarItem 
-                href="/contacts" 
-                iconName="contacts" 
-                label="Contatos" 
-              />
-              {role === 'ADMIN' && (
-                <SidebarItem 
-                  href="/settings/users" 
-                  iconName="contacts" // Reusando ícone de usuários
-                  label="Usuários" 
-                />
-              )}
-            </>
+          {isVisible('conversations') && (
+            <SidebarItem 
+              href="/inbox" 
+              iconName="inbox" 
+              label="Conversas" 
+            />
           )}
 
-          <SidebarItem 
-            href="/settings/suggestions" 
-            iconName="suggestions" 
-            label="Sugestões" 
-          />
+          {isVisible('funnel') && (
+            <SidebarItem 
+              href="/funnel" 
+              iconName="trending" 
+              label="Fluxo Kanban" 
+            />
+          )}
+          
+          {isVisible('reports') && (role === 'ADMIN' || role === 'SUPERVISOR') && (
+            <SidebarItem 
+              href="/reports" 
+              iconName="reports" 
+              label="Relatórios" 
+            />
+          )}
 
-          <SidebarItem 
-            href="/settings" 
-            iconName="settings" 
-            label="Configurações" 
-          />
+          {isVisible('channels') && (role === 'ADMIN' || role === 'SUPERVISOR') && (
+            <SidebarItem 
+              href="/channels" 
+              iconName="channels" 
+              label="Canais" 
+            />
+          )}
+
+          {isVisible('contacts') && (role === 'ADMIN' || role === 'SUPERVISOR') && (
+            <SidebarItem 
+              href="/contacts" 
+              iconName="contacts" 
+              label="Contatos" 
+            />
+          )}
+
+          {role === 'ADMIN' && (
+            <SidebarItem 
+              href="/settings/users" 
+              iconName="contacts" 
+              label="Usuários" 
+            />
+          )}
+
+          {isVisible('suggestions') && (
+            <SidebarItem 
+              href="/settings/suggestions" 
+              iconName="suggestions" 
+              label="Sugestões" 
+            />
+          )}
+
+          {isVisible('settings') && (
+            <SidebarItem 
+              href="/settings" 
+              iconName="settings" 
+              label="Configurações" 
+            />
+          )}
         </nav>
 
         <div className="p-4 border-t space-y-2">

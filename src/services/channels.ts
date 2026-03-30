@@ -1,7 +1,10 @@
 import { ChannelRepository } from '@/repositories/channelRepository'
 
 export class ChannelService {
-  static async listActive() {
+  static async listActive(userId?: string) {
+    if (userId) {
+      return await ChannelRepository.findByUserId(userId)
+    }
     return await ChannelRepository.findMany({ isActive: true })
   }
 

@@ -13,6 +13,19 @@ export class ChannelRepository {
     return data
   }
 
+  static async findByUserId(userId: string) {
+    const { data, error } = await supabaseAdmin
+      .from('UserChannel')
+      .select('channel:Channel(*)')
+      .eq('userId', userId)
+    
+    if (error) throw error
+    
+    // Supondo que a estrutura retornada pelo select dependa de como o Supabase lida com joins.
+    // O retorno será algo como [{ channel: { id, name... } }, { channel: ... }]
+    return (data || []).map((item: any) => item.channel).filter((ch: any) => ch !== null && ch.isActive);
+  }
+
   static async findById(id: string) {
     const { data, error } = await supabaseAdmin.from('Channel').select('*').eq('id', id).single()
     if (error) throw error

@@ -61,7 +61,7 @@ export async function PATCH(
     const isSelfUpdate = currentUser?.id === targetUserId;
 
     const body = await req.json()
-    const { name, email, password, userRole } = body
+    const { name, email, password, role, channelIds } = body
 
     // 2. Lógica de Permissões
     if (currentRole !== 'ADMIN') {
@@ -70,7 +70,7 @@ export async function PATCH(
       if (!isSelfUpdate) throw new AppError('Acesso negado: Você só pode editar seu próprio perfil', 403, 'FORBIDDEN');
       
       // b) Só pode editar o NOME (e-mail, senha e role são travados para ADMINs)
-      if (email || password || userRole) throw new AppError('Acesso negado: Apenas administradores podem alterar e-mail, senha ou cargo', 403, 'FORBIDDEN');
+      if (email || password || role) throw new AppError('Acesso negado: Apenas administradores podem alterar e-mail, senha ou cargo', 403, 'FORBIDDEN');
       
       // c) Verificar se a edição de nome está liberada globalmente
       const { data: settings } = await supabaseAdmin.from('ChatSetting').select('allowAgentNameEdit').single();
@@ -102,7 +102,8 @@ export async function PATCH(
     // Apenas ADMIN pode mudar email ou role no banco
     if (currentRole === 'ADMIN') {
         if (email) updateDbData.email = email;
-        if (userRole) updateDbData.role = userRole;
+        if (role) updateDbData.role = role;
+        if (channelIds !== undefined) updateDbData.channelIds = channelIds;
     }
 
     const updated = await UserRepository.update(targetUserId, updateDbData)

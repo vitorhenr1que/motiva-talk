@@ -81,14 +81,13 @@ export const Sidebar = () => {
     <div className="flex h-full w-80 flex-col border-r bg-white flex-shrink-0">
       {/* Filters Header */}
       <div className="p-4 border-b bg-slate-50/50 space-y-3">
-        <div className="grid grid-cols-2 gap-2">
-          {/* ... selects remain same ... */}
+        <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Canal</label>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] block px-1">Canal</label>
             <select 
               value={selectedChannelId || ''} 
               onChange={(e) => setSelectedChannelId(e.target.value)}
-              className="w-full rounded-lg border-slate-200 bg-white py-1.5 px-2 text-[11px] font-bold text-slate-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all cursor-pointer"
+              className="w-full rounded-xl border border-slate-100 bg-white py-2 px-2.5 text-[11px] font-black text-slate-700 shadow-inner focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
             >
               {channels.map(ch => (
                 <option key={ch.id} value={ch.id}>{ch.name}</option>
@@ -97,13 +96,13 @@ export const Sidebar = () => {
             </select>
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Etiqueta</label>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] block px-1">Etiquetas</label>
             <select 
               value={selectedTagId || ''} 
               onChange={(e) => setSelectedTagId(e.target.value)}
-              className="w-full rounded-lg border-slate-200 bg-white py-1.5 px-2 text-[11px] font-bold text-slate-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all cursor-pointer"
+              className="w-full rounded-xl border border-slate-100 bg-white py-2 px-2.5 text-[11px] font-black text-slate-700 shadow-inner focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
             >
-              <option value="">Todas</option>
+              <option value="">🎯 Todas</option>
               {tags.map(t => (
                 <option key={t.id} value={t.id}>{t.emoji} {t.name}</option>
               ))}
@@ -170,16 +169,16 @@ export const Sidebar = () => {
                   </div>
   
                   {/* Tags Badges */}
-                  <div className="flex flex-wrap gap-1 mt-0.5 mb-1.5 min-h-[16px]">
+                  <div className="flex flex-wrap gap-1 mt-1 mb-2 min-h-[18px]">
                     {conv.tags?.slice(0, 3).map((ct: any) => (
                       <span 
                         key={ct.tag.id} 
                         style={{ 
-                          backgroundColor: ct.tag.color + '20',
+                          backgroundColor: `${ct.tag.color}15`,
                           color: ct.tag.color,
-                          borderColor: ct.tag.color + '40'
+                          borderColor: `${ct.tag.color}30`
                         }}
-                        className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase border leading-none flex items-center gap-1 shadow-sm"
+                        className="px-2 py-0.5 rounded-lg text-[8px] font-black uppercase border leading-none flex items-center gap-1 shadow-sm transition-transform hover:scale-105"
                       >
                         {ct.tag.emoji && <span className="text-[10px] grayscale-0">{ct.tag.emoji}</span>}
                         {ct.tag.name}

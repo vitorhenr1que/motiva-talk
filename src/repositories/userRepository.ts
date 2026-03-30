@@ -29,25 +29,57 @@ export class UserRepository {
   }
 
   static async create(data: any) {
+    const { channelIds, ...rest } = data;
+    const id = rest.id || generateId();
+    
     const { data: newUser, error } = await supabaseAdmin
       .from('User')
-      .insert([{ id: generateId(), ...data }])
+      .insert([{ ...rest, id }])
       .select()
       .single()
 
     if (error) throw error
+
+    if (channelIds && channelIds.length > 0) {
+      const { error: chError } = await supabaseAdmin
+        .from('UserChannel')
+        .insert(channelIds.map((cid: string) => ({ 
+          userId: newUser.id, 
+          channelId: cid 
+        })));
+      if (chError) console.error('Error linking channels:', chError);
+    }
+
     return newUser
   }
 
   static async update(id: string, data: any) {
+    const { channelIds, ...rest } = data;
+    
     const { data: updatedUser, error } = await supabaseAdmin
       .from('User')
-      .update(data)
+      .update(rest)
       .eq('id', id)
       .select()
       .single()
 
     if (error) throw error
+
+    if (channelIds !== undefined) {
+      // Sincronizar canais
+      await supabaseAdmin.from('UserChannel').delete().eq('userId', id);
+      
+      if (channelIds.length > 0) {
+        const { error: chError } = await supabaseAdmin
+          .from('UserChannel')
+          .insert(channelIds.map((cid: string) => ({ 
+            userId: id, 
+            channelId: cid 
+          })));
+        if (chError) console.error('Error updating channels:', chError);
+      }
+    }
+
     return updatedUser
   }
 

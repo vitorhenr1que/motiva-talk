@@ -3,12 +3,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useChatStore } from '@/store/useChatStore';
 import { 
-  Send, Smile, Paperclip, Zap, Loader2, X, Edit2, Check, Lock, 
+  Send, Smile, Paperclip, Zap, MessageSquareText, Loader2, X, Edit2, Check, Lock, 
   Image as ImageIcon, Video, FileText, UserPlus as ContactIcon, Mic 
 } from 'lucide-react';
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
 import { QuickReplyMenu } from '@/components/quick-replies/Menu';
 import { QuickReplyManagerModal } from '@/components/quick-replies/ManagerModal';
+import { ContactSelectorModal } from './ContactSelectorModal';
 import { uploadFile } from '@/lib/supabase-utils';
 import { supabase } from '@/lib/supabase';
 import { getFileTypeInfo, mapKindToMessageType } from '@/lib/file-type';
@@ -44,6 +45,7 @@ export const MessageInput = () => {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [repliesOpen, setRepliesOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
+  const [contactSelectorOpen, setContactSelectorOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   
   const [customName, setCustomName] = useState('');
@@ -233,14 +235,10 @@ export const MessageInput = () => {
     }
   };
 
-  const handleSendContact = async () => {
+  const handleSendContact = async (name: string, phone: string) => {
     if (!activeConversation || activeConversation.status === 'CLOSED') return;
     setAttachmentMenuOpen(false);
-    
-    const name = prompt('Nome do contato:');
-    if (!name) return;
-    const phone = prompt('Número do WhatsApp (com DDD):');
-    if (!phone) return;
+    setContactSelectorOpen(false);
 
     try {
       const resp = await fetch('/api/messages', {
@@ -253,7 +251,11 @@ export const MessageInput = () => {
           content: `Contato: ${name}`,
           type: 'CONTACT',
           metadata: { 
-            contact: { fullName: name, wuid: phone.replace(/\D/g, '') } 
+            contact: { 
+              fullName: name, 
+              wuid: phone.replace(/\D/g, ''),
+              phoneNumber: phone.replace(/\D/g, '')
+            } 
           }
         })
       });
@@ -427,7 +429,7 @@ export const MessageInput = () => {
                 <div className="flex items-center justify-between px-1">
                   <div className="flex items-center gap-2">
                     <div className="h-5 w-5 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 shadow-sm">
-                      <Zap size={10} fill="currentColor" />
+                      <MessageSquareText size={10} fill="currentColor" />
                     </div>
                     <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600/70">Sugestões de IA</span>
                   </div>
@@ -532,14 +534,14 @@ export const MessageInput = () => {
                  Áudio
                </button>
                <div className="h-px bg-slate-100 my-1 mx-2" />
-               <button onClick={handleSendContact} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors">
+               <button onClick={() => { setAttachmentMenuOpen(false); setContactSelectorOpen(true); }} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors">
                  <ContactIcon size={16} className="text-green-500" />
                  Contato
                </button>
             </div>
           )}
 
-          <button type="button" onClick={() => setRepliesOpen(true)} className="rounded-xl p-2.5 text-slate-400 hover:bg-slate-50 hover:text-blue-600 transition-all active:scale-90"><Zap size={22} /></button>
+          <button type="button" onClick={() => setRepliesOpen(true)} className="rounded-xl p-2.5 text-slate-400 hover:bg-slate-50 hover:text-blue-600 transition-all active:scale-90"><MessageSquareText size={22} /></button>
         </div>
 
         <div className="relative flex-1 group">
@@ -566,8 +568,21 @@ export const MessageInput = () => {
 
       </div>
 
-      {repliesOpen && <QuickReplyMenu search={content.startsWith('/') ? content.slice(1) : content} onSelect={(replyContent) => { setContent(replyContent); setRepliesOpen(false); }} onClose={() => setRepliesOpen(false)} />}
+      {repliesOpen && (
+        <QuickReplyMenu 
+          search={content.startsWith('/') ? content.slice(1) : content} 
+          onSelect={(replyContent) => { setContent(replyContent); setRepliesOpen(false); }} 
+          onClose={() => setRepliesOpen(false)}
+          onOpenManager={() => { setRepliesOpen(false); setManagerOpen(true); }}
+        />
+      )}
       {managerOpen && <QuickReplyManagerModal onClose={() => setManagerOpen(false)} />}
+      {contactSelectorOpen && (
+        <ContactSelectorModal 
+          onClose={() => setContactSelectorOpen(false)} 
+          onSelect={(contact) => handleSendContact(contact.name, contact.phone)} 
+        />
+      )}
     </div>
   );
 };

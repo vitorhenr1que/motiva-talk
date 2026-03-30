@@ -20,19 +20,36 @@ export async function GET(req: Request) {
         success: true, 
         data: { 
           autoIdentifyAgent: false, 
-          allowAgentNameEdit: false 
+          allowAgentNameEdit: false,
+          agentMenuVisibility: {
+            conversations: true,
+            funnel: true,
+            reports: false,
+            channels: false,
+            contacts: false,
+            suggestions: true,
+            settings: true
+          }
         } 
       })
     }
 
     if (error) throw error
     
-    // Mapeamento caso o banco ainda use o nome antigo allowAgentEditName
     return NextResponse.json({ 
       success: true, 
       data: {
         autoIdentifyAgent: settings.autoIdentifyAgent,
-        allowAgentNameEdit: settings.allowAgentNameEdit ?? (settings as any).allowAgentEditName ?? false
+        allowAgentNameEdit: settings.allowAgentNameEdit ?? (settings as any).allowAgentEditName ?? false,
+        agentMenuVisibility: settings.agentMenuVisibility || {
+          conversations: true,
+          funnel: true,
+          reports: false,
+          channels: false,
+          contacts: false,
+          suggestions: true,
+          settings: true
+        }
       }
     })
   } catch (error) {
@@ -51,7 +68,7 @@ export async function PATCH(req: Request) {
     const body = await req.json()
     console.log(`[API] ${req.method} ${ROUTE}:`, body);
 
-    const { autoIdentifyAgent, allowAgentNameEdit } = body
+    const { autoIdentifyAgent, allowAgentNameEdit, agentMenuVisibility } = body
 
     // Tenta atualizar ou inserir se não existir
     const { data: existing } = await supabaseAdmin.from('ChatSetting').select('id').single()
@@ -59,7 +76,8 @@ export async function PATCH(req: Request) {
     let result;
     const payload = { 
       autoIdentifyAgent, 
-      allowAgentNameEdit: allowAgentNameEdit 
+      allowAgentNameEdit,
+      agentMenuVisibility
     };
 
     if (existing) {
