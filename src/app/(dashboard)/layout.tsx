@@ -76,6 +76,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
             />
           )}
 
+          {isVisible('reports') && (role === 'ADMIN' || role === 'SUPERVISOR') && (
+            <SidebarItem 
+              href="/reports/feedbacks" 
+              iconName="feedback" 
+              label="Avaliações" 
+            />
+          )}
+
           {isVisible('channels') && (role === 'ADMIN' || role === 'SUPERVISOR') && (
             <SidebarItem 
               href="/channels" 

@@ -14,6 +14,8 @@ export async function middleware(req: NextRequest) {
   const isPublicRoute = 
     publicRoutes.some(route => pathname === route) || 
     pathname.startsWith('/api/webhooks') || 
+    pathname.startsWith('/api/public') || 
+    pathname.startsWith('/feedback') || 
     pathname.startsWith('/_next') || 
     pathname.includes('.')
 

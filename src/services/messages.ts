@@ -84,7 +84,7 @@ export class MessageService {
       }
     }
 
-    if (senderType === 'AGENT') {
+    if (senderType === 'AGENT' || senderType === 'SYSTEM') {
       try {
         const { ConversationRepository } = await import('@/repositories/conversationRepository')
         const { evolutionProvider } = await import('@/services/whatsapp/evolution-provider')
@@ -142,7 +142,7 @@ export class MessageService {
       createdAt: new Date().toISOString()
     })
 
-    if (senderType === 'AGENT') {
+    if (senderType === 'AGENT' || senderType === 'SYSTEM') {
       const { ConversationRepository } = await import('@/repositories/conversationRepository')
       await ConversationRepository.update(conversationId, { 
         lastMessageAt: new Date().toISOString(),

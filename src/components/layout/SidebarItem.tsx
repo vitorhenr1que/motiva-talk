@@ -10,7 +10,8 @@ import {
   Phone, 
   Zap,
   SquareKanban,
-  BarChart3
+  BarChart3,
+  Star
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -26,7 +27,8 @@ const Icons: Record<string, any> = {
   suggestions: Zap,
   settings: Settings,
   trending: SquareKanban,
-  reports: BarChart3
+  reports: BarChart3,
+  feedback: Star
 };
 
 interface SidebarItemProps {

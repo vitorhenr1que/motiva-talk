@@ -16,6 +16,7 @@ export default function SettingsPage() {
   const [chatSettings, setChatSettings] = useState({
     autoIdentifyAgent: true,
     allowAgentNameEdit: false,
+    finishMessage: '',
     agentMenuVisibility: {
       conversations: true,
       funnel: true,
@@ -248,6 +249,22 @@ export default function SettingsPage() {
                          <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 shadow-inner"></div>
                       </label>
                    </div>
+
+                    <div className="px-4 py-2 space-y-2">
+                       <h3 className="font-bold text-slate-800 text-sm">Mensagem de Finalização Automática</h3>
+                       <p className="text-[12px] text-slate-500 leading-relaxed mb-3">
+                         Esta mensagem será enviada junto com o link de feedback quando o atendimento for encerrado.
+                       </p>
+                       <textarea
+                         value={chatSettings.finishMessage}
+                         onChange={(e) => setChatSettings({...chatSettings, finishMessage: e.target.value})}
+                         className="w-full rounded-2xl border-slate-200 bg-slate-50 py-3 px-4 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-h-[100px]"
+                         placeholder="Ex: Seu atendimento foi finalizado. Como foi sua experiência?"
+                       />
+                       <p className="text-[10px] text-blue-600 font-bold italic">
+                         💡 O link público de feedback será adicionado automaticamente ao final desta mensagem.
+                       </p>
+                    </div>
                 </div>
 
                 <div className="mt-8 flex justify-end">
