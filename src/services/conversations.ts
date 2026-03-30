@@ -164,4 +164,50 @@ export class ConversationService {
 
     return updated;
   }
+
+  /**
+   * Remove permanentemente a conversa e todos os dados vinculados (mensagens, mídias, etc)
+   * Preserva Contato e Feedbacks
+   */
+  static async deleteConversation(id: string) {
+    const { ConversationRepository } = await import('@/repositories/conversationRepository');
+    const { MessageService } = await import('@/services/messages');
+    const { MessageRepository } = await import('@/repositories/messageRepository');
+    const { FeedbackRepository } = await import('@/repositories/feedbackRepository');
+
+    // 1. Obter detalhes para logs e contexto
+    const conversation = await ConversationRepository.findById(id);
+    if (!conversation) throw new Error('Conversa não encontrada');
+
+    const conversationId = conversation.id;
+    const channelId = conversation.channelId;
+
+    console.log(`[DELETE_CONV] Iniciando exclusão completa: ID=${conversationId} Canal=${channelId}`);
+
+    // 2. Limpeza física de mídia no Storage
+    const filesRemoved = await MessageService.deleteAllMediaByConversation(id);
+    
+    // 3. Obter contagem de mensagens para log
+    const allMessages = await MessageRepository.findAllByConversation(id);
+    const messagesCount = allMessages.length;
+
+    // 4. Desvincular Feedbacks (Importante: manter o feedback mas remover a FK da conversa que será deletada)
+    await FeedbackRepository.nullifyConversation(id);
+
+    // 5. Exclusão física no Banco de Dados
+    // Obs: Tabelas como Message, ConversationTag, etc devem ter ON DELETE CASCADE
+    // Se não tiverem, o repo executará a limpeza ou lançará erro.
+    const success = await ConversationRepository.delete(id);
+
+    if (success) {
+      console.log(`[DELETE_CONV] Sucesso ao apagar conversa!
+        - ConversationId: ${conversationId}
+        - ChannelId: ${channelId}
+        - Mensagens removidas: ${messagesCount}
+        - Arquivos removidos: ${filesRemoved}
+      `);
+    }
+
+    return success;
+  }
 }

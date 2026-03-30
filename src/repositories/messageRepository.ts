@@ -34,6 +34,16 @@ export class MessageRepository {
     return data;
   }
 
+  static async findAllByConversation(conversationId: string) {
+    const { data, error } = await supabaseAdmin
+      .from('Message')
+      .select('*')
+      .eq('conversationId', conversationId);
+    
+    if (error) throw error;
+    return data;
+  }
+
   static async findById(id: string) {
     const { data, error } = await supabaseAdmin.from('Message').select('*').eq('id', id).single()
     if (error) throw error

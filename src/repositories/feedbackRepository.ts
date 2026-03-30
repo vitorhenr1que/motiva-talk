@@ -167,4 +167,16 @@ export class FeedbackRepository {
       }
     };
   }
+
+  static async nullifyConversation(conversationId: string) {
+    const { error } = await supabaseAdmin
+      .from('Feedback')
+      .update({ conversationId: null })
+      .eq('conversationId', conversationId);
+    
+    if (error) {
+      console.error('[FEEDBACK_REPO] Erro ao desvincular feedbacks:', error);
+      // Não lançamos erro aqui para não travar a exclusão da conversa se o feedback não for crítico
+    }
+  }
 }

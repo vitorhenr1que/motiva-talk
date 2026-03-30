@@ -283,4 +283,61 @@ export class MessageService {
       conversationId: m.conversationId
     }))
   }
+
+  /**
+   * Remove fisicamente todos os arquivos de mídia (media e thumbnail) de uma conversa no storage
+   * Retorna a quantidade de arquivos removidos
+   */
+  static async deleteAllMediaByConversation(conversationId: string) {
+    const messages = await MessageRepository.findAllByConversation(conversationId);
+    
+    // Identificar todos os arquivos (Media e Thumbnail)
+    const pathsToRemoval: string[] = [];
+    const bucket = 'chat-media';
+
+    messages.forEach((m: any) => {
+      [m.mediaUrl, m.thumbnailUrl].forEach(url => {
+        if (url && typeof url === 'string' && url.includes(bucket)) {
+          let path = url;
+          if (url.includes(`${bucket}/`)) {
+            path = url.split(`${bucket}/`).pop() || url;
+          }
+          // Evitar duplicados
+          if (!pathsToRemoval.includes(path)) {
+            pathsToRemoval.push(path);
+          }
+        }
+      });
+    });
+
+    if (pathsToRemoval.length === 0) {
+      console.log(`[MSG_SERVICE] Nenhuma mídia identificada para a conversa ${conversationId}`);
+      return 0;
+    }
+
+    console.log(`[MSG_SERVICE] Identificados ${pathsToRemoval.length} arquivos para a conversa ${conversationId}:`, pathsToRemoval);
+
+    const { supabaseAdmin } = await import('@/lib/supabase-admin');
+    let successCount = 0;
+
+    // Removemos em lote para eficiência, mas logamos resultados
+    const { data, error } = await supabaseAdmin.storage.from(bucket).remove(pathsToRemoval);
+    
+    if (error) {
+      console.error('[MSG_SERVICE] Erro ao remover arquivos do storage (lote):', error);
+      // O Supabase remove o que consegue mesmo se der erro em alguns
+    }
+
+    if (data) {
+       successCount = data.length;
+       console.log(`[MSG_SERVICE] Paths removidos com sucesso:`, data.map(f => f.name));
+       
+       if (data.length < pathsToRemoval.length) {
+          const failed = pathsToRemoval.filter(p => !data.some(f => f.name === p));
+          console.warn(`[MSG_SERVICE] ${pathsToRemoval.length - data.length} arquivos falharam ou não existiam:`, failed);
+       }
+    }
+
+    return successCount;
+  }
 }

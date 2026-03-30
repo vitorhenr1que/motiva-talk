@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useChatStore } from '@/store/useChatStore';
-import { Search, Filter, MessageSquare, Tag as TagIcon, Plus } from 'lucide-react';
+import { MoreVertical, Trash2, Loader2, Search, Filter, MessageSquare, Tag as TagIcon, Plus, CheckCircle, RefreshCw } from 'lucide-react';
 import { TagSelector } from '@/components/chat/TagSelector';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { formatPhone } from '@/lib/utils';
 import { formatTimeBahia, parseSafeDate } from '@/lib/date-utils';
+import { supabase } from '@/lib/supabase';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -25,8 +26,16 @@ export const Sidebar = () => {
     setSelectedTagId,
     setConversations,
     loadingConversations,
-    setLoadingConversations
+    setLoadingConversations,
+    updateConversationLocally
   } = useChatStore();
+
+  const [userRole, setUserRole] = useState<string>('AGENT');
+  const [allowDeletePermission, setAllowDeletePermission] = useState(false);
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [sidebarMenuOpen, setSidebarMenuOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'unread' | 'in_progress' | 'closed'>('unread');
 
   const [search, setSearch] = useState('');
 
@@ -38,6 +47,28 @@ export const Sidebar = () => {
     };
     fetchTags();
   }, [setTags]);
+
+  useEffect(() => {
+    const fetchPerms = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const resUser = await fetch(`/api/users/${session.user.id}`);
+          const userData = await resUser.json();
+          if (userData.success) setUserRole(userData.data.role);
+        }
+
+        const resSettings = await fetch('/api/settings/chat');
+        const settingsData = await resSettings.json();
+        if (settingsData.success) {
+          setAllowDeletePermission(settingsData.data.allowAgentDeleteConversation);
+        }
+      } catch (e) {
+        console.error('[SIDEBAR] Error fetching perms:', e);
+      }
+    };
+    fetchPerms();
+  }, []);
 
   useEffect(() => {
     if (!selectedChannelId) return;
@@ -72,15 +103,134 @@ export const Sidebar = () => {
     } catch (e) {}
   };
 
-  const filteredConversations = conversations.filter(conv => 
-    conv.contact.name.toLowerCase().includes(search.toLowerCase()) ||
-    formatPhone(conv.contact.phone).includes(search)
-  );
+  const handleDeleteConversation = async (e: React.MouseEvent, conversation: any) => {
+    e.stopPropagation();
+    setActiveMenuId(null);
+    setSidebarMenuOpen(false);
+    
+    if (deletingId) return;
+    
+    const confirmText = `⚠️ AÇÃO IRREVERSÍVEL: Deseja realmente APAGAR PERMANENTEMENTE a conversa com "${conversation.contact?.name || 'este contato'}"? 
+Todos os dados e mensagens serão excluídos.`;
+    
+    if (!window.confirm(confirmText)) return;
+    
+    setDeletingId(conversation.id);
+    
+    try {
+      const resp = await fetch(`/api/conversations/${conversation.id}`, {
+        method: 'DELETE'
+      });
+      
+      if (resp.ok) {
+        if (activeConversation?.id === conversation.id) {
+          useChatStore.getState().setActiveConversation(null);
+        }
+        await refetchConversations();
+      } else {
+        const error = await resp.json();
+        alert(error.error || 'Erro ao excluir conversa.');
+      }
+    } catch (e) {
+      console.error('[SIDEBAR] Failed to delete conversation:', e);
+      alert('Erro na conexão ao excluir conversa.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleToggleStatus = async (e: React.MouseEvent, conv: any) => {
+    e.stopPropagation();
+    setActiveMenuId(null);
+    const newStatus = conv.status === 'CLOSED' ? 'OPEN' : 'CLOSED';
+    
+    try {
+      const res = await fetch(`/api/conversations/${conv.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      
+      if (res.ok) {
+        updateConversationLocally(conv.id, { status: newStatus });
+      }
+    } catch (error) {
+      console.error('Failed to toggle status:', error);
+    }
+  };
+
+  const filteredConversations = conversations.filter(conv => {
+    // 1. Filtro de Texto
+    const matchesSearch = conv.contact.name.toLowerCase().includes(search.toLowerCase()) ||
+                         formatPhone(conv.contact.phone).includes(search);
+    if (!matchesSearch) return false;
+
+    // 2. Filtro de Etiquetas
+    if (selectedTagId && !conv.tags?.some((t: any) => t.tagId === selectedTagId)) return false;
+
+    // 3. Filtro de Abas
+    if (activeTab === 'unread') {
+      return (conv.status === 'OPEN' || (conv.unreadCount || 0) > 0) && conv.status !== 'CLOSED';
+    }
+    if (activeTab === 'in_progress') {
+      return conv.status === 'IN_PROGRESS' && (conv.unreadCount || 0) === 0;
+    }
+    if (activeTab === 'closed') {
+      return conv.status === 'CLOSED';
+    }
+
+    return true;
+  });
+
+  // Sincronizar aba ativa com a conversa selecionada
+  useEffect(() => {
+    if (!activeConversation) return;
+
+    if (activeConversation.status === 'CLOSED') {
+      setActiveTab('closed');
+    } else if (activeConversation.status === 'OPEN' || (activeConversation.unreadCount || 0) > 0) {
+      setActiveTab('unread');
+    } else if (activeConversation.status === 'IN_PROGRESS') {
+      setActiveTab('in_progress');
+    }
+  }, [activeConversation?.id, activeConversation?.status, activeConversation?.unreadCount]);
 
   return (
     <div className="flex h-full w-80 flex-col border-r bg-white flex-shrink-0">
       {/* Filters Header */}
-      <div className="p-4 border-b bg-slate-50/50 space-y-3">
+      <div className="p-4 border-b bg-slate-50/50 space-y-3 relative group/sidebar-header">
+        <div className="flex items-center justify-between">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] block px-1">Atendimentos</label>
+          
+          {(userRole === 'ADMIN' || userRole === 'SUPERVISOR' || allowDeletePermission) && activeConversation && (
+            <div className="relative">
+              <button 
+                onClick={() => setSidebarMenuOpen(!sidebarMenuOpen)}
+                className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all"
+                title="Ações da conversa selecionada"
+              >
+                <MoreVertical size={16} />
+              </button>
+              
+              {sidebarMenuOpen && (
+                <div className="absolute right-0 mt-1 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-[60] animate-in fade-in zoom-in-95 duration-200">
+                  <header className="px-3 py-1.5 border-b border-slate-50 mb-1">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Conversa Selecionada</p>
+                    <p className="text-[11px] font-bold text-slate-700 truncate">{activeConversation.contact?.name}</p>
+                  </header>
+                  <button 
+                    onClick={(e) => { setSidebarMenuOpen(false); handleDeleteConversation(e, activeConversation); }}
+                    className="w-full text-left px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50 rounded-xl flex items-center gap-3 transition-colors"
+                  >
+                    <Trash2 size={16} />
+                    Apagar Conversa
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] block px-1">Canal</label>
@@ -120,6 +270,42 @@ export const Sidebar = () => {
             className="w-full rounded-lg bg-white border border-slate-200 py-1.5 pl-9 pr-4 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
           />
         </div>
+
+        {/* Tabs */}
+        <div className="flex p-0.5 bg-slate-200/50 rounded-xl mt-1">
+          <button 
+            onClick={() => setActiveTab('unread')}
+            className={cn(
+              "flex-1 py-1.5 text-[10px] font-black uppercase tracking-tight rounded-lg transition-all",
+              activeTab === 'unread' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            )}
+          >
+            Não Lidas
+            {conversations.filter(c => (c.status === 'OPEN' || (c.unreadCount || 0) > 0) && c.status !== 'CLOSED').length > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded-md text-[9px]">
+                {conversations.filter(c => (c.status === 'OPEN' || (c.unreadCount || 0) > 0) && c.status !== 'CLOSED').length}
+              </span>
+            )}
+          </button>
+          <button 
+            onClick={() => setActiveTab('in_progress')}
+            className={cn(
+              "flex-1 py-1.5 text-[10px] font-black uppercase tracking-tight rounded-lg transition-all",
+              activeTab === 'in_progress' ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            )}
+          >
+            Atendimento
+          </button>
+          <button 
+            onClick={() => setActiveTab('closed')}
+            className={cn(
+              "flex-1 py-1.5 text-[10px] font-black uppercase tracking-tight rounded-lg transition-all",
+              activeTab === 'closed' ? "bg-white text-slate-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            )}
+          >
+            Finalizadas
+          </button>
+        </div>
       </div>
 
       {/* List */}
@@ -141,12 +327,29 @@ export const Sidebar = () => {
             {filteredConversations.map((conv) => (
               <div
                 key={conv.id}
-                onClick={() => setActiveConversation(conv)}
+                onClick={() => {
+                  if (deletingId === conv.id) return;
+                  setActiveConversation(conv);
+                }}
                 className={cn(
                   "flex cursor-pointer items-center gap-3 border-b p-4 transition-all hover:bg-slate-50 relative group",
-                  activeConversation?.id === conv.id && "bg-blue-50/80 hover:bg-blue-50 border-l-4 border-l-blue-600 shadow-inner"
+                  activeConversation?.id === conv.id ? "bg-white ring-1 ring-inset ring-slate-200 shadow-sm" : "",
+                  deletingId === conv.id ? "opacity-50 pointer-events-none grayscale" : ""
                 )}
               >
+                {deletingId === conv.id && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/20 backdrop-blur-[1px]">
+                    <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+                  </div>
+                )}
+                {/* Status indicator bar */}
+                <div className={cn(
+                  "absolute left-0 top-0 bottom-0 w-1",
+                  conv.status === 'OPEN' ? "bg-amber-400" :
+                  conv.status === 'FOLLOW_UP' ? "bg-blue-500" :
+                  conv.status === 'CLOSED' ? "bg-slate-500" :
+                  "bg-green-500"
+                )} />
                 <div className="relative h-12 w-12 shrink-0 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 shadow-sm transition-transform group-hover:scale-105 overflow-hidden border border-slate-100">
                   {conv.contact.profilePictureUrl ? (
                     <img src={conv.contact.profilePictureUrl} className="h-full w-full object-cover" alt={conv.contact.name} />
@@ -163,9 +366,63 @@ export const Sidebar = () => {
                     )}>
                       {conv.contact.name}
                     </span>
-                    <span className="text-[10px] text-slate-400 font-bold whitespace-nowrap">
-                      {conv.lastMessageAt ? formatTimeBahia(conv.lastMessageAt) : '---'}
-                    </span>
+                    
+                    <div className="flex items-center gap-2 relative h-4">
+                      {/* Alterna entre timestamp e menu de ações no hover */}
+                      <span className={cn(
+                        "text-[10px] text-slate-400 font-bold whitespace-nowrap transition-all",
+                        activeMenuId === conv.id ? "opacity-0 scale-0" : "group-hover:opacity-0 group-hover:scale-0"
+                      )}>
+                        {conv.lastMessageAt ? formatTimeBahia(conv.lastMessageAt) : '---'}
+                      </span>
+                      
+                      <div className={cn(
+                        "absolute right-0 transition-all transform",
+                        activeMenuId === conv.id ? "opacity-100 scale-100" : "opacity-0 scale-0 group-hover:opacity-100 group-hover:scale-100"
+                      )}>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === conv.id ? null : conv.id); }}
+                          className="p-1 rounded-md hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                        >
+                          <MoreVertical size={14} />
+                        </button>
+                        
+                        {activeMenuId === conv.id && (
+                          <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-2xl border border-slate-100 p-1 z-50 animate-in fade-in zoom-in-95 duration-200">
+                            {conv.status !== 'CLOSED' ? (
+                              <button 
+                                onClick={(e) => handleToggleStatus(e, conv)}
+                                className="w-full text-left px-3 py-2 text-[11px] font-black uppercase tracking-tighter text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 rounded-lg flex items-center gap-2 transition-colors"
+                              >
+                                <CheckCircle size={12} />
+                                Finalizar Conversa
+                              </button>
+                            ) : (
+                              <button 
+                                onClick={(e) => handleToggleStatus(e, conv)}
+                                className="w-full text-left px-3 py-2 text-[11px] font-black uppercase tracking-tighter text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg flex items-center gap-2 transition-colors"
+                              >
+                                <RefreshCw size={12} />
+                                Reabrir Atendimento
+                              </button>
+                            )}
+
+                            {(userRole === 'ADMIN' || userRole === 'SUPERVISOR' || allowDeletePermission) && (
+                              <>
+                                <div className="h-px bg-slate-50 my-1 mx-1" />
+                                <button 
+                                  onClick={(e) => handleDeleteConversation(e, conv)}
+                                  className="w-full text-left px-3 py-2 text-[11px] font-black uppercase tracking-tighter text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-2 transition-colors"
+                                >
+                                  <Trash2 size={12} />
+                                  Apagar Conversa
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
   
                   {/* Tags Badges */}

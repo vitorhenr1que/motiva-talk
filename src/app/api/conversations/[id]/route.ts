@@ -57,3 +57,38 @@ export async function PATCH(
     return handleApiError(error, req, { route: ROUTE })
   }
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const userSession = await getServerSession();
+    if (!userSession) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
+
+    if (!id) throw new AppError('ID obrigatório', 400, 'VALIDATION_ERROR');
+
+    // 1. Verificar permissão global
+    const { SettingRepository } = await import('@/repositories/settingRepository');
+    const { getUserRole } = await import('@/lib/auth-server');
+    
+    const settings = await SettingRepository.getChatSettings();
+    const userRole = await getUserRole(userSession.email!);
+
+    // Se NÃO for admin ou supervisor, verifica a flag global
+    if (userRole !== 'ADMIN' && userRole !== 'SUPERVISOR') {
+       if (!settings?.allowAgentDeleteConversation) {
+          throw new AppError('Você não tem permissão para apagar conversas. Contate o administrador.', 403, 'FORBIDDEN');
+       }
+    }
+
+    console.log('[API] DELETE ' + ROUTE + ':', { id, user: userSession.email, role: userRole });
+
+    await ConversationService.deleteConversation(id);
+
+    return NextResponse.json({ success: true, message: 'Conversa excluída com sucesso' });
+  } catch (error) {
+    return handleApiError(error, req, { route: ROUTE })
+  }
+}

@@ -15,6 +15,7 @@ import { formatPhone } from '@/lib/utils';
 import { formatDateDivider, formatTimeBahia, parseSafeDate } from '@/lib/date-utils';
 import { useChatFileDrop } from '@/hooks/useChatFileDrop';
 import { Send } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 const CustomAudioPlayer = ({ url, duration, fileName, mimeType, mediaUrl }: { url: string, duration?: number, fileName?: string, mimeType?: string, mediaUrl?: string }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -238,6 +239,8 @@ export const ChatWindow = () => {
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [lightboxMedia, setLightboxMedia] = useState<{ url: string, type: 'IMAGE' | 'VIDEO' | 'PDF', fileName?: string, caption?: string } | null>(null);
+  const [userRole, setUserRole] = useState<string>('AGENT');
+  const [allowDeletePermission, setAllowDeletePermission] = useState(false);
 
   const scrollToAndHighlight = (id: string) => {
     const element = document.getElementById(`msg-${id}`);
@@ -309,6 +312,39 @@ export const ChatWindow = () => {
       console.error('Erro na busca:', e);
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  const handleDeleteConversation = async () => {
+    if (!activeConversation) return;
+    setHeaderMenuOpen(false);
+    
+    const confirmText = `⚠️ AÇÃO IRREVERSÍVEL: Deseja realmente APAGAR PERMANENTEMENTE a conversa com "${activeConversation.contact?.name || 'este contato'}"? 
+Todos os dados e mensagens serão excluídos.`;
+    
+    if (!window.confirm(confirmText)) return;
+    
+    try {
+      const resp = await fetch(`/api/conversations/${activeConversation.id}`, {
+        method: 'DELETE'
+      });
+      
+      if (resp.ok) {
+        alert('Conversa excluída com sucesso.');
+        useChatStore.getState().setActiveConversation(null);
+        // Recarregar a lista de conversas
+        const resList = await fetch(`/api/conversations?channelId=${activeConversation.channelId}`);
+        if (resList.ok) {
+          const data = await resList.json();
+          useChatStore.getState().setConversations(data.data || []);
+        }
+      } else {
+        const error = await resp.json();
+        alert(error.error || 'Erro ao excluir conversa.');
+      }
+    } catch (e) {
+      console.error('Falha ao excluir conversa:', e);
+      alert('Erro na conexão ao excluir conversa.');
     }
   };
 
@@ -485,6 +521,31 @@ export const ChatWindow = () => {
     };
     fetchMessages();
   }, [activeConversation?.id, setMessages, setLoadingMessages]);
+
+  // Busca papel do usuário e permissões globais
+  useEffect(() => {
+    const fetchPerms = async () => {
+      try {
+        // 1. Papel do usuário
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const resUser = await fetch(`/api/users/${session.user.id}`);
+          const userData = await resUser.json();
+          if (userData.success) setUserRole(userData.data.role);
+        }
+
+        // 2. Configurações globais
+        const resSettings = await fetch('/api/settings/chat');
+        const settingsData = await resSettings.json();
+        if (settingsData.success) {
+          setAllowDeletePermission(settingsData.data.allowAgentDeleteConversation);
+        }
+      } catch (e) {
+        console.error('Erro ao buscar permissões:', e);
+      }
+    };
+    fetchPerms();
+  }, []);
 
   // Efeito para disparar a busca da foto de perfil (estratégia de cache)
   useEffect(() => {
@@ -722,7 +783,19 @@ export const ChatWindow = () => {
                     <button onClick={handleUpdateContactName} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors"><UserPlus size={16} className="text-blue-500" />Identificar Contato</button>
                     <button onClick={handleUpdatePinnedNote} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors"><Pin size={16} className="text-orange-500" />Adicionar Observação</button>
                     <div className="h-px bg-slate-100 my-1 mx-2" />
-                    <button disabled={isClosed} onClick={handleFinishConversation} className={cn("w-full text-left px-4 py-2.5 text-xs font-bold rounded-xl flex items-center gap-3 transition-colors", isClosed ? "text-slate-300 cursor-not-allowed" : "text-red-600 hover:bg-red-50")}><CheckCircle2 size={16} className={isClosed ? "text-slate-300" : "text-red-500"} />Finalizar Conversa</button>
+                    <button disabled={isClosed} onClick={handleFinishConversation} className={cn("w-full text-left px-4 py-2.5 text-xs font-bold rounded-xl flex items-center gap-3 transition-colors", isClosed ? "text-slate-300 cursor-not-allowed" : "text-amber-600 hover:bg-amber-50")}><CheckCircle2 size={16} className={isClosed ? "text-slate-300" : "text-amber-500"} />Finalizar Conversa</button>
+                    {(userRole === 'ADMIN' || userRole === 'SUPERVISOR' || allowDeletePermission) && (
+                      <>
+                        <div className="h-px bg-red-50 my-1 mx-2" />
+                        <button 
+                          onClick={handleDeleteConversation} 
+                          className="w-full text-left px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 rounded-xl flex items-center gap-3 transition-colors"
+                        >
+                          <Trash2 size={16} className="text-red-500" />
+                          Apagar Conversa
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

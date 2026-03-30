@@ -16,6 +16,7 @@ export default function SettingsPage() {
   const [chatSettings, setChatSettings] = useState({
     autoIdentifyAgent: true,
     allowAgentNameEdit: false,
+    allowAgentDeleteConversation: false,
     finishMessage: '',
     agentMenuVisibility: {
       conversations: true,
@@ -234,19 +235,19 @@ export default function SettingsPage() {
 
                    <div className="flex items-center justify-between group p-4 rounded-2xl border border-slate-50 hover:border-slate-100 hover:bg-slate-50/50 transition-all">
                       <div className="flex-1 pr-10">
-                         <h3 className="font-bold text-slate-800">Permitir Edição do Nome</h3>
+                         <h3 className="font-bold text-slate-800">Permitir que agentes APAGUEM conversas</h3>
                          <p className="text-sm text-slate-500 mt-1 leading-relaxed">
-                            Permite que os atendentes (cargo AGENT) editem seu próprio nome de exibição.
+                            Permite que atendentes (cargo AGENT ou SUPERVISOR) excluam definitivamente um atendimento.
                          </p>
                       </div>
                       <label className="relative inline-flex items-center cursor-pointer">
                          <input 
                             type="checkbox" 
                             className="sr-only peer"
-                            checked={chatSettings.allowAgentNameEdit}
-                            onChange={(e) => setChatSettings({...chatSettings, allowAgentNameEdit: e.target.checked})}
+                            checked={chatSettings.allowAgentDeleteConversation}
+                            onChange={(e) => setChatSettings({...chatSettings, allowAgentDeleteConversation: e.target.checked})}
                          />
-                         <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 shadow-inner"></div>
+                         <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600 shadow-inner"></div>
                       </label>
                    </div>
 

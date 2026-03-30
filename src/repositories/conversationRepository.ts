@@ -124,4 +124,21 @@ export class ConversationRepository {
     if (error) throw error
     return conversation
   }
+
+  static async delete(id: string) {
+    // 1. Limpeza manual de tabelas relacionadas para evitar erros de FK se o CASCADE não estiver ativo
+    await supabaseAdmin.from('Message').delete().eq('conversationId', id)
+    await supabaseAdmin.from('ConversationTag').delete().eq('conversationId', id)
+    await supabaseAdmin.from('ConversationFunnel').delete().eq('conversationId', id)
+    await supabaseAdmin.from('InternalNote').delete().eq('conversationId', id)
+
+    // 2. Exclusão da conversa
+    const { error } = await supabaseAdmin
+      .from('Conversation')
+      .delete()
+      .eq('id', id)
+
+    if (error) throw error
+    return true
+  }
 }

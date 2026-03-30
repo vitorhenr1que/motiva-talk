@@ -21,6 +21,7 @@ export async function GET(req: Request) {
         data: { 
           autoIdentifyAgent: false, 
           allowAgentNameEdit: false,
+          allowAgentDeleteConversation: false,
           finishMessage: 'Seu atendimento foi finalizado. Gostaríamos de saber sua opinião sobre o nosso atendimento:',
           agentMenuVisibility: {
             conversations: true,
@@ -42,6 +43,7 @@ export async function GET(req: Request) {
       data: {
         autoIdentifyAgent: settings.autoIdentifyAgent,
         allowAgentNameEdit: settings.allowAgentNameEdit ?? (settings as any).allowAgentEditName ?? false,
+        allowAgentDeleteConversation: settings.allowAgentDeleteConversation ?? false,
         finishMessage: settings.finishMessage || 'Seu atendimento foi finalizado. Gostaríamos de saber sua opinião sobre o nosso atendimento:',
         agentMenuVisibility: settings.agentMenuVisibility || {
           conversations: true,
@@ -70,7 +72,7 @@ export async function PATCH(req: Request) {
     const body = await req.json()
     console.log(`[API] ${req.method} ${ROUTE}:`, body);
 
-    const { autoIdentifyAgent, allowAgentNameEdit, agentMenuVisibility, finishMessage } = body
+    const { autoIdentifyAgent, allowAgentNameEdit, allowAgentDeleteConversation, agentMenuVisibility, finishMessage } = body
 
     // Tenta atualizar ou inserir se não existir
     const { data: existing } = await supabaseAdmin.from('ChatSetting').select('id').single()
@@ -79,6 +81,7 @@ export async function PATCH(req: Request) {
     const payload = { 
       autoIdentifyAgent, 
       allowAgentNameEdit,
+      allowAgentDeleteConversation,
       agentMenuVisibility,
       finishMessage
     };

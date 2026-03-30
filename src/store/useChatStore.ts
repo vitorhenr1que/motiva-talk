@@ -5,7 +5,7 @@ interface ChatState {
   conversations: Conversation[]
   activeConversation: Conversation | null
   replyToMessage: Message | null
-  pendingFile: any | null // Avoiding full typing in interface briefly for simplicity if preferred, or use PendingFile
+  pendingFile: any | null
   mediaCaption: string
   messages: Message[]
   channels: Channel[]
@@ -34,7 +34,6 @@ interface ChatState {
   upsertMessage: (message: any, tempId?: string) => void;
   removeMessage: (id: string) => void;
   
-  // Atualização local de estado para refletir mudanças IMEDIATAMENTE na UI
   updateConversationLocally: (id: string, data: Partial<Conversation>) => void;
   deleteMessageLocally: (id: string, mode: 'me' | 'everyone') => void;
   
@@ -114,8 +113,6 @@ export const useChatStore = create<ChatState>((set) => ({
     const existingIds = new Set(state.messages.map(m => m.id));
     const newMessages = messages.filter(m => !existingIds.has(m.id));
     
-    // As novas mensagens (antigas no tempo) vão pro INÍCIO (prepend)
-    // Mantemos a ordem cronológica ASC
     const combined = [...newMessages, ...state.messages].sort((a, b) => 
       new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
@@ -129,11 +126,9 @@ export const useChatStore = create<ChatState>((set) => ({
   addMessage: (message) => set((state) => {
     if (!message || !message.id) return state
     
-    // Evitar Duplicação
     const isDuplicate = state.messages.some(m => m.id === message.id)
     if (isDuplicate) return state
     
-    // Substituir temporária se houver
     let tempMessageToReplace = null;
     if (message.senderType === 'AGENT') {
       tempMessageToReplace = state.messages.find(m => 
@@ -161,10 +156,23 @@ export const useChatStore = create<ChatState>((set) => ({
       const isNotActive = state.activeConversation?.id === conv.id ? false : true;
       const newUnread = (isFromUser && isNotActive) ? (conv.unreadCount || 0) + 1 : 0;
       
+      let newStatus = conv.status;
+      
+      // Se AGENTE responde e estava ABERTO, passa para EM ATENDIMENTO
+      if (message.senderType === 'AGENT' && conv.status === 'OPEN') {
+        newStatus = 'IN_PROGRESS';
+        fetch(`/api/conversations/${conv.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'IN_PROGRESS' })
+        }).catch(console.error);
+      }
+
       existingConvMap.set(conv.id, {
         ...conv,
         lastMessageAt: new Date().toISOString(),
         unreadCount: newUnread,
+        status: newStatus,
         messages: [message]
       });
     }
@@ -192,9 +200,6 @@ export const useChatStore = create<ChatState>((set) => ({
     messages: state.messages.filter(m => m.id !== id)
   })),
 
-  /**
-   * Atualiza uma conversa localmente para feedback instantâneo (Nome do contato, Observações, Status)
-   */
   updateConversationLocally: (id, data) => set((state) => {
     const updatedConversations = state.conversations.map(c => 
       c.id === id ? { ...c, ...data } : c
@@ -204,7 +209,6 @@ export const useChatStore = create<ChatState>((set) => ({
       ? { ...state.activeConversation, ...data } 
       : state.activeConversation;
 
-    // Sincronizar também com kanbanData
     const updatedKanbanData = state.kanbanData.map(item => {
        if (item.conversation?.id === id) {
           return {
@@ -245,39 +249,62 @@ export const useChatStore = create<ChatState>((set) => ({
   setTags: (tags) => set({ tags }),
   setSelectedChannelId: (id) => set({ selectedChannelId: id }),
   setSelectedTagId: (id) => set({ selectedTagId: id }),
-  setLoadingConversations: (loading: boolean) => set({ loadingConversations: loading }),
-  setLoadingMessages: (loading: boolean) => set({ loadingMessages: loading }),
-  setLoadingMore: (loading: boolean) => set({ loadingMore: loading }),
+  setLoadingConversations: (loading) => set({ loadingConversations: loading }),
+  setLoadingMessages: (loading) => set({ loadingMessages: loading }),
+  setLoadingMore: (loading) => set({ loadingMore: loading }),
 
   markAsRead: (conversationId) => set((state) => {
     const conv = state.conversations.find(c => c.id === conversationId);
-    if (conv && (conv.unreadCount || 0) > 0) {
-      fetch(`/api/conversations/${conversationId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ unreadCount: 0 })
-      }).catch(console.error);
+    if (conv) {
+      const updates: any = { unreadCount: 0 };
       
-      return {
-        conversations: state.conversations.map(c => 
-          c.id === conversationId ? { ...c, unreadCount: 0 } : c
-        )
-      };
+      if (conv.status === 'OPEN') {
+        updates.status = 'IN_PROGRESS';
+      }
+
+      if ((conv.unreadCount || 0) > 0 || updates.status) {
+        fetch(`/api/conversations/${conversationId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updates)
+        }).catch(console.error);
+        
+        return {
+          conversations: state.conversations.map(c => 
+            c.id === conversationId ? { ...c, ...updates } : c
+          ),
+          activeConversation: state.activeConversation?.id === conversationId 
+            ? { ...state.activeConversation, ...updates } 
+            : state.activeConversation
+        };
+      }
     }
     return state;
   }),
 
   markAsUnread: (conversationId) => set((state) => {
+    const conv = state.conversations.find(c => c.id === conversationId);
+    if (!conv) return state;
+
+    const updates: any = { unreadCount: 1 };
+    
+    if (conv.status !== 'CLOSED') {
+      updates.status = 'OPEN';
+    }
+
     fetch(`/api/conversations/${conversationId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ unreadCount: 1 })
+      body: JSON.stringify(updates)
     }).catch(console.error);
 
     return {
       conversations: state.conversations.map(c => 
-        c.id === conversationId ? { ...c, unreadCount: 1 } : c
-      )
+        c.id === conversationId ? { ...c, ...updates } : c
+      ),
+      activeConversation: state.activeConversation?.id === conversationId 
+        ? { ...state.activeConversation, ...updates } 
+        : state.activeConversation
     };
   })
 }))
