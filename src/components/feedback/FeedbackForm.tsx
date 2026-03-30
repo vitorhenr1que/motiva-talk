@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { CheckCircle2, AlertCircle, MessageSquare, Send, Check } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -46,6 +46,9 @@ export function FeedbackForm({ token, contactName, agentName }: FeedbackFormProp
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const optionsRef = useRef<HTMLDivElement>(null);
+  const commentRef = useRef<HTMLDivElement>(null);
+
   const getRatingRange = (val: number | null): RatingRange => {
     if (val === null) return null;
     if (val <= 6) return 'detractor';
@@ -57,11 +60,19 @@ export function FeedbackForm({ token, contactName, agentName }: FeedbackFormProp
 
   const toggleOption = (option: string) => {
     setSelectedOptions([option]);
+    // Scroll to comment input after a small delay
+    setTimeout(() => {
+      commentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
   };
 
   const handleScoreSelect = (val: number) => {
     setScore(val);
     setSelectedOptions([]); // Reset options when score changes
+    // Scroll to options section after a small delay to allow rendering
+    setTimeout(() => {
+      optionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -158,12 +169,15 @@ export function FeedbackForm({ token, contactName, agentName }: FeedbackFormProp
 
         {/* Conditional Question & Options */}
         {score !== null && range && (
-          <div className={cn(
-            "p-8 sm:p-10 rounded-[2.5rem] border-2 transition-all duration-500 animate-in fade-in slide-in-from-top-6 flex flex-col items-center",
-            range === 'detractor' ? "bg-red-50/70 border-red-200/50 shadow-inner" 
-              : range === 'neutral' ? "bg-amber-50/70 border-amber-200/50 shadow-inner" 
-              : "bg-emerald-50/70 border-emerald-200/50 shadow-inner"
-          )}>
+          <div 
+            ref={optionsRef}
+            className={cn(
+              "p-8 sm:p-10 rounded-[2.5rem] border-2 transition-all duration-500 animate-in fade-in slide-in-from-top-6 flex flex-col items-center",
+              range === 'detractor' ? "bg-red-50/70 border-red-200/50 shadow-inner" 
+                : range === 'neutral' ? "bg-amber-50/70 border-amber-200/50 shadow-inner" 
+                : "bg-emerald-50/70 border-emerald-200/50 shadow-inner"
+            )}
+          >
             <h3 className={cn(
               "text-2xl font-black mb-10 text-center tracking-tight",
               range === 'detractor' ? "text-red-700" 
@@ -207,7 +221,10 @@ export function FeedbackForm({ token, contactName, agentName }: FeedbackFormProp
         )}
 
         {/* Final Comment */}
-        <div className="space-y-8 animate-in fade-in duration-700 delay-300 fill-mode-both">
+        <div 
+          ref={commentRef}
+          className="space-y-8 animate-in fade-in duration-700 delay-300 fill-mode-both"
+        >
           <div className="text-center space-y-3">
             <h4 className="text-2xl font-black text-slate-800 tracking-tight">
               Ficamos felizes em conseguir te ajudar!
