@@ -28,6 +28,7 @@ interface ChannelConfigModalProps {
     name: string;
     phoneNumber: string;
     connectionStatus: string;
+    allowAgentNameEdit?: boolean;
   } | null;
   onActionSuccess: () => void;
   onOpenConnect: (id: string, name: string) => void;
@@ -49,12 +50,14 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
   });
   const [loadingWebhook, setLoadingWebhook] = useState(false);
   const [updatingField, setUpdatingField] = useState<string | null>(null);
+  const [allowAgentNameEdit, setAllowAgentNameEdit] = useState(false);
 
   React.useEffect(() => {
     if (isOpen && channel) {
+      setAllowAgentNameEdit(channel.allowAgentNameEdit || false);
       fetchWebhook();
     }
-  }, [isOpen, channel?.id]);
+  }, [isOpen, channel?.id, channel?.allowAgentNameEdit]);
 
   const fetchWebhook = async () => {
     setLoadingWebhook(true);
@@ -106,6 +109,30 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
     } catch (e) {
       setWebhookConfig(webhookConfig);
       alert('Erro de conexão ao atualizar webhook.');
+    } finally {
+      setUpdatingField(null);
+    }
+  };
+
+  const updateChannelSetting = async (field: string, value: boolean) => {
+    if (!channel) return;
+    setUpdatingField(field);
+    
+    try {
+      const res = await fetch(`/api/channels/${channel.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value })
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (field === 'allowAgentNameEdit') setAllowAgentNameEdit(value);
+        onActionSuccess();
+      } else {
+        alert('Falha ao atualizar configuração: ' + (data.message || 'Erro desconhecido'));
+      }
+    } catch (e) {
+      alert('Erro de conexão ao atualizar configuração.');
     } finally {
       setUpdatingField(null);
     }
@@ -167,7 +194,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-white dark:bg-slate-900 rounded-[32px] w-full max-w-lg p-8 shadow-2xl ring-1 ring-slate-900/10 scale-in-center">
+      <div className="bg-white dark:bg-slate-900 rounded-[32px] w-full max-w-lg p-8 shadow-2xl ring-1 ring-slate-900/10 scale-in-center max-h-[90vh] overflow-y-auto">
         
         {/* Header */}
         <div className="flex items-center justify-between mb-8 border-b border-slate-50 dark:border-slate-800 pb-6">
@@ -290,6 +317,35 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
                 <span className={cn(
                   "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
                   webhookConfig.webhookByEvents ? "translate-x-5" : "translate-x-0"
+                )} />
+              </button>
+            </div>
+
+            <div className="h-px bg-slate-100 dark:bg-slate-800/50 my-2" />
+
+            {/* Toggle Editar Nome */}
+            <div className="flex items-center justify-between group/toggle">
+              <div className="flex items-center gap-3">
+                <div className={cn("p-1.5 rounded-lg transition-colors", allowAgentNameEdit ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-400")}>
+                  <Settings size={14} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Editar Nome do Atendente</p>
+                  <p className="text-[9px] font-medium text-slate-400">Permite ao atendente alterar seu nome de exibição neste canal</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => updateChannelSetting('allowAgentNameEdit', !allowAgentNameEdit)}
+                disabled={updatingField === 'allowAgentNameEdit'}
+                className={cn(
+                  "relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none",
+                  allowAgentNameEdit ? "bg-blue-600" : "bg-slate-200 dark:bg-slate-700",
+                  updatingField === 'allowAgentNameEdit' && "opacity-50 cursor-wait"
+                )}
+              >
+                <span className={cn(
+                  "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                  allowAgentNameEdit ? "translate-x-5" : "translate-x-0"
                 )} />
               </button>
             </div>

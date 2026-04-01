@@ -13,8 +13,12 @@ export class TagService {
     // 2. Adicionar as que não estão lá
     for (const name of tagNames) {
       if (!currentNames.includes(name)) {
-        const tag = await TagRepository.findOrCreate(name)
-        await TagRepository.addToConversation(conversationId, tag.id)
+        // Buscamos apenas etiquetas que JÁ EXISTEM. 
+        // Não queremos recriar uma etiqueta que foi excluída globalmente em uma sincronização de conversa.
+        const tag = await TagRepository.findByName(name);
+        if (tag) {
+          await TagRepository.addToConversation(conversationId, tag.id);
+        }
       }
     }
 
@@ -26,5 +30,13 @@ export class TagService {
     }
 
     return true
+  }
+
+  static async update(id: string, data: any) {
+    return await TagRepository.update(id, data)
+  }
+
+  static async delete(id: string) {
+    return await TagRepository.delete(id)
   }
 }

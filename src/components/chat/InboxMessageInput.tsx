@@ -49,6 +49,7 @@ export const MessageInput = () => {
   const [user, setUser] = useState<any>(null);
   
   const [customName, setCustomName] = useState('');
+  const [defaultName, setDefaultName] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
 
   const [chatSettings, setChatSettings] = useState({
@@ -105,7 +106,9 @@ export const MessageInput = () => {
         setUser(session.user);
         const fullName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Atendente';
         const firstName = fullName.trim().split(' ')[0];
-        setCustomName(capitalize(firstName));
+        const formattedDefault = capitalize(firstName);
+        setDefaultName(formattedDefault);
+        setCustomName(formattedDefault);
       }
       try {
         const res = await fetch('/api/settings/chat');
@@ -119,7 +122,8 @@ export const MessageInput = () => {
   const handleSend = async () => {
     if (!content.trim() || !activeConversation || activeConversation.status === 'CLOSED') return;
 
-    const rawName = customName || user?.user_metadata?.full_name?.split(' ')[0] || 'Atendente';
+    const canEditName = activeConversation.channel?.allowAgentNameEdit ?? chatSettings.allowAgentNameEdit;
+    const rawName = canEditName ? (customName || defaultName) : defaultName;
     const nameToUse = capitalize(rawName);
     const finalContent = `*${nameToUse}:*\n\n${content.trim()}`;
 
@@ -479,8 +483,10 @@ export const MessageInput = () => {
             </div>
           ) : (
             <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-extrabold text-slate-800 leading-none">*{customName}:*</span>
-              {chatSettings.allowAgentNameEdit && (
+              <span className="text-[11px] font-extrabold text-slate-800 leading-none">
+                *{(activeConversation.channel?.allowAgentNameEdit ?? chatSettings.allowAgentNameEdit) ? customName : defaultName}:*
+              </span>
+              {(activeConversation.channel?.allowAgentNameEdit ?? chatSettings.allowAgentNameEdit) && (
                 <button onClick={() => setIsEditingName(true)} className="text-slate-400 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100 ml-0.5"><Edit2 size={11} /></button>
               )}
             </div>

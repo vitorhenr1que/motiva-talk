@@ -37,6 +37,7 @@ export interface Channel {
   provider?: string;
   providerSessionId?: string;
   connectionStatus?: string;
+  allowAgentNameEdit?: boolean;
 }
 
 export interface Tag {
