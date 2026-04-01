@@ -81,9 +81,16 @@ export const useChatStore = create<ChatState>((set) => ({
         return { ...conv, unreadCount: 0 };
       }
       return conv;
-    }).sort((a, b) => 
-      new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
-    );
+    }).sort((a, b) => {
+      // 1. Fixados primeiro
+      if (a.pinnedAt && !b.pinnedAt) return -1;
+      if (!a.pinnedAt && b.pinnedAt) return 1;
+      if (a.pinnedAt && b.pinnedAt) {
+        return new Date(b.pinnedAt).getTime() - new Date(a.pinnedAt).getTime();
+      }
+      // 2. Por tempo de mensagem
+      return new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime();
+    });
     
     set({ conversations: sorted });
   },
@@ -179,7 +186,14 @@ export const useChatStore = create<ChatState>((set) => ({
 
     return { 
       messages: nextMessages,
-      conversations: Array.from(existingConvMap.values()).sort((a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime())
+      conversations: Array.from(existingConvMap.values()).sort((a, b) => {
+        if (a.pinnedAt && !b.pinnedAt) return -1;
+        if (!a.pinnedAt && b.pinnedAt) return 1;
+        if (a.pinnedAt && b.pinnedAt) {
+          return new Date(b.pinnedAt).getTime() - new Date(a.pinnedAt).getTime();
+        }
+        return new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime();
+      })
     }
   }),
   upsertMessage: (message, tempId) => set((state) => {

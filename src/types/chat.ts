@@ -67,6 +67,7 @@ export interface Conversation {
   tags?: ConversationTag[];
   messages?: Message[];
   pinnedNote?: string;
+  pinnedAt?: string | null;
 }
 
 export interface Message {

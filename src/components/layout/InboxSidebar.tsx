@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useChatStore } from '@/store/useChatStore';
 import { MoreVertical, Trash2, Loader2, Search, Filter, MessageSquare, Tag as TagIcon, Plus, CheckCircle, RefreshCw } from 'lucide-react';
 import { TagSelector } from '@/components/chat/TagSelector';
@@ -35,7 +36,10 @@ export const Sidebar = () => {
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [sidebarMenuOpen, setSidebarMenuOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pinningId, setPinningId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'unread' | 'in_progress' | 'closed'>('unread');
+  const [menuCoords, setMenuCoords] = useState<{ top: number, left: number } | null>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   const [search, setSearch] = useState('');
 
@@ -159,6 +163,55 @@ Todos os dados e mensagens serão excluídos.`;
     }
   };
 
+  const handleOpenMenu = (e: React.MouseEvent, convId: string) => {
+    e.stopPropagation();
+    if (activeMenuId === convId) {
+      setActiveMenuId(null);
+      setMenuCoords(null);
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    // Posiciona o menu abaixo do botão, alinhado à direita
+    setMenuCoords({
+      top: rect.bottom + window.scrollY + 5,
+      left: rect.left - 132 // Ajuste para alinhar à direita (w-44 ~ 176px - padding/offset)
+    });
+    setActiveMenuId(convId);
+  };
+
+  const handleTogglePin = async (e: React.MouseEvent, conv: any) => {
+    e.stopPropagation();
+    if (pinningId) return;
+    
+    // Inverte o estado de fixação
+    const isCurrentlyPinned = !!conv.pinnedAt;
+    const newPinnedAt = isCurrentlyPinned ? null : new Date().toISOString();
+    
+    setPinningId(conv.id);
+    
+    try {
+      const res = await fetch(`/api/conversations/${conv.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinnedAt: newPinnedAt })
+      });
+      
+      if (res.ok) {
+        updateConversationLocally(conv.id, { pinnedAt: newPinnedAt });
+      } else {
+        const err = await res.json();
+        if (err.error?.includes('column "pinnedAt" does not exist')) {
+          alert('⚠️ Aviso: A coluna "pinnedAt" ainda não existe no banco de dados. Por favor, execute a migração SQL antes de usar esta função.');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to toggle pin:', error);
+    } finally {
+      setPinningId(null);
+    }
+  };
+
   const filteredConversations = conversations.filter(conv => {
     // 1. Filtro de Texto
     const matchesSearch = conv.contact.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -180,6 +233,18 @@ Todos os dados e mensagens serão excluídos.`;
     }
 
     return true;
+  }).sort((a, b) => {
+    // 1. Fixados primeiro (pelo tempo de fixação mais recente)
+    if (a.pinnedAt && !b.pinnedAt) return -1;
+    if (!a.pinnedAt && b.pinnedAt) return 1;
+    if (a.pinnedAt && b.pinnedAt) {
+      return new Date(b.pinnedAt).getTime() - new Date(a.pinnedAt).getTime();
+    }
+
+    // 2. Por última mensagem
+    const dateA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+    const dateB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+    return dateB - dateA;
   });
 
   // Sincronizar aba ativa com a conversa selecionada
@@ -377,49 +442,100 @@ Todos os dados e mensagens serão excluídos.`;
                       </span>
                       
                       <div className={cn(
-                        "absolute right-0 transition-all transform",
+                        "absolute right-0 flex items-center gap-1 transition-all transform",
                         activeMenuId === conv.id ? "opacity-100 scale-100" : "opacity-0 scale-0 group-hover:opacity-100 group-hover:scale-100"
                       )}>
+                        {/* Botão Pin */}
                         <button 
-                          onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === conv.id ? null : conv.id); }}
-                          className="p-1 rounded-md hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                          onClick={(e) => handleTogglePin(e, conv)}
+                          disabled={!!pinningId && pinningId === conv.id}
+                          className={cn(
+                            "p-1 rounded-md transition-colors",
+                            conv.pinnedAt ? "bg-blue-50 text-blue-600" : "hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                          )}
+                          title={conv.pinnedAt ? "Desafixar do topo" : "Fixar no topo"}
+                        >
+                          {pinningId === conv.id ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill={conv.pinnedAt ? "currentColor" : "none"}
+                              stroke="currentColor"
+                              strokeWidth="2.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className={cn(conv.pinnedAt ? "" : "-rotate-45")}
+                            >
+                              <line x1="12" y1="17" x2="12" y2="22" />
+                              <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+                            </svg>
+                          )}
+                        </button>
+
+                        <button 
+                          onClick={(e) => handleOpenMenu(e, conv.id)}
+                          className={cn(
+                            "p-1 rounded-md hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors",
+                            activeMenuId === conv.id && "bg-slate-200 text-slate-600"
+                          )}
                         >
                           <MoreVertical size={14} />
                         </button>
                         
-                        {activeMenuId === conv.id && (
-                          <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-2xl border border-slate-100 p-1 z-50 animate-in fade-in zoom-in-95 duration-200">
-                            {conv.status !== 'CLOSED' ? (
-                              <button 
-                                onClick={(e) => handleToggleStatus(e, conv)}
-                                className="w-full text-left px-3 py-2 text-[11px] font-black uppercase tracking-tighter text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 rounded-lg flex items-center gap-2 transition-colors"
-                              >
-                                <CheckCircle size={12} />
-                                Finalizar Conversa
-                              </button>
-                            ) : (
-                              <button 
-                                onClick={(e) => handleToggleStatus(e, conv)}
-                                className="w-full text-left px-3 py-2 text-[11px] font-black uppercase tracking-tighter text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg flex items-center gap-2 transition-colors"
-                              >
-                                <RefreshCw size={12} />
-                                Reabrir Atendimento
-                              </button>
-                            )}
-
-                            {(userRole === 'ADMIN' || userRole === 'SUPERVISOR' || allowDeletePermission) && (
-                              <>
-                                <div className="h-px bg-slate-50 my-1 mx-1" />
+                        {activeMenuId === conv.id && menuCoords && createPortal(
+                          <>
+                            {/* Backdrop para fechar */}
+                            <div 
+                              className="fixed inset-0 z-[100]" 
+                              onClick={(e) => { e.stopPropagation(); setActiveMenuId(null); setMenuCoords(null); }} 
+                            />
+                            
+                            <div 
+                              style={{ 
+                                position: 'absolute',
+                                top: menuCoords.top,
+                                left: menuCoords.left,
+                              }}
+                              className="w-44 bg-white rounded-xl shadow-2xl border border-slate-100 p-1 z-[101] animate-in fade-in zoom-in-95 duration-200"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {conv.status !== 'CLOSED' ? (
                                 <button 
-                                  onClick={(e) => handleDeleteConversation(e, conv)}
-                                  className="w-full text-left px-3 py-2 text-[11px] font-black uppercase tracking-tighter text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-2 transition-colors"
+                                  onClick={(e) => { handleToggleStatus(e, conv); setActiveMenuId(null); }}
+                                  className="w-full text-left px-3 py-2 text-[11px] font-black uppercase tracking-tighter text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 rounded-lg flex items-center gap-2 transition-colors"
                                 >
-                                  <Trash2 size={12} />
-                                  Apagar Conversa
+                                  <CheckCircle size={12} />
+                                  Finalizar Conversa
                                 </button>
-                              </>
-                            )}
-                          </div>
+                              ) : (
+                                <button 
+                                  onClick={(e) => { handleToggleStatus(e, conv); setActiveMenuId(null); }}
+                                  className="w-full text-left px-3 py-2 text-[11px] font-black uppercase tracking-tighter text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg flex items-center gap-2 transition-colors"
+                                >
+                                  <RefreshCw size={12} />
+                                  Reabrir Atendimento
+                                </button>
+                              )}
+
+                              {(userRole === 'ADMIN' || userRole === 'SUPERVISOR' || allowDeletePermission) && (
+                                <>
+                                  <div className="h-px bg-slate-50 my-1 mx-1" />
+                                  <button 
+                                    onClick={(e) => { handleDeleteConversation(e, conv); setActiveMenuId(null); }}
+                                    className="w-full text-left px-3 py-2 text-[11px] font-black uppercase tracking-tighter text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-2 transition-colors"
+                                  >
+                                    <Trash2 size={12} />
+                                    Apagar Conversa
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </>,
+                          document.body
                         )}
                       </div>
                     </div>

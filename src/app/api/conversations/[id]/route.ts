@@ -21,7 +21,7 @@ export async function PATCH(
     const body = await req.json();
     console.log('[API] PATCH ' + ROUTE + ':', { id, body });
 
-    const { status, unreadCount, pinnedNote } = body;
+    const { status, unreadCount, pinnedNote, pinnedAt } = body;
     let { assignedTo } = body;
 
     // Se a conversa for finalizada, garante que o atendente atual seja registrado
@@ -35,7 +35,7 @@ export async function PATCH(
     if (assignedTo && !status) {
       updated = await ConversationService.assignAgent(id, assignedTo)
     } 
-    // Atualização genérica de campos (status, pinnedNote, unreadCount)
+    // Atualização genérica de campos (status, pinnedNote, unreadCount, pinnedAt)
     else {
       const updateData: any = {};
       
@@ -43,10 +43,11 @@ export async function PATCH(
       if (status) updateData.status = status;
       if (pinnedNote !== undefined) updateData.pinnedNote = pinnedNote;
       if (unreadCount !== undefined) updateData.unreadCount = Number(unreadCount);
+      if (pinnedAt !== undefined) updateData.pinnedAt = pinnedAt;
       if (assignedTo) updateData.assignedTo = assignedTo;
 
       if (Object.keys(updateData).length === 0) {
-        throw new AppError('Nenhum campo válido para atualização (status, pinnedNote, unreadCount)', 400, 'VALIDATION_ERROR');
+        throw new AppError('Nenhum campo válido para atualização (status, pinnedNote, unreadCount, pinnedAt)', 400, 'VALIDATION_ERROR');
       }
 
       updated = await ConversationService.updateConversation(id, updateData);
