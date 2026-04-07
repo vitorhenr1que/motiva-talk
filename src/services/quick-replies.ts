@@ -5,10 +5,14 @@ export class QuickReplyService {
    * Lista respostas rápidas disponíveis por canal ou globais
    */
   static async listAvailable(channelId?: string) {
+    if (!channelId) {
+      return await QuickReplyRepository.findMany()
+    }
+
     return await QuickReplyRepository.findMany({
       OR: [
         { channelId: null },
-        { channelId: channelId || undefined }
+        { channelId: channelId }
       ]
     })
   }

@@ -596,7 +596,15 @@ export const MessageInput = () => {
           onOpenManager={() => { setRepliesOpen(false); setManagerOpen(true); }}
         />
       )}
-      {managerOpen && <QuickReplyManagerModal onClose={() => setManagerOpen(false)} />}
+      {managerOpen && (
+        <QuickReplyManagerModal 
+          onClose={() => setManagerOpen(false)} 
+          onSelect={(replyContent) => { 
+            setContent(replyContent); 
+            setManagerOpen(false); 
+          }} 
+        />
+      )}
       {contactSelectorOpen && (
         <ContactSelectorModal 
           onClose={() => setContactSelectorOpen(false)} 

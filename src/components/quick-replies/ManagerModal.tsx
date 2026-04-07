@@ -3,6 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import { X, Search, Plus, Trash2, Edit2, ChevronRight, Zap, Loader2 } from 'lucide-react';
 import { useChatStore } from '@/store/useChatStore';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 
 interface QuickReply {
   id: string;
@@ -14,9 +20,10 @@ interface QuickReply {
 
 interface ManagerModalProps {
   onClose: () => void;
+  onSelect?: (content: string) => void;
 }
 
-export const QuickReplyManagerModal = ({ onClose }: ManagerModalProps) => {
+export const QuickReplyManagerModal = ({ onClose, onSelect }: ManagerModalProps) => {
   const [replies, setReplies] = useState<QuickReply[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -116,6 +123,7 @@ export const QuickReplyManagerModal = ({ onClose }: ManagerModalProps) => {
                     <QuickReplyItem 
                       key={reply.id} 
                       reply={reply} 
+                      onSelect={onSelect}
                       onEdit={() => { setEditingReply(reply); setIsFormOpen(true); }}
                       onDelete={() => handleDelete(reply.id)}
                     />
@@ -143,8 +151,14 @@ export const QuickReplyManagerModal = ({ onClose }: ManagerModalProps) => {
   );
 };
 
-const QuickReplyItem = ({ reply, onEdit, onDelete }: { reply: QuickReply, onEdit: () => void, onDelete: () => void }) => (
-  <div className="group flex items-center gap-4 rounded-2xl border border-slate-100 bg-white p-4 transition-all hover:border-blue-200 hover:shadow-lg hover:shadow-blue-50/50">
+const QuickReplyItem = ({ reply, onEdit, onDelete, onSelect }: { reply: QuickReply, onEdit: () => void, onDelete: () => void, onSelect?: (c: string) => void }) => (
+  <div 
+    onClick={() => onSelect?.(reply.content)}
+    className={cn(
+      "group flex items-center gap-4 rounded-2xl border border-slate-100 bg-white p-4 transition-all hover:border-blue-200 hover:shadow-lg hover:shadow-blue-50/50",
+      onSelect && "cursor-pointer"
+    )}
+  >
     <div className="flex-1 overflow-hidden">
       <div className="flex items-center gap-2 mb-1">
         <span className="font-bold text-slate-800 tracking-tight">{reply.title}</span>
@@ -158,8 +172,18 @@ const QuickReplyItem = ({ reply, onEdit, onDelete }: { reply: QuickReply, onEdit
       <p className="truncate text-xs text-slate-500 leading-relaxed">{reply.content}</p>
     </div>
     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-      <button onClick={onEdit} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"><Edit2 size={18} /></button>
-      <button onClick={onDelete} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={18} /></button>
+      <button 
+        onClick={(e) => { e.stopPropagation(); onEdit(); }} 
+        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+      >
+        <Edit2 size={18} />
+      </button>
+      <button 
+        onClick={(e) => { e.stopPropagation(); onDelete(); }} 
+        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+      >
+        <Trash2 size={18} />
+      </button>
     </div>
     <ChevronRight size={18} className="text-slate-300 group-hover:translate-x-1 transition-transform" />
   </div>
