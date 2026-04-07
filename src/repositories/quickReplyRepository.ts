@@ -4,6 +4,25 @@ import { generateId } from '@/lib/utils'
 export class QuickReplyRepository {
   static async findMany(where?: any) {
     let query = supabaseAdmin.from('QuickReply').select('*').order('title', { ascending: true })
+    
+    if (where?.OR) {
+      const orConditions = where.OR.map((cond: any) => {
+        const key = Object.keys(cond)[0]
+        const val = cond[key]
+        if (val === null || val === undefined) return `${key}.is.null`
+        return `${key}.eq.${val}`
+      }).join(',')
+      query = query.or(orConditions)
+    } else if (where) {
+       Object.entries(where).forEach(([key, val]) => {
+         if (val === null || val === undefined) {
+           query = query.is(key, null)
+         } else {
+           query = query.eq(key, val)
+         }
+       })
+    }
+    
     const { data, error } = await query
     if (error) throw error
     return data

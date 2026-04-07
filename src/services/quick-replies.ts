@@ -17,20 +17,12 @@ export class QuickReplyService {
     return await QuickReplyRepository.findByCategory(category)
   }
 
-  static async addReply(data: { title: string; content: string; category: string; channelId?: string }) {
-    const { channelId, ...rest } = data
-    return await QuickReplyRepository.create({
-      ...rest,
-      channel: channelId ? { connect: { id: channelId } } : undefined
-    })
+  static async addReply(data: { title: string; content: string; category: string; channelId?: string | null }) {
+    return await QuickReplyRepository.create(data)
   }
 
   static async updateReply(id: string, data: { title?: string; content?: string; category?: string; channelId?: string | null }) {
-    const { channelId, ...rest } = data
-    return await QuickReplyRepository.update(id, {
-      ...rest,
-      channel: channelId === null ? { disconnect: true } : (channelId ? { connect: { id: channelId } } : undefined)
-    })
+    return await QuickReplyRepository.update(id, data)
   }
 
   static async deleteReply(id: string) {

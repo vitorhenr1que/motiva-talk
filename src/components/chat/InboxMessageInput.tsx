@@ -99,6 +99,20 @@ export const MessageInput = () => {
     setAttachmentMenuOpen(false);
   }, [activeConversation?.id]);
 
+  const attachmentMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (attachmentMenuRef.current && !attachmentMenuRef.current.contains(e.target as Node)) {
+        setAttachmentMenuOpen(false);
+      }
+    };
+    if (attachmentMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [attachmentMenuOpen]);
+
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -522,7 +536,7 @@ export const MessageInput = () => {
           <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
 
           {attachmentMenuOpen && (
-            <div className="absolute bottom-full left-0 mb-4 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-[60] animate-in fade-in slide-in-from-bottom-2 duration-200">
+            <div ref={attachmentMenuRef} className="absolute bottom-full left-0 mb-4 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-[60] animate-in fade-in slide-in-from-bottom-2 duration-200">
                <button onClick={() => openFileSearch('image/*')} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-3 transition-colors">
                  <ImageIcon size={16} className="text-purple-500" />
                  Foto

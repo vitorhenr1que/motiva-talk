@@ -53,15 +53,28 @@ export const QuickReplyMenu = ({ onSelect, onClose, search, onOpenManager }: Qui
     fetchReplies();
   }, [activeConversation]);
 
-  const filtered = replies.filter(r => 
-    r.title.toLowerCase().includes(internalSearch.toLowerCase()) || 
-    r.content.toLowerCase().includes(internalSearch.toLowerCase()) ||
-    r.category.toLowerCase().includes(internalSearch.toLowerCase())
-  );
+  const filtered = replies.filter(r => {
+    const s = internalSearch.trim().toLowerCase();
+    return r.title.toLowerCase().includes(s) || 
+           r.content.toLowerCase().includes(s) ||
+           r.category.toLowerCase().includes(s);
+  });
 
   useEffect(() => {
     setHighlightedIndex(0);
   }, [internalSearch]);
+
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [onClose]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -88,7 +101,7 @@ export const QuickReplyMenu = ({ onSelect, onClose, search, onOpenManager }: Qui
   if (loading && internalSearch === '') return null;
 
   return (
-    <div className="absolute bottom-full left-0 mb-3 w-[400px] overflow-hidden rounded-3xl border bg-white shadow-2xl animate-in slide-in-from-bottom-3 fade-in duration-200 ring-1 ring-slate-200 z-[100] flex flex-col">
+    <div ref={menuRef} className="absolute bottom-full left-0 mb-3 w-[400px] overflow-hidden rounded-3xl border bg-white shadow-2xl animate-in slide-in-from-bottom-3 fade-in duration-200 ring-1 ring-slate-200 z-[100] flex flex-col">
       {/* Header with Search and Create */}
       <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-3">
         <div className="flex items-center justify-between">
