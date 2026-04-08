@@ -46,14 +46,16 @@ export const SidebarItem = ({ href, iconName, label }: SidebarItemProps) => {
     <Link
       href={href}
       className={cn(
-        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
         active 
           ? "bg-blue-600 text-white shadow-sm shadow-blue-200" 
-          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+        !label && "justify-center px-2"
       )}
+      title={label || ""}
     >
-      <Icon size={20} />
-      <span>{label}</span>
+      <Icon size={20} className={cn("shrink-0", active ? "text-white" : "text-slate-500")} />
+      {label && <span className="truncate transition-opacity duration-200">{label}</span>}
     </Link>
   );
 };
