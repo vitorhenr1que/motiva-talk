@@ -143,11 +143,11 @@ export class MessageService {
     })
 
     if (senderType === 'AGENT' || senderType === 'SYSTEM') {
-      const { ConversationRepository } = await import('@/repositories/conversationRepository')
-      await ConversationRepository.update(conversationId, { 
-        lastMessageAt: new Date().toISOString(),
-        unreadCount: 0 
-      })
+      // O gatilho de banco de dados 'on_message_insert' já atualiza automaticamente:
+      // - lastMessageAt
+      // - lastMessagePreview
+      // - unreadCount (zerando se for Agente/Sistema)
+      // - updatedAt
     }
 
     const { RealtimeService } = await import('@/services/realtime.service');

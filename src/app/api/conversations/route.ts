@@ -19,13 +19,26 @@ export async function GET(req: Request) {
     const channelId = searchParams.get('channelId') || undefined
     const status = (searchParams.get('status') as string) || undefined
     const tagId = searchParams.get('tagId') || undefined
+    const cursorValue = searchParams.get('cursorValue') || undefined
+    const cursorId = searchParams.get('cursorId') || undefined
+    const cursorPinnedAt = searchParams.get('cursorPinnedAt') || undefined
+    const limit = parseInt(searchParams.get('limit') || '15')
 
     const dbUser = await UserRepository.findMany({ email: user.email! }).then(users => users?.[0])
 
     let where: any = {
       channelId: channelId || undefined,
       status: status || undefined,
-      tagId: tagId || undefined
+      tagId: tagId || undefined,
+      limit
+    }
+
+    if (cursorValue && cursorId) {
+      where.cursor = {
+        value: cursorValue,
+        id: cursorId,
+        pinnedAt: cursorPinnedAt
+      }
     }
 
     // Lógica de Filtro por Role (Segurança)

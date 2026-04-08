@@ -61,7 +61,10 @@ export interface Conversation {
   status: ConversationStatus;
   createdAt: string;
   lastMessageAt?: string;
+  lastMessagePreview?: string;
   unreadCount?: number;
+  finalizedAt?: string | null;
+  updatedAt?: string;
   contact: Contact;
   channel: Channel;
   tags?: ConversationTag[];

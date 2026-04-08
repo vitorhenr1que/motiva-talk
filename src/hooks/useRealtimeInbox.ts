@@ -8,129 +8,78 @@ export const useRealtimeInbox = () => {
     activeConversation, 
     addMessage, 
     selectedChannelId, 
-    setConversations, 
-    loadingConversations,
-    setLoadingConversations
+    upsertConversationLocally,
+    removeConversationLocally
   } = useChatStore();
 
-  const refreshConversations = async (channelId: string) => {
-    try {
-      console.log(`[REALTIME_SYNC] Sincronizando lista de conversas para o canal: ${channelId}`);
-      const res = await fetch(`/api/conversations?channelId=${channelId}`);
-      if (res.ok) {
-        try {
-          const data = await res.json();
-          setConversations(data.data || []);
-          console.log(`[REALTIME_SYNC] Lista de conversas atualizada com ${data.data?.length} registros.`);
-        } catch (jsonErr) {
-          console.error('[REALTIME_SYNC] Falha ao processar JSON da API de conversas:', jsonErr);
-        }
-      } else {
-        console.warn(`[REALTIME_SYNC] Resposta não OK ao buscar conversas: ${res.status} ${res.statusText}`);
-      }
-    } catch (e) {
-      console.error('[REALTIME_SYNC] Exceção na atualização de conversas:', e);
-    }
-  };
-
   /**
-   * SUBSCRIPTION: CONVERSATIONS
+   * SUBSCRIPTION: CONVERSATIONS (Essential for the Sidebar)
+   * Listens to the denormalized Conversation table.
+   * This is lightweight as it only fires when a conversation record changes.
    */
   useEffect(() => {
     if (!selectedChannelId) return;
 
-    console.log(`[REALTIME_SUB] Iniciando escuta de Conversas para canal: ${selectedChannelId}`);
-    
     const channel = supabase
-      .channel(`public:Conversation:channelId=eq.${selectedChannelId}`)
+      .channel(`sidebar:${selectedChannelId}`)
       .on(
         'postgres_changes',
         {
-          event: '*', // Listen to INSERT, UPDATE, DELETE
+          event: '*', 
           schema: 'public',
           table: 'Conversation',
           filter: `channelId=eq.${selectedChannelId}`
         },
         (payload) => {
-          console.log(`[REALTIME_EVENT] Mudança na tabela Conversation detectada (${payload.eventType})`, payload.new);
-          refreshConversations(selectedChannelId);
+          if (payload.eventType === 'DELETE') {
+             const deletedId = (payload.old as any)?.id;
+             if (deletedId) removeConversationLocally(deletedId);
+             return;
+          }
+
+          const conversationData = payload.new as Conversation;
+          // upsertConversationLocally is efficient and doesn't trigger full refetch unless status changes
+          upsertConversationLocally(conversationData);
         }
       )
-      .subscribe((status) => {
-        console.log(`[REALTIME_STATUS] Conversas Subscription Status: ${status}`);
-      });
-
-    return () => {
-      console.log(`[REALTIME_SUB] Encerrando escuta de Conversas: ${selectedChannelId}`);
-      supabase.removeChannel(channel);
-    };
-  }, [selectedChannelId]);
-
-  /**
-   * SUBSCRIPTION: BROADCAST (Direct messages and inbox updates)
-   */
-  useEffect(() => {
-    // 1. Escuta Global do Inbox (para atualizar a ordem lateral e previews)
-    const inboxChannel = supabase
-      .channel('inbox:all')
-      .on('broadcast', { event: 'inbox:update' }, (payload) => {
-        console.log('[REALTIME_BROADCAST] Inbox update received:', payload.payload);
-        // Recarregar lista para garantir ordem e metadados atualizados
-        if (selectedChannelId) refreshConversations(selectedChannelId);
-      })
       .subscribe();
 
-    // 2. Escuta da Conversa Ativa (para adicionar mensagem na tela instantaneamente)
-    let convChannel: any = null;
-    if (activeConversation?.id) {
-      console.log(`[REALTIME_BROADCAST] Subscribed to active conversation: ${activeConversation.id}`);
-      convChannel = supabase
-        .channel(`conversation:${activeConversation.id}`)
-        .on('broadcast', { event: 'message:new' }, (payload) => {
-          const { message } = payload.payload;
-          console.log('[REALTIME_BROADCAST] New message received for active chat:', message.id);
-          addMessage(message);
-        })
-        .subscribe();
-    }
-
     return () => {
-      supabase.removeChannel(inboxChannel);
-      if (convChannel) supabase.removeChannel(convChannel);
+      supabase.removeChannel(channel);
     };
-  }, [selectedChannelId, activeConversation?.id, addMessage]);
+  }, [selectedChannelId, upsertConversationLocally, removeConversationLocally]);
 
   /**
-   * SUBSCRIPTION: MESSAGES (Listen to ALL messages for the selected channel - Postgres Changes)
+   * SUBSCRIPTION: MESSAGES (Essential for the ACTIVE CHAT Window)
+   * This is a dynamic subscription that only listens to messages of the open conversation.
    */
   useEffect(() => {
-    if (!selectedChannelId) return;
-
-    console.log(`[REALTIME_SUB] Iniciando escuta de Mensagens (DB) para o CANAL: ${selectedChannelId}`);
+    if (!activeConversation?.id) return;
 
     const channel = supabase
-      .channel(`public:Message:channelId=eq.${selectedChannelId}`)
+      .channel(`active_chat:${activeConversation.id}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'Message',
-          filter: `channelId=eq.${selectedChannelId}`
+          filter: `conversationId=eq.${activeConversation.id}`
         },
         (payload) => {
           const newMessage = payload.new as Message;
-          console.log(`[REALTIME_DB] Nova mensagem via DB insert:`, newMessage.id);
-          
-          // O addMessage já tem proteção contra duplicatas, então podemos chamar sem medo.
-          // Isso serve como backup (o broadcast é mais rápido, o DB é a verdade final)
           addMessage(newMessage); 
         }
       )
+      // Also listen to broadcast if available (faster UX)
+      .on('broadcast', { event: 'message:new' }, (payload) => {
+        const { message } = payload.payload;
+        addMessage(message);
+      })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [selectedChannelId, addMessage]);
+  }, [activeConversation?.id, addMessage]);
 };
