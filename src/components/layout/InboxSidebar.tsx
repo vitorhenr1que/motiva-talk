@@ -13,22 +13,24 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const MemoizedConversationItem = React.memo(({ conv, activeId, isDeleting, onSelect, onOpenMenu }: any) => {
+const MemoizedConversationItem = React.memo(({ conv, activeId, isDeleting, onSelect, onOpenMenu, onUpdateCounts }: any) => {
   return (
     <div
       onClick={() => onSelect(conv)}
       className={cn(
         "flex cursor-pointer items-center gap-3 border-b p-4 transition-all hover:bg-slate-50 relative group",
-        activeId === conv.id ? "bg-white ring-1 ring-inset ring-slate-200 shadow-sm" : "",
+        activeId === conv.id ? "bg-blue-50/50 ring-1 ring-inset ring-blue-100/50 shadow-sm" : "bg-white",
         isDeleting ? "opacity-50 pointer-events-none grayscale" : ""
       )}
     >
       <div className={cn(
-        "absolute left-0 top-0 bottom-0 w-1",
-        conv.status === 'OPEN' ? "bg-amber-400" :
-        conv.status === 'FOLLOW_UP' ? "bg-blue-500" :
-        conv.status === 'CLOSED' ? "bg-slate-500" :
-        "bg-green-500"
+        "absolute left-0 top-0 bottom-0 w-1 transition-all",
+        activeId === conv.id ? "w-1.5 bg-blue-600" : (
+          conv.status === 'OPEN' ? "bg-amber-400" :
+          conv.status === 'FOLLOW_UP' ? "bg-blue-500" :
+          conv.status === 'CLOSED' ? "bg-slate-500" :
+          "bg-emerald-500"
+        )
       )} />
       <div className="relative h-12 w-12 shrink-0 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 shadow-sm transition-transform group-hover:scale-105 overflow-hidden border border-slate-100">
         {conv.contact.profilePictureUrl ? (
@@ -39,7 +41,7 @@ const MemoizedConversationItem = React.memo(({ conv, activeId, isDeleting, onSel
       </div>
       <div className="flex flex-1 flex-col overflow-hidden">
         <div className="flex items-center justify-between mb-0.5">
-          <span className={cn("truncate text-sm font-bold tracking-tight", (conv.unreadCount || 0) > 0 ? "text-slate-900" : "text-slate-700")}>
+          <span className={cn("truncate text-sm font-bold tracking-tight", (conv.unreadCount || 0) > 0 || activeId === conv.id ? "text-slate-900" : "text-slate-700")}>
             {conv.contact.name}
           </span>
           <div className="flex items-center gap-2">
@@ -58,18 +60,55 @@ const MemoizedConversationItem = React.memo(({ conv, activeId, isDeleting, onSel
           {conv.lastMessagePreview || 'Sem mensagens...'}
         </p>
         <div className="flex items-center justify-between mt-2">
-          <div className="flex gap-1">
-            {conv.tags?.slice(0, 2).map((ct: any) => (
-              <span key={ct.tag.id} className="px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase text-slate-500 bg-slate-100">
-                {ct.tag.name || ct.tag.name}
+          <div className="flex gap-1 overflow-hidden mr-2">
+            {conv.tags?.slice(0, 3).map((ct: any) => (
+              <span 
+                key={`${ct.tag.id}-${ct.id}`} 
+                style={{ 
+                  color: ct.tag.color, 
+                  backgroundColor: `${ct.tag.color}15`,
+                  borderColor: `${ct.tag.color}20`
+                }}
+                className="px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase border whitespace-nowrap flex items-center gap-1"
+              >
+                <span className="text-[10px]">{ct.tag.emoji}</span>
+                {ct.tag.name}
               </span>
             ))}
           </div>
-          {(conv.unreadCount || 0) > 0 && (
-            <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-black text-white">
-              {conv.unreadCount}
-            </span>
-          )}
+          
+          <div className="flex items-center gap-1.5 shrink-0">
+             {/* Tag Action Botão */}
+             <TagSelector 
+               conversationId={conv.id} 
+               currentTags={conv.tags || []} 
+               onUpdate={() => onUpdateCounts?.()}
+               renderButton={(toggle) => (
+                 <button 
+                   onClick={(e) => { e.stopPropagation(); toggle(); }}
+                   className="p-1 rounded-md text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-all opacity-0 group-hover:opacity-100"
+                   title="Etiquetar"
+                 >
+                   <TagIcon size={14} />
+                 </button>
+               )}
+             />
+
+             {/* Mark as Unread Botão */}
+             <button 
+               onClick={(e) => { e.stopPropagation(); useChatStore.getState().markAsUnread(conv.id); }}
+               className="p-1 rounded-md text-slate-400 hover:bg-amber-50 hover:text-amber-600 transition-all opacity-0 group-hover:opacity-100"
+               title="Marcar como não lida"
+             >
+               <MessageSquare size={14} />
+             </button>
+
+             {(conv.unreadCount || 0) > 0 && (
+               <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-black text-white">
+                 {conv.unreadCount}
+               </span>
+             )}
+          </div>
         </div>
       </div>
     </div>
@@ -102,7 +141,9 @@ export const Sidebar = () => {
     setTabData,
     resetTabs,
     tabCounts,
-    setTabCounts
+    setTabCounts,
+    activeTab, // Do store
+    setActiveTab // Do store
   } = useChatStore();
 
   const [userRole, setUserRole] = useState<string>('AGENT');
@@ -111,7 +152,6 @@ export const Sidebar = () => {
   const [sidebarMenuOpen, setSidebarMenuOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pinningId, setPinningId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'unread' | 'in_progress' | 'closed'>('unread');
   const [menuCoords, setMenuCoords] = useState<{ top: number, left: number } | null>(null);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -192,24 +232,31 @@ export const Sidebar = () => {
     }
   };
 
-  // Efeito para trocar de aba ou canal/etiqueta
+  const prevFiltersRef = useRef({ channel: selectedChannelId, tag: selectedTagId, search: debouncedSearch });
+
+  // Efeito principal: troca de aba, canal, etiqueta ou busca
   useEffect(() => {
     if (!selectedChannelId) return;
     
-    // Busca contadores de todas as abas (sempre atualiza os badges)
+    // Verifica se o que mudou foi um filtro (canal, tag ou busca) em vez de apenas a aba
+    const filtersChanged = 
+      prevFiltersRef.current.channel !== selectedChannelId ||
+      prevFiltersRef.current.tag !== selectedTagId ||
+      prevFiltersRef.current.search !== debouncedSearch;
+
+    if (filtersChanged) {
+       // Se o filtro mudou, limpamos as abas antes de buscar
+       resetTabs();
+       prevFiltersRef.current = { channel: selectedChannelId, tag: selectedTagId, search: debouncedSearch };
+       // O resetTabs zera o initialized, então o fetchTabItems abaixo vai carregar do zero
+    }
+
+    // Sempre atualiza os contadores
     fetchCounts();
 
-    const currentTab = tabData[activeTab];
-    // Só carrega se a aba nunca foi inicializada ou se houver mudança de filtro
-    if (!currentTab.initialized) {
-       fetchTabItems(activeTab);
-    }
+    // Busca itens da aba atual
+    fetchTabItems(activeTab);
   }, [activeTab, selectedChannelId, selectedTagId, debouncedSearch]);
-
-  // Resetar tudo quando mudar canal, etiqueta ou busca
-  useEffect(() => {
-    resetTabs();
-  }, [selectedChannelId, selectedTagId, debouncedSearch]);
 
   // Infinite Scroll com Intersection Observer
   useEffect(() => {
@@ -486,6 +533,7 @@ export const Sidebar = () => {
             isDeleting={deletingId === conv.id}
             onSelect={setActiveConversation}
             onOpenMenu={handleOpenMenu}
+            onUpdateCounts={fetchCounts}
           />
         ))}
 
@@ -518,40 +566,66 @@ export const Sidebar = () => {
             }}
             className="w-44 bg-white rounded-xl shadow-2xl border border-slate-100 p-1 z-[101] animate-in fade-in zoom-in-95 duration-200"
           >
-            {currentTabList.find(c => c.id === activeMenuId) && (
-              <>
-                {currentTabList.find(c => c.id === activeMenuId)?.status !== 'CLOSED' ? (
-                  <button 
-                    onClick={(e) => { handleToggleStatus(e, currentTabList.find(c => c.id === activeMenuId)); setActiveMenuId(null); }}
-                    className="w-full text-left px-3 py-2 text-[11px] font-black uppercase tracking-tighter text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 rounded-lg flex items-center gap-2 transition-colors"
-                  >
-                    <CheckCircle size={12} />
-                    Finalizar Conversa
-                  </button>
-                ) : (
-                  <button 
-                    onClick={(e) => { handleToggleStatus(e, currentTabList.find(c => c.id === activeMenuId)); setActiveMenuId(null); }}
-                    className="w-full text-left px-3 py-2 text-[11px] font-black uppercase tracking-tighter text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg flex items-center gap-2 transition-colors"
-                  >
-                    <RefreshCw size={12} />
-                    Reabrir Atendimento
-                  </button>
-                )}
+            {(() => {
+              const conv = currentTabList.find(c => c.id === activeMenuId);
+              if (!conv) return null;
+              return (
+                <>
+                  <header className="px-3 py-1.5 border-b border-slate-50 mb-1">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Ações da Conversa</p>
+                    <p className="text-[11px] font-bold text-slate-700 truncate">{conv.contact?.name}</p>
+                  </header>
 
-                {(userRole === 'ADMIN' || userRole === 'SUPERVISOR' || allowDeletePermission) && (
-                  <>
-                    <div className="h-px bg-slate-50 my-1 mx-1" />
+                  {conv.status !== 'CLOSED' ? (
                     <button 
-                      onClick={(e) => { handleDeleteConversation(e, currentTabList.find(c => c.id === activeMenuId)); setActiveMenuId(null); }}
-                      className="w-full text-left px-3 py-2 text-[11px] font-black uppercase tracking-tighter text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-2 transition-colors"
+                      onClick={(e) => { handleToggleStatus(e, conv); setActiveMenuId(null); }}
+                      className="w-full text-left px-3 py-2 text-[11px] font-black uppercase tracking-tighter text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 rounded-lg flex items-center gap-2 transition-colors"
                     >
-                      <Trash2 size={12} />
-                      Apagar Conversa
+                      <CheckCircle size={12} />
+                      Finalizar Atendimento
                     </button>
-                  </>
-                )}
-              </>
-            )}
+                  ) : (
+                    <button 
+                      onClick={(e) => { handleToggleStatus(e, conv); setActiveMenuId(null); }}
+                      className="w-full text-left px-3 py-2 text-[11px] font-black uppercase tracking-tighter text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg flex items-center gap-2 transition-colors"
+                    >
+                      <RefreshCw size={12} />
+                      Reabrir Atendimento
+                    </button>
+                  )}
+
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); useChatStore.getState().markAsUnread(conv.id); setActiveMenuId(null); }}
+                    className="w-full text-left px-3 py-2 text-[11px] font-black uppercase tracking-tighter text-slate-600 hover:bg-amber-50 hover:text-amber-600 rounded-lg flex items-center gap-2 transition-colors"
+                  >
+                    <MessageSquare size={12} />
+                    Marcar como não lida
+                  </button>
+
+                  <div className="px-1 py-1">
+                    <TagSelector 
+                      conversationId={conv.id} 
+                      currentTags={conv.tags || []} 
+                      onUpdate={fetchCounts}
+                      compact={true}
+                    />
+                  </div>
+
+                  {(userRole === 'ADMIN' || userRole === 'SUPERVISOR' || allowDeletePermission) && (
+                    <>
+                      <div className="h-px bg-slate-50 my-1 mx-1" />
+                      <button 
+                        onClick={(e) => { handleDeleteConversation(e, conv); setActiveMenuId(null); }}
+                        className="w-full text-left px-3 py-2 text-[11px] font-black uppercase tracking-tighter text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-2 transition-colors"
+                      >
+                        <Trash2 size={12} />
+                        Apagar Conversa
+                      </button>
+                    </>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </>,
         document.body

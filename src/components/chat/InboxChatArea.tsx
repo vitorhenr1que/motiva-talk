@@ -736,8 +736,8 @@ Todos os dados e mensagens serão excluídos.`;
               </div>
               <div className="h-4 w-px bg-slate-100 mx-1 shrink-0" />
               <div className="flex gap-1 items-center overflow-x-auto no-scrollbar max-w-[300px]">
-                  {activeConversation.tags?.map((ct) => (
-                    <div key={ct.tagId} className="relative group/tag-badge flex items-center">
+                  {activeConversation.tags?.map((ct, idx) => (
+                    <div key={`${ct.tagId}-${idx}`} className="relative group/tag-badge flex items-center">
                       <span 
                         style={{ 
                           color: ct.tag.color, 

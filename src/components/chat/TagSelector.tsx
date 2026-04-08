@@ -17,9 +17,10 @@ interface TagSelectorProps {
   onUpdate: () => void;
   renderButton?: (toggle: () => void) => React.ReactNode;
   dropdownAlign?: 'left' | 'right';
+  compact?: boolean;
 }
 
-export const TagSelector = ({ conversationId, currentTags, onUpdate, renderButton, dropdownAlign = 'right' }: TagSelectorProps) => {
+export const TagSelector = ({ conversationId, currentTags, onUpdate, renderButton, dropdownAlign = 'right', compact = false }: TagSelectorProps) => {
   const [mounted, setMounted] = useState(false);
   const triggerRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
@@ -219,11 +220,15 @@ export const TagSelector = ({ conversationId, currentTags, onUpdate, renderButto
     <div className="relative inline-block" ref={triggerRef}>
       {renderButton ? renderButton(() => setIsOpen(!isOpen)) : (
         <button 
-          onClick={() => setIsOpen(!isOpen)}
-          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+          onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
+          className={cn(
+             "text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all flex items-center gap-2",
+             compact ? "w-full text-left px-2.5 py-2 text-[11px] font-black uppercase tracking-tighter text-slate-600 rounded-lg" : "p-2 rounded-xl"
+          )}
           title="Gerenciar Etiquetas"
         >
-          <TagIcon size={20} />
+          <TagIcon size={compact ? 12 : 20} />
+          {compact && <span>Etiquetas / Tags</span>}
         </button>
       )}
 

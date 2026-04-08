@@ -61,7 +61,23 @@ export class ConversationRepository {
         .order('id', { ascending: false });
     }
 
-    if (where.status) query = query.eq('status', where.status)
+    // 1. Filtro de Status e Segurança (RBAC) combinados
+    if (where.status) {
+      if (where.allowedChannelIds && where.currentUserId) {
+        // Se for atendente, filtramos por canal E (atribuído a mim ou sem dono) dentro do status
+        query = query.eq('status', where.status)
+                     .in('channelId', where.allowedChannelIds)
+                     .or(`assignedTo.eq.${where.currentUserId},assignedTo.is.null`);
+      } else if (where.allowedChannelIds) {
+        // Se for supervisor com canais limitados
+        query = query.eq('status', where.status)
+                     .in('channelId', where.allowedChannelIds);
+      } else {
+        // Admin ou sem restrição RBAC
+        query = query.eq('status', where.status);
+      }
+    }
+
     if (where.assignedTo) query = query.eq('assignedTo', where.assignedTo)
     if (where.channelId) query = query.eq('channelId', where.channelId)
     
@@ -74,15 +90,6 @@ export class ConversationRepository {
       
       const conversationIds = tagConvs?.map(tc => tc.conversationId) || [];
       query = query.in('id', conversationIds);
-    }
-
-    // Filtro de Segurança / RBAC
-    if (where.allowedChannelIds) {
-      query = query.in('channelId', where.allowedChannelIds)
-      
-      if (where.currentUserId) {
-        query = query.or(`assignedTo.eq.${where.currentUserId},assignedTo.is.null`)
-      }
     }
 
     const { data, error } = await query
@@ -102,6 +109,7 @@ export class ConversationRepository {
         .eq('status', status);
 
       if (where.channelId) query = query.eq('channelId', where.channelId);
+      
       if (where.tagId) {
         const { data: tagConvs } = await supabaseAdmin
           .from('ConversationTag')

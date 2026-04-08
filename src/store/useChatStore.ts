@@ -12,9 +12,11 @@ interface ChatState {
   selectedChannelId: string | null
   loadingConversations: boolean
   loadingMessages: boolean
-  loadingMore: boolean
-  nextCursor: string | null
-  hasMore: boolean
+  loadingMore: boolean,
+  nextCursor: string | null,
+  hasMore: boolean,
+  activeTab: 'unread' | 'in_progress' | 'closed',
+  setActiveTab: (tab: 'unread' | 'in_progress' | 'closed') => void;
   
   tabData: {
     unread: { list: Conversation[], hasMore: boolean, loading: boolean, loadingMore: boolean, initialized: boolean },
@@ -85,6 +87,8 @@ export const useChatStore = create<ChatState>((set) => ({
   loadingMore: false,
   nextCursor: null,
   hasMore: false,
+  activeTab: 'unread',
+  setActiveTab: (tab) => set({ activeTab: tab }),
   isProfileOpen: false,
   kanbanData: [],
   tabData: {
@@ -325,25 +329,32 @@ export const useChatStore = create<ChatState>((set) => ({
     let statusChanged = false;
 
     (['unread', 'in_progress', 'closed'] as const).forEach(tabKey => {
-       const tab = nextTabData[tabKey];
-       const convIndex = tab.list.findIndex(c => c.id === id);
-       if (convIndex !== -1) {
-          const oldStatus = tab.list[convIndex].status;
-          if (data.status && data.status !== oldStatus) {
-             statusChanged = true;
-             
-             // Decrementa do antigo
-             if (oldStatus === 'OPEN') nextTabCounts.unread = Math.max(0, nextTabCounts.unread - 1);
-             else if (oldStatus === 'IN_PROGRESS') nextTabCounts.in_progress = Math.max(0, nextTabCounts.in_progress - 1);
-             else if (oldStatus === 'CLOSED') nextTabCounts.closed = Math.max(0, nextTabCounts.closed - 1);
+      const tab = nextTabData[tabKey];
+      const convIndex = tab.list.findIndex(c => c.id === id);
+      if (convIndex !== -1) {
+        const oldStatus = tab.list[convIndex].status;
+        if (data.status && data.status !== oldStatus) {
+            statusChanged = true;
+            
+            if (oldStatus === 'OPEN') nextTabCounts.unread = Math.max(0, nextTabCounts.unread - 1);
+            else if (oldStatus === 'IN_PROGRESS') nextTabCounts.in_progress = Math.max(0, nextTabCounts.in_progress - 1);
+            else if (oldStatus === 'CLOSED') nextTabCounts.closed = Math.max(0, nextTabCounts.closed - 1);
 
-             // Incrementa o novo
-             if (data.status === 'OPEN') nextTabCounts.unread += 1;
-             else if (data.status === 'IN_PROGRESS') nextTabCounts.in_progress += 1;
-             else if (data.status === 'CLOSED') nextTabCounts.closed += 1;
-          }
-          tab.list[convIndex] = { ...tab.list[convIndex], ...data } as any;
-       }
+            const newStatus = data.status;
+            const newTab = newStatus === 'OPEN' ? 'unread' : (newStatus === 'IN_PROGRESS' ? 'in_progress' : 'closed');
+            nextTabCounts[newTab] += 1;
+
+            const conv = tab.list[convIndex];
+            const updatedConv = { ...conv, ...data };
+            tab.list = tab.list.filter(c => c.id !== id);
+            nextTabData[newTab].list = [updatedConv, ...nextTabData[newTab].list.filter(c => c.id !== id)];
+            nextTabData[newTab].list.sort((a,b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime());
+            
+            state.setActiveTab(newTab);
+        } else {
+           tab.list[convIndex] = { ...tab.list[convIndex], ...data } as any;
+        }
+      }
     });
 
     if (statusChanged) {
@@ -412,10 +423,11 @@ export const useChatStore = create<ChatState>((set) => ({
           const res = await fetch(`/api/conversations/${id}`);
           const fullConv = await res.json();
           if (fullConv.success) {
-             const tabToInsert = nextTabData[newTab];
-             tabToInsert.list = [fullConv.data, ...tabToInsert.list].sort((a,b) => 
+            const tabToInsert = nextTabData[newTab];
+            tabToInsert.list = [fullConv.data, ...tabToInsert.list.filter(c => c.id !== id)];
+            tabToInsert.list.sort((a,b) => 
                new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
-             );
+            );
           }
        } catch (e) { console.error(e); }
     }
@@ -452,30 +464,44 @@ export const useChatStore = create<ChatState>((set) => ({
     let statusChanged = false;
 
     (['unread', 'in_progress', 'closed'] as const).forEach(tabKey => {
-       const tab = nextTabData[tabKey];
-       const convIndex = tab.list.findIndex(c => c.id === conversationId);
-       if (convIndex !== -1) {
-          found = true;
-          const conv = tab.list[convIndex];
-          const updates: any = { unreadCount: 0 };
+      const tab = nextTabData[tabKey];
+      const convIndex = tab.list.findIndex(c => c.id === conversationId);
+      
+      if (convIndex !== -1) {
+        found = true;
+        const conv = tab.list[convIndex];
+        const updates: any = { unreadCount: 0 };
+        
+        if (conv.status === 'OPEN') {
+          updates.status = 'IN_PROGRESS';
+          statusChanged = true;
           
-          if (conv.status === 'OPEN') {
-            updates.status = 'IN_PROGRESS';
-            statusChanged = true;
-            nextTabCounts.unread = Math.max(0, nextTabCounts.unread - 1);
-            nextTabCounts.in_progress += 1;
-          }
+          // Lógica de Movimentação Instantânea:
+          // 1. Remove da lista atual (unread)
+          tab.list = tab.list.filter(c => c.id !== conversationId);
+          nextTabCounts.unread = Math.max(0, nextTabCounts.unread - 1);
+          
+          // 2. Adiciona na lista de destino (in_progress)
+          const updatedConv = { ...conv, ...updates };
+          nextTabData.in_progress.list = [updatedConv, ...nextTabData.in_progress.list.filter(c => c.id !== conversationId)];
+          nextTabData.in_progress.list.sort((a,b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime());
+          nextTabCounts.in_progress += 1;
 
-          if ((conv.unreadCount || 0) > 0 || updates.status) {
-             fetch(`/api/conversations/${conversationId}`, {
-               method: 'PATCH',
-               headers: { 'Content-Type': 'application/json' },
-               body: JSON.stringify(updates)
-             }).catch(console.error);
-             
-             tab.list[convIndex] = { ...conv, ...updates };
-          }
-       }
+          // AUTO-SWITCH TAB
+          state.setActiveTab('in_progress');
+        } else {
+          // Se já está no atendimento, apenas zera o count
+          tab.list[convIndex] = { ...conv, ...updates };
+        }
+
+        if ((conv.unreadCount || 0) > 0 || updates.status) {
+           fetch(`/api/conversations/${conversationId}`, {
+             method: 'PATCH',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify(updates)
+           }).catch(console.error);
+        }
+      }
     });
 
     if (statusChanged) {
@@ -498,31 +524,48 @@ export const useChatStore = create<ChatState>((set) => ({
     let found = false;
 
     (['unread', 'in_progress', 'closed'] as const).forEach(tabKey => {
-       const tab = nextTabData[tabKey];
-       const convIndex = tab.list.findIndex(c => c.id === conversationId);
-       if (convIndex !== -1) {
-          found = true;
-          const updates = { unreadCount: 1, status: 'OPEN' };
-          const oldStatus = tab.list[convIndex].status;
-          
-          if (oldStatus !== 'OPEN') {
-             if (oldStatus === 'IN_PROGRESS') nextTabCounts.in_progress = Math.max(0, nextTabCounts.in_progress - 1);
-             else if (oldStatus === 'CLOSED') nextTabCounts.closed = Math.max(0, nextTabCounts.closed - 1);
-             nextTabCounts.unread += 1;
-          }
+      const tab = nextTabData[tabKey];
+      const convIndex = tab.list.findIndex(c => c.id === conversationId);
+      
+      if (convIndex !== -1) {
+        found = true;
+        const conv = tab.list[convIndex];
+        const oldStatus = conv.status;
+        const updates: any = { unreadCount: 1, status: 'OPEN' };
+        
+        // 1. Remove da lista atual se não for unread
+        if (tabKey !== 'unread') {
+           tab.list = tab.list.filter(c => c.id !== conversationId);
+           
+           if (oldStatus === 'IN_PROGRESS') nextTabCounts.in_progress = Math.max(0, nextTabCounts.in_progress - 1);
+           else if (oldStatus === 'CLOSED') nextTabCounts.closed = Math.max(0, nextTabCounts.closed - 1);
+           
+           // 2. Adiciona em unread
+           nextTabCounts.unread += 1;
+           const updatedConv = { ...conv, ...updates };
+           nextTabData.unread.list = [updatedConv, ...nextTabData.unread.list.filter(c => c.id !== conversationId)];
+           nextTabData.unread.list.sort((a,b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime());
+        } else {
+           // Se já está em unread, apenas atualiza
+           tab.list[convIndex] = { ...conv, ...updates };
+        }
 
-          fetch(`/api/conversations/${conversationId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updates)
-          }).catch(console.error);
-
-          tab.list[convIndex] = { ...tab.list[convIndex], ...updates } as any;
-       }
+        fetch(`/api/conversations/${conversationId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updates)
+        }).catch(console.error);
+        
+        // AUTO-SWITCH TAB
+        state.setActiveTab('unread');
+      }
     });
 
-    nextTabData.unread.initialized = false;
-    nextTabData.in_progress.initialized = false;
+    if (found) {
+       nextTabData.unread.initialized = false;
+       nextTabData.in_progress.initialized = false;
+       nextTabData.closed.initialized = false;
+    }
 
     return found ? {
       tabData: nextTabData,

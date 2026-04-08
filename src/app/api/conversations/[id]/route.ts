@@ -7,6 +7,26 @@ export const dynamic = 'force-dynamic';
 
 const ROUTE = '/api/conversations/[id]';
 
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const user = await getServerSession();
+    if (!user) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
+
+    if (!id) throw new AppError('ID obrigatório', 400, 'VALIDATION_ERROR');
+
+    const conversation = await ConversationService.getById(id);
+    if (!conversation) throw new AppError('Conversa não encontrada', 404, 'NOT_FOUND');
+
+    return NextResponse.json({ success: true, data: conversation })
+  } catch (error) {
+    return handleApiError(error, req, { route: ROUTE })
+  }
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
