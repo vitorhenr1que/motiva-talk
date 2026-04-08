@@ -92,6 +92,17 @@ export class ConversationRepository {
       query = query.in('id', conversationIds);
     }
 
+    // Filtro por termo de busca (Nome ou Telefone do Contato)
+    if (where.search) {
+      const { data: contacts } = await supabaseAdmin
+        .from('Contact')
+        .select('id')
+        .or(`name.ilike.%${where.search}%,phone.ilike.%${where.search}%`);
+      
+      const contactIds = contacts?.map(c => c.id) || [];
+      query = query.in('contactId', contactIds);
+    }
+
     const { data, error } = await query
     if (error) throw error
 
@@ -117,6 +128,16 @@ export class ConversationRepository {
           .eq('tagId', where.tagId);
         const conversationIds = tagConvs?.map(tc => tc.conversationId) || [];
         query = query.in('id', conversationIds);
+      }
+
+      if (where.search) {
+        const { data: contacts } = await supabaseAdmin
+          .from('Contact')
+          .select('id')
+          .or(`name.ilike.%${where.search}%,phone.ilike.%${where.search}%`);
+        
+        const contactIds = contacts?.map(c => c.id) || [];
+        query = query.in('contactId', contactIds);
       }
 
       if (where.allowedChannelIds) {

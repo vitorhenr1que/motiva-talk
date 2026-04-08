@@ -19,6 +19,7 @@ export async function GET(req: Request) {
     const channelId = searchParams.get('channelId') || undefined
     const status = (searchParams.get('status') as string) || undefined
     const tagId = searchParams.get('tagId') || undefined
+    const search = searchParams.get('search') || undefined
     const cursorValue = searchParams.get('cursorValue') || undefined
     const cursorId = searchParams.get('cursorId') || undefined
     const cursorPinnedAt = searchParams.get('cursorPinnedAt') || undefined
@@ -30,6 +31,7 @@ export async function GET(req: Request) {
       channelId: channelId || undefined,
       status: status || undefined,
       tagId: tagId || undefined,
+      search: search || undefined,
       limit
     }
 

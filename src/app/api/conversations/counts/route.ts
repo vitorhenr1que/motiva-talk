@@ -16,12 +16,14 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const channelId = searchParams.get('channelId') || undefined
     const tagId = searchParams.get('tagId') || undefined
+    const search = searchParams.get('search') || undefined
 
     const dbUser = await UserRepository.findMany({ email: user.email! }).then(users => users?.[0])
 
     let where: any = {
       channelId,
-      tagId
+      tagId,
+      search
     }
 
     if (role !== 'ADMIN' && role !== 'SUPERVISOR') {

@@ -177,6 +177,7 @@ export const Sidebar = () => {
     try {
       let url = `/api/conversations/counts?channelId=${selectedChannelId}`;
       if (selectedTagId) url += `&tagId=${selectedTagId}`;
+      if (debouncedSearch) url += `&search=${encodeURIComponent(debouncedSearch)}`;
       
       const res = await fetch(url);
       const data = await res.json();
