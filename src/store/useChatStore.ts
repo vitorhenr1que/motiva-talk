@@ -1,6 +1,24 @@
 import { create } from 'zustand'
 import { Conversation, Message, Channel } from '@/types/chat'
 
+const sortConversations = (a: any, b: any) => {
+  // 1. Pinned (pinnedAt desc)
+  if (a.pinnedAt || b.pinnedAt) {
+    if (a.pinnedAt && b.pinnedAt) {
+      const diff = new Date(b.pinnedAt).getTime() - new Date(a.pinnedAt).getTime();
+      if (diff !== 0) return diff;
+    } else if (a.pinnedAt) return -1;
+    else if (b.pinnedAt) return 1;
+  }
+  // 2. lastMessageAt desc
+  const dateA = new Date(a.lastMessageAt || a.updatedAt || 0).getTime();
+  const dateB = new Date(b.lastMessageAt || b.updatedAt || 0).getTime();
+  if (dateB !== dateA) return dateB - dateA;
+  
+  // 3. ID desc (fallback)
+  return b.id.localeCompare(a.id);
+};
+
 interface ChatState {
   conversations: Conversation[]
   activeConversation: Conversation | null
@@ -277,9 +295,7 @@ export const useChatStore = create<ChatState>((set) => ({
                lastMessageAt: message.createdAt,
                unreadCount: 0
              };
-             nextTabData.in_progress.list = [updated, ...nextTabData.in_progress.list].sort((a,b) => 
-               new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
-             );
+             nextTabData.in_progress.list = [updated, ...nextTabData.in_progress.list].sort(sortConversations);
              nextTabCounts.in_progress += 1;
 
              fetch(`/api/conversations/${conv.id}`, {
@@ -295,7 +311,7 @@ export const useChatStore = create<ChatState>((set) => ({
                lastMessagePreview: preview,
                unreadCount: (isFromUser && isNotActive) ? (conv.unreadCount || 0) + 1 : 0
              };
-             tab.list.sort((a,b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime());
+             tab.list.sort(sortConversations);
           }
        }
     });
@@ -348,11 +364,12 @@ export const useChatStore = create<ChatState>((set) => ({
             const updatedConv = { ...conv, ...data };
             tab.list = tab.list.filter(c => c.id !== id);
             nextTabData[newTab].list = [updatedConv, ...nextTabData[newTab].list.filter(c => c.id !== id)];
-            nextTabData[newTab].list.sort((a,b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime());
+            nextTabData[newTab].list.sort(sortConversations);
             
             state.setActiveTab(newTab);
         } else {
            tab.list[convIndex] = { ...tab.list[convIndex], ...data } as any;
+           tab.list.sort(sortConversations);
         }
       }
     });
@@ -394,7 +411,7 @@ export const useChatStore = create<ChatState>((set) => ({
            tab.list = tab.list.filter(c => c.id !== id);
         } else {
            tab.list[idx] = { ...existing, ...conversation };
-           tab.list.sort((a,b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime());
+           tab.list.sort(sortConversations);
         }
       }
     });
@@ -411,7 +428,7 @@ export const useChatStore = create<ChatState>((set) => ({
           if (fullConv.success) {
              const tabToInsert = nextTabData[newTab];
              tabToInsert.list = [fullConv.data, ...tabToInsert.list.filter(c => c.id !== id)];
-             tabToInsert.list.sort((a,b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime());
+             tabToInsert.list.sort(sortConversations);
           }
        } catch (e) { console.error(e); }
     } else if (!found) {
@@ -425,9 +442,7 @@ export const useChatStore = create<ChatState>((set) => ({
           if (fullConv.success) {
             const tabToInsert = nextTabData[newTab];
             tabToInsert.list = [fullConv.data, ...tabToInsert.list.filter(c => c.id !== id)];
-            tabToInsert.list.sort((a,b) => 
-               new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
-            );
+            tabToInsert.list.sort(sortConversations);
           }
        } catch (e) { console.error(e); }
     }
@@ -484,7 +499,7 @@ export const useChatStore = create<ChatState>((set) => ({
           // 2. Adiciona na lista de destino (in_progress)
           const updatedConv = { ...conv, ...updates };
           nextTabData.in_progress.list = [updatedConv, ...nextTabData.in_progress.list.filter(c => c.id !== conversationId)];
-          nextTabData.in_progress.list.sort((a,b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime());
+          nextTabData.in_progress.list.sort(sortConversations);
           nextTabCounts.in_progress += 1;
 
           // AUTO-SWITCH TAB
@@ -544,7 +559,7 @@ export const useChatStore = create<ChatState>((set) => ({
            nextTabCounts.unread += 1;
            const updatedConv = { ...conv, ...updates };
            nextTabData.unread.list = [updatedConv, ...nextTabData.unread.list.filter(c => c.id !== conversationId)];
-           nextTabData.unread.list.sort((a,b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime());
+           nextTabData.unread.list.sort(sortConversations);
         } else {
            // Se já está em unread, apenas atualiza
            tab.list[convIndex] = { ...conv, ...updates };

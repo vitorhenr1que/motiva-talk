@@ -1,24 +1,36 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useChatStore } from '@/store/useChatStore';
-import { MoreVertical, Trash2, Loader2, Search, Filter, MessageSquare, Tag as TagIcon, Plus, CheckCircle, RefreshCw } from 'lucide-react';
+import { MoreVertical, Trash2, Loader2, Search, Filter, MessageSquare, Tag as TagIcon, Plus, CheckCircle, RefreshCw, Pin } from 'lucide-react';
 import { TagSelector } from '@/components/chat/TagSelector';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { formatPhone } from '@/lib/utils';
 import { formatTimeBahia, parseSafeDate } from '@/lib/date-utils';
 import { supabase } from '@/lib/supabase';
+import { motion, AnimatePresence } from 'framer-motion';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const MemoizedConversationItem = React.memo(({ conv, activeId, isDeleting, onSelect, onOpenMenu, onUpdateCounts }: any) => {
+const MemoizedConversationItem = React.memo(({ conv, activeId, isDeleting, isPinning, onSelect, onOpenMenu, onUpdateCounts, onTogglePin }: any) => {
   return (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ 
+        type: "spring", 
+        stiffness: 400, 
+        damping: 30,
+        opacity: { duration: 0.2 },
+        layout: { duration: 0.3 }
+      }}
       onClick={() => onSelect(conv)}
       className={cn(
-        "flex cursor-pointer items-center gap-3 border-b p-4 transition-all hover:bg-slate-50 relative group",
+        "flex cursor-pointer items-center gap-3 border-b p-4 transition-colors hover:bg-slate-50 relative group",
         activeId === conv.id ? "bg-blue-50/50 ring-1 ring-inset ring-blue-100/50 shadow-sm" : "bg-white",
         isDeleting ? "opacity-50 pointer-events-none grayscale" : ""
       )}
@@ -44,10 +56,30 @@ const MemoizedConversationItem = React.memo(({ conv, activeId, isDeleting, onSel
           <span className={cn("truncate text-sm font-bold tracking-tight", (conv.unreadCount || 0) > 0 || activeId === conv.id ? "text-slate-900" : "text-slate-700")}>
             {conv.contact.name}
           </span>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-slate-400 font-bold whitespace-nowrap">
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-slate-400 font-bold whitespace-nowrap mr-1">
               {conv.lastMessageAt ? formatTimeBahia(conv.lastMessageAt) : '---'}
             </span>
+            
+            {/* Pin Action Botão */}
+            <button 
+              onClick={(e) => { e.stopPropagation(); onTogglePin(e, conv); }}
+              className={cn(
+                "p-1 rounded-md transition-all",
+                conv.pinnedAt 
+                  ? "text-blue-600 bg-blue-50 opacity-100" 
+                  : "text-slate-400 hover:bg-blue-50 hover:text-blue-600 opacity-0 group-hover:opacity-100"
+              )}
+              title={conv.pinnedAt ? "Desafixar" : "Fixar no topo"}
+              disabled={isPinning}
+            >
+              {isPinning ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Pin size={12} className={cn(conv.pinnedAt && "fill-blue-600 -rotate-45")} />
+              )}
+            </button>
+
             <button 
               onClick={(e) => { e.stopPropagation(); onOpenMenu(e, conv.id); }} 
               className="p-1 rounded-md hover:bg-slate-200 text-slate-400"
@@ -111,7 +143,7 @@ const MemoizedConversationItem = React.memo(({ conv, activeId, isDeleting, onSel
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }, (prev, next) => {
   return prev.activeId === next.activeId && 
@@ -526,17 +558,21 @@ export const Sidebar = () => {
           </div>
         )}
 
-        {currentTabList.map((conv) => (
-          <MemoizedConversationItem 
-            key={conv.id} 
-            conv={conv}
-            activeId={activeConversation?.id}
-            isDeleting={deletingId === conv.id}
-            onSelect={setActiveConversation}
-            onOpenMenu={handleOpenMenu}
-            onUpdateCounts={fetchCounts}
-          />
-        ))}
+        <AnimatePresence initial={false} mode="popLayout">
+          {currentTabList.map((conv) => (
+            <MemoizedConversationItem 
+              key={conv.id} 
+              conv={conv}
+              activeId={activeConversation?.id}
+              isDeleting={deletingId === conv.id}
+              isPinning={pinningId === conv.id}
+              onSelect={setActiveConversation}
+              onOpenMenu={handleOpenMenu}
+              onUpdateCounts={fetchCounts}
+              onTogglePin={handleTogglePin}
+            />
+          ))}
+        </AnimatePresence>
 
         {tabData[activeTab].loadingMore && (
           <div className="p-4 flex justify-center border-t border-slate-50 bg-slate-50/30">
