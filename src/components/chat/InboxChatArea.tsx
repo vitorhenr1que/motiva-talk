@@ -1469,6 +1469,7 @@ Todos os dados e mensagens serão excluídos.`;
       {isScheduledModalOpen && (
         <ScheduledMessagesModal 
           conversationId={activeConversation.id} 
+          channelId={activeConversation.channelId}
           onClose={() => setIsScheduledModalOpen(false)} 
         />
       )}

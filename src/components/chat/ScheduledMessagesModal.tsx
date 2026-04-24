@@ -15,12 +15,13 @@ interface ScheduledMessage {
 
 interface Props {
   conversationId: string;
+  channelId: string;
   onClose: () => void;
   onScheduleSuccess?: () => void;
   onCancelSuccess?: () => void;
 }
 
-export const ScheduledMessagesModal = ({ conversationId, onClose, onScheduleSuccess, onCancelSuccess }: Props) => {
+export const ScheduledMessagesModal = ({ conversationId, channelId, onClose, onScheduleSuccess, onCancelSuccess }: Props) => {
   const [messages, setMessages] = useState<ScheduledMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -79,6 +80,7 @@ export const ScheduledMessagesModal = ({ conversationId, onClose, onScheduleSucc
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           conversationId,
+          channelId,
           content: newContent,
           scheduledAt: new Date(newDate).toISOString(),
           senderType: 'AGENT',
