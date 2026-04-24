@@ -1,6 +1,6 @@
 export type UserRole = 'ADMIN' | 'SUPERVISOR' | 'AGENT';
 export type ConversationStatus = 'OPEN' | 'IN_PROGRESS' | 'CLOSED' | 'FOLLOW_UP';
-export type MessageType = 'TEXT' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'DOCUMENT' | 'CONTACT';
+export type MessageType = 'TEXT' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'DOCUMENT' | 'CONTACT' | 'REACTION';
 export type SenderType = 'USER' | 'AGENT' | 'SYSTEM';
 export type FileKind = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'PDF' | 'DOCUMENT' | 'UNKNOWN';
 
@@ -104,6 +104,7 @@ export interface Message {
     externalMessageId?: string;
   };
   metadata?: any;
+  reactions?: { emoji: string; sender: string; timestamp: number }[];
 }
 
 export interface QuickReply {

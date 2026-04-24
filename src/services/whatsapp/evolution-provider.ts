@@ -380,7 +380,7 @@ export class EvolutionProvider implements WhatsAppProvider {
         base64: inner.documentMessage.base64
       };
     } else if (inner.reactionMessage) {
-      type = 'REACTION' as any;
+      type = 'REACTION';
       content = inner.reactionMessage.text;
       mediaFields = {
         targetMessageId: inner.reactionMessage.key?.id
@@ -486,7 +486,7 @@ export class EvolutionProvider implements WhatsAppProvider {
           duration: (normalized as any).duration,
           base64: (normalized as any).base64,
           thumbnailUrl: (normalized as any).thumbnailUrl,
-          targetMessageId: (normalized as any).targetMessageId,
+          targetMessageId: normalized.targetMessageId,
           metadata: { 
             ...normalized.raw, 
             externalId: normalized.externalMessageId,
