@@ -15,20 +15,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Lista de conversas de destino inválida.' }, { status: 400 });
     }
 
-    // Processamento sequencial para garantir ordem e evitar sobrecarga na Evolution API
-    const results = [];
-    
-    for (const conversationId of targetConversationIds) {
-      for (const messageId of messageIds) {
-        try {
-          const originalMessage = await MessageRepository.findById(messageId);
-          if (!originalMessage) continue;
+    // 1. Buscar todas as mensagens originais de uma vez para evitar queries repetitivas
+    const originalMessages = await Promise.all(
+      messageIds.map(id => MessageRepository.findById(id))
+    );
+    const validOriginalMessages = originalMessages.filter(m => !!m);
 
-          // Criar nova mensagem baseada na original
+    if (validOriginalMessages.length === 0) {
+      return NextResponse.json({ success: false, error: 'Mensagens originais não encontradas.' }, { status: 404 });
+    }
+
+    // 2. Processar cada conversa de destino em PARALELO
+    // Dentro de cada conversa, as mensagens são enviadas em SEQUÊNCIA para manter a ordem
+    const forwardPromises = targetConversationIds.map(async (conversationId) => {
+      const sentInThisConversation = [];
+      
+      for (const originalMessage of validOriginalMessages) {
+        try {
           const forwardData = {
             conversationId,
             channelId: originalMessage.channelId,
-            senderType: 'AGENT', // Mensagem encaminhada pelo atendente
+            senderType: 'AGENT',
             content: originalMessage.content,
             type: originalMessage.type,
             mediaUrl: originalMessage.mediaUrl,
@@ -47,14 +54,18 @@ export async function POST(req: NextRequest) {
           };
 
           const newMessage = await MessageService.createMessage(forwardData);
-          results.push(newMessage);
+          sentInThisConversation.push(newMessage);
         } catch (err) {
-          console.error(`[API_FORWARD] Falha ao encaminhar msg ${messageId} para conv ${conversationId}:`, err);
+          console.error(`[API_FORWARD] Erro ao encaminhar para conv ${conversationId}:`, err);
         }
       }
-    }
+      return sentInThisConversation;
+    });
 
-    return NextResponse.json({ success: true, count: results.length });
+    const resultsArray = await Promise.all(forwardPromises);
+    const totalResults = resultsArray.flat();
+
+    return NextResponse.json({ success: true, count: totalResults.length });
   } catch (error: any) {
     console.error('[API_FORWARD] Erro geral:', error);
     return NextResponse.json({ 
