@@ -331,7 +331,8 @@ export class EvolutionProvider implements WhatsAppProvider {
       fileSize?: number, 
       duration?: number,
       thumbnailUrl?: string,
-      base64?: string 
+      base64?: string,
+      targetMessageId?: string 
     } = {};
 
     let inner = message.message || message;
@@ -384,7 +385,7 @@ export class EvolutionProvider implements WhatsAppProvider {
       content = inner.reactionMessage.text;
       mediaFields = {
         targetMessageId: inner.reactionMessage.key?.id
-      } as any;
+      };
     } else if (inner.contactMessage || inner.contactsArrayMessage) {
       type = 'CONTACT';
     }
