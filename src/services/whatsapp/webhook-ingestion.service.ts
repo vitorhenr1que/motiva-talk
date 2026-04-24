@@ -239,6 +239,7 @@ export class WebhookIngestionService {
           fileSize: normalizeNumber(event.fileSize),
           duration: normalizeNumber(event.duration),
           thumbnailUrl: event.thumbnailUrl,
+          metadata: metadata,
           createdAt: new Date(event.timestamp).toISOString()
         }])
         .select('*, replyTo:replyToMessageId(*)')

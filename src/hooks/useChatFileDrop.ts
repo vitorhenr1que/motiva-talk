@@ -3,10 +3,11 @@
 import { useState, useCallback } from 'react';
 import { useChatStore } from '@/store/useChatStore';
 import { getFileTypeInfo } from '@/lib/file-type';
+import { PendingFile } from '@/types/chat';
 
-export const useChatFileDrop = () => {
+export const useChatFileDrop = (onFileDrop: (pendingFile: PendingFile) => void) => {
   const [isDragging, setIsDragging] = useState(false);
-  const { activeConversation, setPendingFile, setMediaCaption } = useChatStore();
+  const { activeConversation } = useChatStore();
 
   const isClosed = activeConversation?.status === 'CLOSED';
 
@@ -47,8 +48,7 @@ export const useChatFileDrop = () => {
       media.src = previewUrl;
       media.onloadedmetadata = () => {
         const roundedDuration = Math.round(media.duration);
-        // Usamos o setter funcional para não perder o objeto file
-        useChatStore.getState().setPendingFile({ 
+        onFileDrop({ 
            file, 
            previewUrl, 
            kind, 
@@ -56,11 +56,10 @@ export const useChatFileDrop = () => {
         });
         console.log(`[MEDIA_DROP_DEBUG] Duração extraída: ${roundedDuration}s`);
       };
+    } else {
+      onFileDrop({ file, previewUrl, kind, duration: 0 });
     }
-    
-    setPendingFile({ file, previewUrl, kind, duration: 0 });
-    setMediaCaption('');
-  }, [activeConversation, isClosed, setPendingFile, setMediaCaption]);
+  }, [activeConversation, isClosed, onFileDrop]);
 
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();

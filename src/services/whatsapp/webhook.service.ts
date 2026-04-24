@@ -68,9 +68,14 @@ export class WebhookService {
     
     // 1. Detectar se a mensagem recebida contém quoted message
     const quotedId = event.metadata?.quotedMessageExternalId || event.metadata?.quoted?.key?.id;
+    const hasSnapshot = !!event.metadata?.quotedMessageSnapshot;
+    const isOutbound = !!event.metadata?.fromMe;
+    
+    console.log(`[WEBHOOK_DEBUG] Processando Mensagem. Inbound? ${!isOutbound} | Possui contextInfo? ${!!event.metadata?.quotedMessageExternalId || hasSnapshot}`);
     
     if (quotedId) {
-      console.log(`[WEBHOOK_SERVICE] Quoted Message external ID detectado: ${quotedId}`);
+      console.log(`[WEBHOOK_DEBUG] Quoted Message external ID detectado: ${quotedId}`);
+      console.log(`[WEBHOOK_DEBUG] Valor de stanzaId (quotedId): ${quotedId}`);
       
       // 2. Buscar no banco a mensagem original pelo externalMessageId
       const { data: originalMsg } = await supabaseAdmin
@@ -82,12 +87,15 @@ export class WebhookService {
       if (originalMsg) {
         // Encontrou! Guardamos no metadata para o ingestMessage usar
         event.metadata.resolvedReplyToId = originalMsg.id;
-        console.log(`[WEBHOOK_SERVICE] Vínculo de Reply/Quote resolvido com sucesso! Original DB ID: ${originalMsg.id}`);
+        console.log(`[WEBHOOK_DEBUG] Mensagem original encontrada no banco! Original DB ID: ${originalMsg.id}`);
       } else {
-        console.log(`[WEBHOOK_SERVICE] Mensagem original [${quotedId}] não encontrada no banco. A relação de reply não será persistida.`);
+        console.log(`[WEBHOOK_DEBUG] Mensagem original [${quotedId}] não encontrada no banco.`);
+        if (hasSnapshot) {
+           console.log(`[WEBHOOK_DEBUG] Salvando snapshot da citação. Snapshot info: ${event.metadata.quotedMessageSnapshot.quotedMessageType}`);
+        }
       }
     } else {
-      console.log(`[WEBHOOK_SERVICE] Mensagem normal sem reply.`);
+      console.log(`[WEBHOOK_DEBUG] Mensagem normal sem quotedMessage.`);
     }
 
     try {

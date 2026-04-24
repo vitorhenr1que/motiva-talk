@@ -865,10 +865,23 @@ Todos os dados e mensagens serão excluídos.`;
                   >
                     <div className={cn("relative max-w-[80%] md:max-w-[70%] rounded-2xl p-1.5 shadow-sm transition-all hover:shadow-md", isSentByUs ? "bg-[#d9fdd3] text-slate-800 rounded-tr-none" : "bg-white text-slate-800 rounded-tl-none border border-slate-100", msg.status === 'sending' && "opacity-60 grayscale-[0.2]")}>
                       <div className="px-2.5 py-1">
-                        {msg.replyToMessage && !(isEveryoneDeleted || msg.deletedForMe) && (
-                          <div className="mb-2 border-l-4 border-blue-400 bg-black/10 p-2 rounded-r-lg text-[11px] opacity-90 cursor-pointer hover:bg-black/20 transition-colors">
-                            <span className="block font-bold text-blue-600 mb-0.5">{msg.replyToMessage.senderType === 'USER' ? activeConversation.contact?.name : 'Você'}</span>
-                            <span className="block truncate max-w-xs italic text-slate-500">{msg.replyToMessage.content}</span>
+                        {(msg.replyToMessage || msg.metadata?.quotedMessageSnapshot) && !(isEveryoneDeleted || msg.deletedForMe) && (
+                          <div 
+                            className="mb-2 border-l-4 border-blue-400 bg-black/10 p-2 rounded-r-lg text-[11px] opacity-90 cursor-pointer hover:bg-black/20 transition-colors"
+                            onClick={() => {
+                              if (msg.replyToMessageId) handleNavigateToMessage(msg.replyToMessageId, msg.createdAt);
+                            }}
+                          >
+                            <span className="block font-bold text-blue-600 mb-0.5">
+                              {msg.replyToMessage 
+                                ? (msg.replyToMessage.senderType === 'USER' ? activeConversation.contact?.name : 'Você')
+                                : (msg.metadata?.quotedMessageSnapshot?.quotedSender === 'Você' ? 'Você' : (msg.metadata?.quotedMessageSnapshot?.quotedSender || 'Contato'))}
+                            </span>
+                            <span className="block truncate max-w-xs italic text-slate-500">
+                              {msg.replyToMessage 
+                                ? msg.replyToMessage.content 
+                                : msg.metadata?.quotedMessageSnapshot?.quotedText}
+                            </span>
                           </div>
                         )}
 

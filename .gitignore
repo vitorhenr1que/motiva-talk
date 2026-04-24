@@ -9,7 +9,7 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-
+/.qwen/*
 # testing
 /coverage
 
@@ -23,6 +23,7 @@
 # misc
 .DS_Store
 *.pem
+.mcp.json
 
 # debug
 npm-debug.log*

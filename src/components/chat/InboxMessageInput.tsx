@@ -33,14 +33,18 @@ export const MessageInput = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
   
+  const [localPendingFile, setLocalPendingFile] = useState<PendingFile | null>(null);
+  const [localMediaCaption, setLocalMediaCaption] = useState('');
+
   const { 
     activeConversation, addMessage, upsertMessage, messages, 
-    replyToMessage, setReplyToMessage,
-    pendingFile, setPendingFile,
-    mediaCaption, setMediaCaption
+    replyToMessage, setReplyToMessage
   } = useChatStore();
 
-  const { isDragging, onDragOver, onDragLeave, onDrop, processFile } = useChatFileDrop();
+  const { isDragging, onDragOver, onDragLeave, onDrop, processFile } = useChatFileDrop((fileData) => {
+    setLocalPendingFile(fileData);
+    setLocalMediaCaption('');
+  });
 
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [repliesOpen, setRepliesOpen] = useState(false);
@@ -198,10 +202,10 @@ export const MessageInput = () => {
   };
 
   const handleSendMedia = async () => {
-    if (!pendingFile || !activeConversation || activeConversation.status === 'CLOSED') return;
+    if (!localPendingFile || !activeConversation || activeConversation.status === 'CLOSED') return;
     
     setUploading(true);
-    const { file, kind, previewUrl, duration } = pendingFile;
+    const { file, kind, previewUrl, duration } = localPendingFile;
     const msgType = mapKindToMessageType(kind);
     
     try {
@@ -214,7 +218,7 @@ export const MessageInput = () => {
         mimeType: file.type || 'application/octet-stream',
         fileSize: file.size,
         duration: duration,
-        caption: mediaCaption
+        caption: localMediaCaption
       };
 
       // 3. Send to API
@@ -225,21 +229,21 @@ export const MessageInput = () => {
           conversationId: activeConversation.id,
           channelId: activeConversation.channel.id,
           senderType: 'AGENT',
-          content: mediaCaption || file.name, // Use caption as main content
+          content: localMediaCaption || file.name, // Use caption as main content
           type: msgType,
           mediaUrl: publicUrl,
           fileName: file.name,
           mimeType: metadata.mimeType,
           fileSize: file.size,
           duration: duration,
-          metadata: { ...metadata, caption: mediaCaption }
+          metadata: { ...metadata, caption: localMediaCaption }
         })
       });
 
       if (resp.ok) {
         const realMsg = await resp.json();
         addMessage(realMsg.data);
-        setPendingFile(null);
+        setLocalPendingFile(null);
         URL.revokeObjectURL(previewUrl);
       } else {
         const err = await resp.json();
@@ -357,48 +361,48 @@ export const MessageInput = () => {
         </div>
       )}
        {/* Media Preview Overlay */}
-       {pendingFile && (
+       {localPendingFile && (
          <div className="absolute bottom-0 left-0 right-0 z-[100] bg-slate-900 flex flex-col items-center justify-center p-6 animate-in slide-in-from-bottom duration-300 min-h-[400px]">
             <button 
-              onClick={() => { setPendingFile(null); URL.revokeObjectURL(pendingFile.previewUrl); }}
+              onClick={() => { setLocalPendingFile(null); URL.revokeObjectURL(localPendingFile.previewUrl); }}
               className="absolute top-6 right-6 p-2 rounded-full bg-slate-800 text-white hover:bg-slate-700 transition-colors"
             >
               <X size={24} />
             </button>
 
             <div className="flex-1 w-full max-w-2xl flex flex-col items-center justify-center gap-6">
-              {pendingFile.kind === 'IMAGE' && (
-                <img src={pendingFile.previewUrl} className="max-h-[300px] rounded-2xl shadow-2xl object-contain border-4 border-white/10" alt="Preview" />
+              {localPendingFile.kind === 'IMAGE' && (
+                <img src={localPendingFile.previewUrl} className="max-h-[300px] rounded-2xl shadow-2xl object-contain border-4 border-white/10" alt="Preview" />
               )}
-              {pendingFile.kind === 'VIDEO' && (
-                <video src={pendingFile.previewUrl} controls className="max-h-[300px] rounded-2xl shadow-2xl bg-black border-4 border-white/10" />
+              {localPendingFile.kind === 'VIDEO' && (
+                <video src={localPendingFile.previewUrl} controls className="max-h-[300px] rounded-2xl shadow-2xl bg-black border-4 border-white/10" />
               )}
-              {(pendingFile.kind === 'DOCUMENT' || pendingFile.kind === 'PDF') && (
+              {(localPendingFile.kind === 'DOCUMENT' || localPendingFile.kind === 'PDF') && (
                 <div className="flex flex-col items-center gap-4 p-12 bg-slate-800 rounded-[32px] border border-white/5 shadow-2xl w-full text-center">
-                   {pendingFile.kind === 'PDF' && (
+                   {localPendingFile.kind === 'PDF' && (
                      <div className="w-full h-[400px] rounded-2xl overflow-hidden bg-white mb-4">
-                       <iframe src={pendingFile.previewUrl} className="w-full h-full border-none" title="PDF Preview" />
+                       <iframe src={localPendingFile.previewUrl} className="w-full h-full border-none" title="PDF Preview" />
                      </div>
                    )}
-                   {(pendingFile.kind === 'DOCUMENT') && (
+                   {(localPendingFile.kind === 'DOCUMENT') && (
                       <div className="p-6 bg-orange-500/10 rounded-3xl text-orange-500 mb-2">
                         <FileText size={64} />
                       </div>
                    )}
                    <div className="text-center">
-                     <p className="text-white font-black text-lg truncate max-w-[400px] inline-block">{pendingFile.file.name}</p>
-                     <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">{(pendingFile.file.size / 1024 / 1024).toFixed(2)} MB • {pendingFile.file.name.split('.').pop()?.toUpperCase()}</p>
+                     <p className="text-white font-black text-lg truncate max-w-[400px] inline-block">{localPendingFile.file.name}</p>
+                     <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">{(localPendingFile.file.size / 1024 / 1024).toFixed(2)} MB • {localPendingFile.file.name.split('.').pop()?.toUpperCase()}</p>
                    </div>
                 </div>
               )}
-              {pendingFile.kind === 'AUDIO' && (
+              {localPendingFile.kind === 'AUDIO' && (
                  <div className="flex flex-col items-center gap-4 p-12 bg-slate-800 rounded-[32px] border border-white/5 shadow-2xl w-full">
                    <div className="p-6 bg-red-500/10 rounded-3xl text-red-500">
                      <Mic size={64} />
                    </div>
-                   <audio src={pendingFile.previewUrl} controls className="w-full max-w-md" />
+                   <audio src={localPendingFile.previewUrl} controls className="w-full max-w-md" />
                    <div className="text-center">
-                     <p className="text-white font-black text-lg truncate max-w-[400px] inline-block">{pendingFile.file.name}</p>
+                     <p className="text-white font-black text-lg truncate max-w-[400px] inline-block">{localPendingFile.file.name}</p>
                      <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">Áudio detectado</p>
                    </div>
                  </div>
@@ -409,8 +413,8 @@ export const MessageInput = () => {
                   type="text" 
                   autoFocus
                   placeholder="Adicionar legenda..."
-                  value={mediaCaption}
-                  onChange={(e) => setMediaCaption(e.target.value)}
+                  value={localMediaCaption}
+                  onChange={(e) => setLocalMediaCaption(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSendMedia()}
                   className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl py-4 px-6 text-white placeholder:text-slate-500 outline-none focus:border-blue-500 transition-all shadow-xl"
                 />

@@ -299,6 +299,7 @@ export class EvolutionProvider implements WhatsAppProvider {
         m.videoMessage?.caption || 
         m.audioMessage?.caption ||
         m.documentMessage?.caption ||
+        m.documentWithCaptionMessage?.message?.documentMessage?.caption ||
         ''
       );
     };
@@ -318,7 +319,12 @@ export class EvolutionProvider implements WhatsAppProvider {
       base64?: string 
     } = {};
 
-    const inner = message.message || message;
+    let inner = message.message || message;
+    
+    // Unwrap documentWithCaptionMessage which WhatsApp uses for documents with captions
+    if (inner.documentWithCaptionMessage?.message) {
+      inner = inner.documentWithCaptionMessage.message;
+    }
     
     if (inner.imageMessage) {
       type = 'IMAGE';
@@ -363,13 +369,48 @@ export class EvolutionProvider implements WhatsAppProvider {
     }
 
     let quotedMessageExternalId: string | null = null;
+    let quotedMessageSnapshot: any = null;
     const contextInfo = inner.contextInfo || 
+                        inner.extendedTextMessage?.contextInfo ||
                         inner.imageMessage?.contextInfo || 
                         inner.videoMessage?.contextInfo ||
                         inner.audioMessage?.contextInfo || 
                         inner.documentMessage?.contextInfo;
     
-    if (contextInfo?.stanzaId) quotedMessageExternalId = contextInfo.stanzaId;
+    if (contextInfo?.stanzaId) {
+      quotedMessageExternalId = contextInfo.stanzaId;
+      
+      if (contextInfo.quotedMessage) {
+        let qType = 'TEXT';
+        let qText = '';
+        let qFileName = '';
+        const qMsg = contextInfo.quotedMessage;
+        
+        if (qMsg.conversation || qMsg.extendedTextMessage) {
+          qType = 'TEXT';
+          qText = qMsg.conversation || qMsg.extendedTextMessage?.text || '';
+        } else if (qMsg.imageMessage) {
+          qType = 'IMAGE';
+          qText = qMsg.imageMessage.caption || '';
+        } else if (qMsg.videoMessage) {
+          qType = 'VIDEO';
+          qText = qMsg.videoMessage.caption || '';
+        } else if (qMsg.audioMessage) {
+          qType = 'AUDIO';
+        } else if (qMsg.documentMessage) {
+          qType = 'DOCUMENT';
+          qFileName = qMsg.documentMessage.fileName || 'Documento';
+          qText = qMsg.documentMessage.caption || '';
+        }
+        
+        quotedMessageSnapshot = {
+          quotedText: qText || `[${qType}]`,
+          quotedSender: contextInfo.participant?.split('@')[0] || '',
+          quotedMessageType: qType,
+          quotedFileName: qFileName
+        };
+      }
+    }
 
     const rawTimestamp = rawMessage.messageTimestamp || data.messageTimestamp;
     const timestamp = rawTimestamp ? rawTimestamp * 1000 : Date.now();
@@ -384,6 +425,7 @@ export class EvolutionProvider implements WhatsAppProvider {
       timestamp,
       fromMe,
       quotedMessageExternalId,
+      quotedMessageSnapshot,
       fullJid,
       ...mediaFields,
       raw: rawMessage
@@ -426,6 +468,7 @@ export class EvolutionProvider implements WhatsAppProvider {
             externalId: normalized.externalMessageId,
             fromMe: normalized.fromMe,
             quotedMessageExternalId: normalized.quotedMessageExternalId,
+            quotedMessageSnapshot: (normalized as any).quotedMessageSnapshot,
             jid: normalized.fullJid
           }
         };
