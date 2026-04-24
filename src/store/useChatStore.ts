@@ -23,6 +23,7 @@ interface ChatState {
   conversations: Conversation[]
   activeConversation: Conversation | null
   replyToMessage: Message | null
+  editingMessage: Message | null
   pendingFile: any | null
   mediaCaption: string
   messages: Message[]
@@ -71,6 +72,7 @@ interface ChatState {
   setConversations: (conversations: any[]) => void
   setActiveConversation: (conversation: any | null) => void
   setReplyToMessage: (message: any | null) => void
+  setEditingMessage: (message: any | null) => void
   setPendingFile: (file: any | null) => void
   setMediaCaption: (caption: string) => void
   setMessages: (data: { messages: any[], nextCursor?: string | null, hasMore?: boolean }) => void
@@ -99,6 +101,7 @@ export const useChatStore = create<ChatState>((set) => ({
   conversations: [],
   activeConversation: null,
   replyToMessage: null,
+  editingMessage: null,
   pendingFile: null,
   mediaCaption: '',
   messages: [],
@@ -226,6 +229,7 @@ export const useChatStore = create<ChatState>((set) => ({
     }
   },
   setReplyToMessage: (message) => set({ replyToMessage: message }),
+  setEditingMessage: (message) => set({ editingMessage: message }),
   setPendingFile: (file) => set({ pendingFile: file }),
   setMediaCaption: (caption) => set({ mediaCaption: caption }),
   setMessages: (data) => {

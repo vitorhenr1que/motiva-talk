@@ -198,6 +198,21 @@ class EvolutionApiClient {
     });
   }
 
+  async editMessage(instanceName: string, payload: {
+    number: string;
+    text: string;
+    key: {
+      remoteJid: string;
+      fromMe: boolean;
+      id: string;
+    }
+  }) {
+    return this.request<any>(`/message/edit/${instanceName}`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   async sendMedia(instanceName: string, payload: {
     number: string;
     mediatype: 'image' | 'video' | 'audio' | 'document';

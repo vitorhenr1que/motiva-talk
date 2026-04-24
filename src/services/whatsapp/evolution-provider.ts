@@ -208,6 +208,29 @@ export class EvolutionProvider implements WhatsAppProvider {
     throw new Error(`Tipo de mensagem ${type} ainda não implementado no provider.`);
   }
 
+  async editMessage(channel: Channel, recipient: string, externalId: string, fromMe: boolean, newContent: string): Promise<any> {
+    const instanceName = this.getInstanceName(channel);
+    const cleanNumber = recipient.replace(/\D/g, '');
+    const remoteJid = recipient.includes('@') ? recipient : `${cleanNumber}@s.whatsapp.net`;
+
+    console.log(`[EVO_PROVIDER] Editando mensagem: Inst[${instanceName}] MsgID[${externalId}]`);
+
+    try {
+      return await evolutionApi.editMessage(instanceName, {
+        number: cleanNumber,
+        text: newContent,
+        key: {
+          remoteJid,
+          fromMe,
+          id: externalId
+        }
+      });
+    } catch (error: any) {
+      console.error(`[EVO_PROVIDER] Falha ao editar mensagem via API: ${error.message}`);
+      throw error;
+    }
+  }
+
   async sendReaction(channel: Channel, recipient: string, externalId: string, fromMe: boolean, emoji: string): Promise<any> {
     const instanceName = this.getInstanceName(channel);
     const cleanNumber = recipient.replace(/\D/g, '');

@@ -5,7 +5,7 @@ import { useChatStore } from '@/store/useChatStore';
 import { 
   MoreVertical, Search, MessageCircle, FileText, Reply, Trash2,
   Loader2, Check, Pin, UserPlus, CheckCircle2, XCircle, X, ChevronDown, UserPlus as ContactIcon,
-  Mic, Play, Pause, Volume2, Eye, Forward, AlertCircle, Smile, Plus
+  Mic, Play, Pause, Volume2, Eye, Forward, AlertCircle, Smile, Plus, Edit2
 } from 'lucide-react';
 import { TagSelector } from './TagSelector';
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
@@ -1212,6 +1212,20 @@ Todos os dados e mensagens serão excluídos.`;
                                   <Reply size={16} />
                                   <span className="text-[11px] font-black uppercase tracking-tight">Responder</span>
                                 </button>
+                                
+                                {msg.senderType === 'AGENT' && msg.type === 'TEXT' && (
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      useChatStore.getState().setEditingMessage(msg);
+                                      setOptionsMenuId(null);
+                                    }} 
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 hover:text-emerald-600 transition-all"
+                                  >
+                                    <Edit2 size={16} />
+                                    <span className="text-[11px] font-black uppercase tracking-tight">Editar Mensagem</span>
+                                  </button>
+                                )}
 
                                 <button 
                                   onClick={(e) => {

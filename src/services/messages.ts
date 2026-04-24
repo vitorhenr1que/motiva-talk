@@ -259,6 +259,45 @@ export class MessageService {
     }
   }
 
+  /**
+   * Atualiza o conteúdo de uma mensagem (Edição)
+   */
+  static async updateMessage(id: string, newContent: string) {
+    const message = await MessageRepository.findById(id);
+    if (!message) throw new AppError('Mensagem não encontrada', 404, 'NOT_FOUND');
+
+    // 1. Se for do atendente, tenta editar no WhatsApp via Evolution API
+    if (message.senderType === 'AGENT' && message.externalMessageId) {
+      try {
+        const { evolutionProvider } = await import('@/services/whatsapp/evolution-provider');
+        const { ConversationRepository } = await import('@/repositories/conversationRepository');
+        const conversation = await ConversationRepository.findById(message.conversationId);
+        
+        if (conversation && conversation.contact && conversation.channel) {
+          await evolutionProvider.editMessage(
+            conversation.channel,
+            conversation.contact.phone,
+            message.externalMessageId,
+            true, // fromMe
+            newContent
+          );
+        }
+      } catch (error: any) {
+        console.error('[MSG_SERVICE] Erro ao editar mensagem via Evolution API:', error);
+        throw new AppError(`Falha na edição via WhatsApp: ${error.message}`, 500, 'INTERNAL_ERROR');
+      }
+    }
+
+    // 2. Atualizar no banco de dados
+    const updated = await MessageRepository.update(id, { content: newContent });
+
+    // 3. Notificar via Realtime
+    const { RealtimeService } = await import('@/services/realtime.service');
+    await RealtimeService.notifyMessageUpdate(message.conversationId, updated);
+
+    return updated;
+  }
+
   static async getMessageById(id: string) {
     return await MessageRepository.findById(id)
   }

@@ -68,6 +68,11 @@ export interface WhatsAppProvider {
    * Sends a message through the provider.
    */
   sendMessage(channel: Channel, recipient: string, content: string, type?: MessageType): Promise<any>;
+  
+  /**
+   * Edits an existing message.
+   */
+  editMessage(channel: Channel, recipient: string, externalId: string, fromMe: boolean, newContent: string): Promise<any>;
 
   /**
    * Configures the webhook for the session to receive real-time notifications.

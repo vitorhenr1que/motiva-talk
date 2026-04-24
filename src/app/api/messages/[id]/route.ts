@@ -38,3 +38,23 @@ export async function DELETE(
     return handleApiError(error, req, { route: ROUTE })
   }
 }
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const { content } = await req.json()
+    console.log(`[API] ${req.method} ${ROUTE}:`, { id, contentLength: content?.length });
+
+    if (!id) throw new AppError('ID da mensagem obrigatório', 400, 'VALIDATION_ERROR');
+    if (!content) throw new AppError('Conteúdo obrigatório', 400, 'VALIDATION_ERROR');
+
+    const updated = await MessageService.updateMessage(id, content)
+    
+    return NextResponse.json({ success: true, data: updated })
+  } catch (error) {
+    return handleApiError(error, req, { route: ROUTE })
+  }
+}

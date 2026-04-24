@@ -33,6 +33,11 @@ export class RealtimeService {
     await this.publish('inbox:all', 'inbox:update', { conversationId, message });
   }
 
+  static async notifyMessageUpdate(conversationId: string, message: any) {
+    // Notifica que uma mensagem foi alterada (ex: edição)
+    await this.publish(`conversation:${conversationId}`, 'message:update', { message });
+  }
+
   static async notifyConversationUpdate(conversationId: string) {
     await this.publish('inbox', 'CONVERSATION_UPDATED', { conversationId });
   }

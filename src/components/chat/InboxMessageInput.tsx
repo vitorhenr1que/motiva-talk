@@ -35,10 +35,13 @@ export const MessageInput = () => {
   
   const [localPendingFile, setLocalPendingFile] = useState<PendingFile | null>(null);
   const [localMediaCaption, setLocalMediaCaption] = useState('');
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
 
   const { 
     activeConversation, addMessage, upsertMessage, messages, 
-    replyToMessage, setReplyToMessage
+    replyToMessage, setReplyToMessage,
+    editingMessage, setEditingMessage
   } = useChatStore();
 
   const { isDragging, onDragOver, onDragLeave, onDrop, processFile } = useChatFileDrop((fileData) => {
@@ -111,7 +114,25 @@ export const MessageInput = () => {
     setSuggestions([]);
     setIsTyping(false);
     setAttachmentMenuOpen(false);
+    setEditingMessage(null);
   }, [activeConversation?.id]);
+
+  useEffect(() => {
+    if (editingMessage) {
+      // Strip prefix: *Name:*\n\n
+      const stripped = editingMessage.content.replace(/^\*.*:\*\n\n/, '');
+      setContent(stripped);
+      setReplyToMessage(null); // Clear reply if editing
+      
+      // Auto focus and scroll to input
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          textareaRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+    }
+  }, [editingMessage]);
 
   const attachmentMenuRef = useRef<HTMLDivElement>(null);
 
@@ -120,12 +141,15 @@ export const MessageInput = () => {
       if (attachmentMenuRef.current && !attachmentMenuRef.current.contains(e.target as Node)) {
         setAttachmentMenuOpen(false);
       }
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
+        setEmojiPickerOpen(false);
+      }
     };
-    if (attachmentMenuOpen) {
+    if (attachmentMenuOpen || emojiPickerOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [attachmentMenuOpen]);
+  }, [attachmentMenuOpen, emojiPickerOpen]);
 
   useEffect(() => {
     const init = async () => {
@@ -148,6 +172,11 @@ export const MessageInput = () => {
   }, []);
 
   const handleSend = async () => {
+    if (editingMessage) {
+       handleUpdateMessage();
+       return;
+    }
+
     if (!content.trim() || !activeConversation || activeConversation.status === 'CLOSED') return;
 
     const canEditName = activeConversation.channel?.allowAgentNameEdit ?? chatSettings.allowAgentNameEdit;
@@ -193,6 +222,36 @@ export const MessageInput = () => {
         upsertMessage(realMsg.data, tempId);
       }
     } catch (error) {}
+  };
+
+  const handleUpdateMessage = async () => {
+    if (!editingMessage || !content.trim() || !activeConversation) return;
+
+    const canEditName = activeConversation.channel?.allowAgentNameEdit ?? chatSettings.allowAgentNameEdit;
+    const rawName = canEditName ? (customName || defaultName) : defaultName;
+    const nameToUse = capitalize(rawName);
+    const finalContent = `*${nameToUse}:*\n\n${content.trim()}`;
+
+    const messageId = editingMessage.id;
+    
+    // Optimistic update
+    upsertMessage({ ...editingMessage, content: finalContent });
+    setEditingMessage(null);
+    setContent('');
+
+    try {
+      const resp = await fetch(`/api/messages/${messageId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: finalContent })
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        upsertMessage(data.data);
+      }
+    } catch (error: any) {
+      console.error('Erro ao editar mensagem:', error);
+    }
   };
 
   const openFileSearch = (accept?: string) => {
@@ -305,7 +364,42 @@ export const MessageInput = () => {
       handleSend();
     }
     if (e.key === '/' && content === '' && !isEditingName) setRepliesOpen(true);
+    if (e.key === 'Escape') {
+      setAttachmentMenuOpen(false);
+      setEmojiPickerOpen(false);
+    }
   };
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const addEmoji = (emoji: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      setContent(prev => prev + emoji);
+      return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = content;
+    const before = text.substring(0, start);
+    const after = text.substring(end);
+    
+    setContent(before + emoji + after);
+    
+    // Devolve o foco e posiciona o cursor após o emoji
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + emoji.length, start + emoji.length);
+    }, 0);
+  };
+
+  const EMOJI_CATEGORIES = [
+    { name: 'Populares', emojis: ['😀', '😂', '😍', '👍', '🙏', '🔥', '🚀', '✅', '❤️', '🤔', '🎉', '🙌'] },
+    { name: 'Caras', emojis: ['😊', '😇', '😎', '😜', '🤩', '🥳', '🥺', '😢', '😤', '😡', '😱', '🥱', '😴', '😷', '💩'] },
+    { name: 'Mãos', emojis: ['👋', '👌', '✌️', '🤞', '👊', '🤛', '🤜', '👏', '🤝', '💪', '🙏', '✍️', '🤳', '💅'] },
+    { name: 'Negócios', emojis: ['💼', '📈', '📊', '📅', '📝', '✉️', '📞', '💻', '💡', '🏆', '💎', '💰', '🤝'] }
+  ];
 
   useEffect(() => {
     if (!activeConversation || !messages) return;
@@ -534,6 +628,28 @@ export const MessageInput = () => {
         </div>
       )}
 
+      {editingMessage && (
+        <div className="mb-4 flex items-start gap-3 rounded-2xl bg-emerald-50 p-4 border border-emerald-200 animate-in slide-in-from-bottom-2 duration-300 relative group overflow-hidden">
+          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-emerald-600" />
+          <div className="flex-1 overflow-hidden">
+            <div className="flex items-center gap-2 mb-1">
+              <Edit2 size={10} className="text-emerald-600" />
+              <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Editando Mensagem</p>
+            </div>
+            <p className="truncate text-xs text-slate-500 italic">{formatWhatsappText(editingMessage.content)}</p>
+          </div>
+          <button 
+            onClick={() => {
+              setEditingMessage(null);
+              setContent('');
+            }} 
+            className="rounded-xl p-1.5 text-slate-400 hover:bg-white hover:text-red-500 hover:shadow-sm transition-all"
+          >
+            <X size={18} />
+          </button>
+        </div>
+      )}
+
       <div className="flex items-end gap-3 max-w-[1200px] mx-auto">
         <div className="flex items-center gap-1 pb-1 relative">
           <button 
@@ -580,6 +696,7 @@ export const MessageInput = () => {
 
         <div className="relative flex-1 group">
           <textarea
+            ref={textareaRef}
             value={content}
             onFocus={() => { if (content.length > 0) sendPresence('composing'); }}
             onChange={(e) => setContent(e.target.value)}
@@ -588,15 +705,74 @@ export const MessageInput = () => {
             className="block w-full resize-none rounded-2xl border-slate-200 bg-slate-50 py-3.5 pl-5 pr-12 text-sm font-medium text-slate-800 shadow-inner focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 outline-none transition-all placeholder:text-slate-400 min-h-[52px] max-h-40"
             rows={1}
           />
-          <button className="absolute right-4 bottom-3 text-slate-300 hover:text-blue-500 transition-colors"><Smile size={20} /></button>
+          <div className="absolute right-4 bottom-3 flex items-center gap-2">
+            <button 
+              type="button"
+              onClick={() => setEmojiPickerOpen(!emojiPickerOpen)}
+              className={cn(
+                "text-slate-300 hover:text-blue-500 transition-colors active:scale-90",
+                emojiPickerOpen && "text-blue-500"
+              )}
+            >
+              <Smile size={20} />
+            </button>
+            
+            {emojiPickerOpen && (
+              <div 
+                ref={emojiPickerRef}
+                className="absolute bottom-full right-0 mb-4 w-72 bg-white rounded-[24px] shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-slate-100 overflow-hidden z-[70] animate-in fade-in slide-in-from-bottom-4 duration-300"
+              >
+                <div className="p-4 bg-slate-50/50 border-b border-slate-100">
+                   <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Selecione um Emoji</h3>
+                </div>
+                <div className="max-h-60 overflow-y-auto p-4 custom-scrollbar">
+                  {EMOJI_CATEGORIES.map((cat) => (
+                    <div key={cat.name} className="mb-4 last:mb-0">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">{cat.name}</p>
+                      <div className="grid grid-cols-6 gap-1">
+                        {cat.emojis.map((emoji) => (
+                          <button 
+                            key={emoji}
+                            onClick={() => addEmoji(emoji)}
+                            className="text-xl p-2 hover:bg-slate-50 rounded-xl transition-all hover:scale-120 active:scale-90 flex items-center justify-center"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="p-2 bg-slate-50/50 border-t border-slate-100 flex justify-end">
+                   <button 
+                    onClick={() => setEmojiPickerOpen(false)}
+                    className="text-[9px] font-black text-blue-600 uppercase tracking-widest px-3 py-1.5 hover:bg-white rounded-lg transition-all"
+                   >
+                     Fechar
+                   </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <button
           onClick={handleSend}
           disabled={!content.trim() || uploading || isEditingName}
-          className="flex h-[52px] w-[52px] items-center justify-center rounded-2xl bg-slate-900 text-white shadow-xl shadow-slate-200 transition-all hover:bg-black hover:scale-105 active:scale-95 disabled:opacity-30 disabled:hover:scale-100"
+          className={cn(
+            "flex h-[52px] w-[52px] items-center justify-center rounded-2xl transition-all shadow-xl active:scale-95 disabled:opacity-30 disabled:hover:scale-100",
+            editingMessage 
+              ? "bg-emerald-600 text-white shadow-emerald-200 hover:bg-emerald-700 hover:scale-105" 
+              : "bg-slate-900 text-white shadow-slate-200 hover:bg-black hover:scale-105"
+          )}
         >
-          {uploading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} className="ml-0.5" />}
+          {uploading ? (
+            <Loader2 className="animate-spin" size={20} />
+          ) : editingMessage ? (
+            <Check size={20} />
+          ) : (
+            <Send size={20} className="ml-0.5" />
+          )}
         </button>
       </div>
 

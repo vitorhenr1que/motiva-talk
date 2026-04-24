@@ -90,6 +90,10 @@ export const useRealtimeInbox = () => {
         const { message } = payload.payload;
         addMessage(message);
       })
+      .on('broadcast', { event: 'message:update' }, (payload) => {
+        const { message } = payload.payload;
+        upsertMessage(message);
+      })
       .subscribe();
 
     return () => {
