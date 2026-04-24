@@ -237,8 +237,17 @@ export const useChatStore = create<ChatState>((set) => ({
     if (!message || !message.id) return state
     
     // 1. Evitar duplicatas no histórico de mensagens (chat window)
-    const isDuplicate = state.messages.some(m => m.id === message.id)
-    if (isDuplicate) return state
+    const existingMsgIndex = state.messages.findIndex(m => m.id === message.id)
+    if (existingMsgIndex !== -1) {
+       const existingMsg = state.messages[existingMsgIndex];
+       // Se recebemos um broadcast com replyToMessage, mas a mensagem local não tem (porque veio do postgres_changes), atualizamos
+       if (message.replyToMessage && !existingMsg.replyToMessage) {
+          const nextMessages = [...state.messages];
+          nextMessages[existingMsgIndex] = { ...existingMsg, ...message };
+          return { messages: nextMessages };
+       }
+       return state;
+    }
     
     let tempMessageToReplace = null;
     if (message.senderType === 'AGENT') {

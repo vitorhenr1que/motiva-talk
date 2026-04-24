@@ -54,7 +54,7 @@ export class MessageRepository {
     const { data: newMessage, error } = await supabaseAdmin
       .from('Message')
       .insert([{ id: generateId(), ...data }])
-      .select('*, replyTo:replyToMessageId(*)')
+      .select('*, replyToMessage:replyToMessageId(*)')
       .single()
     if (error) throw error
     return newMessage

@@ -242,7 +242,7 @@ export class WebhookIngestionService {
           metadata: metadata,
           createdAt: new Date(event.timestamp).toISOString()
         }])
-        .select('*, replyTo:replyToMessageId(*)')
+        .select('*, replyToMessage:replyToMessageId(*)')
         .single()
 
       if (msgError) {
