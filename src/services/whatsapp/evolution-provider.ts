@@ -206,7 +206,23 @@ export class EvolutionProvider implements WhatsAppProvider {
       });
     }
 
-    throw new Error(`Tipo de mensagem ${type} ainda não implementado no provider.`);
+  async sendReaction(channel: Channel, recipient: string, externalId: string, fromMe: boolean, emoji: string): Promise<any> {
+    const instanceName = this.getInstanceName(channel);
+    const cleanNumber = recipient.replace(/\D/g, '');
+    const remoteJid = recipient.includes('@') ? recipient : `${cleanNumber}@s.whatsapp.net`;
+
+    return evolutionApi.sendReaction(instanceName, {
+      number: cleanNumber,
+      reaction: emoji,
+      key: {
+        remoteJid,
+        fromMe,
+        id: externalId
+      }
+    });
+  }
+
+  throw new Error(`Tipo de mensagem ${type} ainda não implementado no provider.`);
   }
 
   /**

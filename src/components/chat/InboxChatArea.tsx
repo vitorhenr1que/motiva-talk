@@ -5,7 +5,7 @@ import { useChatStore } from '@/store/useChatStore';
 import { 
   MoreVertical, Search, MessageCircle, FileText, Reply, Trash2,
   Loader2, Check, Pin, UserPlus, CheckCircle2, XCircle, X, ChevronDown, UserPlus as ContactIcon,
-  Mic, Play, Pause, Volume2, Eye, Forward, AlertCircle
+  Mic, Play, Pause, Volume2, Eye, Forward, AlertCircle, Smile, Plus
 } from 'lucide-react';
 import { TagSelector } from './TagSelector';
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
@@ -245,6 +245,15 @@ export const ChatWindow = () => {
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [optionsMenuId, setOptionsMenuId] = useState<string | null>(null);
+  const [reactionMenuId, setReactionMenuId] = useState<string | null>(null);
+  const [showFullEmojiPicker, setShowFullEmojiPicker] = useState<string | null>(null);
+
+  const EMOJI_CATEGORIES = [
+    { name: 'Rostos', emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕'] },
+    { name: 'Gestos', emojis: ['👋', '🤚', '🖐', '✋', '🖖', '👌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏', '✍️', '💅', '🤳', '💪', '🦾'] },
+    { name: 'Corações', emojis: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟'] }
+  ];
   const [lightboxMedia, setLightboxMedia] = useState<{ url: string, type: 'IMAGE' | 'VIDEO' | 'PDF', fileName?: string, caption?: string } | null>(null);
   const [userRole, setUserRole] = useState<string>('AGENT');
   const [allowDeletePermission, setAllowDeletePermission] = useState(false);
@@ -483,9 +492,30 @@ Todos os dados e mensagens serão excluídos.`;
     }
   };
 
-  const handleDeleteMessage = async (id: string, mode: 'me' | 'everyone') => {
+  const handleReaction = async (messageId: string, emoji: string) => {
+    try {
+      console.log(`[REACTION] Reagindo à mensagem ${messageId} com ${emoji}`);
+      
+      const response = await fetch('/api/messages/reaction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId, emoji })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Falha ao enviar reação');
+      }
+
+      console.log('[REACTION] Reação enviada com sucesso');
+    } catch (err: any) {
+      console.error('[REACTION] Erro ao reagir:', err.message);
+    }
+  };
+
+  const handleDeleteMessage = async (messageId: string, mode: 'me' | 'everyone') => {
     if (deletingMsgId) return;
-    setDeletingMsgId(id);
+    setDeletingMsgId(messageId);
     setDeleteMenuId(null);
     const confirmText = mode === 'everyone' ? 'Deseja apagar esta mensagem para TODOS?' : 'Deseja remover esta mensagem apenas para você?';
     if (!confirm(confirmText)) {
@@ -1079,55 +1109,146 @@ Todos os dados e mensagens serão excluídos.`;
 
                       {!(isEveryoneDeleted || msg.deletedForMe) && !isClosed && !selectionMode && (
                         <div className={cn(
-                          "absolute top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all z-[30]", 
+                          "absolute top-2 opacity-0 group-hover:opacity-100 transition-all duration-300 z-[40] flex items-center gap-1",
                           isSentByUs ? "right-full mr-2" : "left-full ml-2"
                         )}>
-                           <button 
-                             onClick={(e) => {
-                               e.stopPropagation();
-                               setSelectionMode(true);
-                               toggleMessageSelection(msg.id);
-                             }} 
-                             className="p-2 rounded-xl bg-white shadow-md border border-slate-100 text-slate-400 hover:bg-blue-600 hover:text-white transition-all transform hover:scale-110" 
-                             title="Encaminhar"
-                           >
-                             <Forward size={16} />
-                           </button>
-                           <button 
-                             onClick={() => useChatStore.getState().setReplyToMessage(msg)} 
-                             className="p-2 rounded-xl bg-white shadow-md border border-slate-100 text-slate-400 hover:bg-blue-600 hover:text-white transition-all transform hover:scale-110" 
-                             title="Responder"
-                           >
-                             <Reply size={16} />
-                           </button>
-                           <div className="relative">
-                              <button 
-                                disabled={deletingMsgId === msg.id}
-                                onClick={() => setDeleteMenuId(deleteMenuId === msg.id ? null : msg.id)} 
-                                className={cn(
-                                  "p-2 rounded-xl bg-white shadow-md border border-slate-100 transition-all transform hover:scale-110",
-                                  (deleteMenuId === msg.id || deletingMsgId === msg.id) ? "bg-red-500 text-white" : "text-slate-400 hover:bg-red-50 hover:text-red-600"
-                                )}
-                                title="Opções de exclusão"
-                              >
-                                {deletingMsgId === msg.id ? (
-                                  <Loader2 size={16} className="animate-spin" />
-                                ) : (
-                                  <Trash2 size={16} />
-                                )}
-                              </button>
-                              {deleteMenuId === msg.id && (
-                                <div className={cn(
-                                  "absolute bottom-full mb-2 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-[100] animate-in fade-in zoom-in-95 duration-200", 
-                                  isSentByUs ? "right-0" : "left-0"
-                                )}>
-                                  <button onClick={() => handleDeleteMessage(msg.id, 'me')} className="w-full text-left px-4 py-2.5 text-[11px] font-black uppercase tracking-tight text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-2 transition-colors">Apagar para mim</button>
-                                  {msg.senderType === 'AGENT' && (
-                                    <button onClick={() => handleDeleteMessage(msg.id, 'everyone')} className="w-full text-left px-4 py-2.5 text-[11px] font-black uppercase tracking-tight text-red-600 hover:bg-red-50 rounded-xl flex items-center gap-2 transition-colors">Apagar para todos</button>
-                                  )}
-                                </div>
+                          {/* Botão de Reações */}
+                          <div className="relative">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setReactionMenuId(reactionMenuId === msg.id ? null : msg.id);
+                                setOptionsMenuId(null);
+                              }}
+                              className={cn(
+                                "p-1.5 rounded-full bg-white shadow-md border border-slate-100 text-slate-400 hover:text-yellow-500 transition-all transform hover:scale-110 active:scale-95",
+                                reactionMenuId === msg.id && "bg-yellow-50 text-yellow-600 border-yellow-200"
                               )}
-                           </div>
+                            >
+                              <Smile size={16} />
+                            </button>
+
+                            {reactionMenuId === msg.id && (
+                              <div className={cn(
+                                "absolute bottom-full mb-2 flex items-center gap-2 p-1.5 bg-white rounded-full shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-200 z-[50]",
+                                isSentByUs ? "right-0" : "left-0"
+                              )}>
+                                {['👍', '🥰', '❤️', '🙏🏼', '👏🏼', '😂'].map(emoji => (
+                                  <button 
+                                    key={emoji}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleReaction(msg.id, emoji);
+                                      setReactionMenuId(null);
+                                    }}
+                                    className="text-xl hover:scale-125 transition-transform p-1.5 leading-none"
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowFullEmojiPicker(msg.id);
+                                    setReactionMenuId(null);
+                                  }}
+                                  className="h-8 w-8 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all"
+                                >
+                                  <Plus size={18} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Botão de Opções (3 pontos) */}
+                          <div className="relative">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOptionsMenuId(optionsMenuId === msg.id ? null : msg.id);
+                                setReactionMenuId(null);
+                              }}
+                              className={cn(
+                                "p-1.5 rounded-full bg-white shadow-md border border-slate-100 text-slate-400 hover:text-blue-600 transition-all transform hover:scale-110 active:scale-95",
+                                optionsMenuId === msg.id && "bg-blue-600 text-white border-blue-600"
+                              )}
+                            >
+                              <MoreVertical size={16} />
+                            </button>
+
+                            {optionsMenuId === msg.id && (
+                              <div className={cn(
+                                "absolute bottom-full mb-2 w-48 bg-white/95 dark:bg-slate-800/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-200/50 p-1.5 animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-200 z-[50]",
+                                isSentByUs ? "right-0" : "left-0"
+                              )}>
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    useChatStore.getState().setReplyToMessage(msg);
+                                    setOptionsMenuId(null);
+                                  }} 
+                                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:text-blue-600 transition-all"
+                                >
+                                  <Reply size={16} />
+                                  <span className="text-[11px] font-black uppercase tracking-tight">Responder</span>
+                                </button>
+
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectionMode(true);
+                                    toggleMessageSelection(msg.id);
+                                    setOptionsMenuId(null);
+                                  }} 
+                                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:text-blue-600 transition-all"
+                                >
+                                  <Forward size={16} />
+                                  <span className="text-[11px] font-black uppercase tracking-tight">Encaminhar</span>
+                                </button>
+
+                                <div className="h-px bg-slate-100 dark:bg-white/5 my-1" />
+
+                                <button 
+                                  disabled={deletingMsgId === msg.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDeleteMenuId(deleteMenuId === msg.id ? null : msg.id);
+                                  }} 
+                                  className={cn(
+                                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all",
+                                    (deleteMenuId === msg.id || deletingMsgId === msg.id) 
+                                      ? "bg-red-500 text-white" 
+                                      : "text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                  )}
+                                >
+                                  {deletingMsgId === msg.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                                  <span className="text-[11px] font-black uppercase tracking-tight">Excluir</span>
+                                </button>
+
+                                {deleteMenuId === msg.id && (
+                                  <div className={cn(
+                                    "absolute bottom-0 mb-0 w-full bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-100 dark:border-white/10 p-1 z-[60] animate-in fade-in zoom-in-95", 
+                                    isSentByUs ? "right-full mr-2" : "left-full ml-2"
+                                  )}>
+                                    <button 
+                                      onClick={() => { handleDeleteMessage(msg.id, 'me'); setOptionsMenuId(null); }} 
+                                      className="w-full text-left px-4 py-2.5 text-[10px] font-black uppercase tracking-tight text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5 rounded-xl transition-colors"
+                                    >
+                                      Apagar para mim
+                                    </button>
+                                    {msg.senderType === 'AGENT' && (
+                                      <button 
+                                        onClick={() => { handleDeleteMessage(msg.id, 'everyone'); setOptionsMenuId(null); }} 
+                                        className="w-full text-left px-4 py-2.5 text-[10px] font-black uppercase tracking-tight text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
+                                      >
+                                        Apagar para todos
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1222,6 +1343,47 @@ Todos os dados e mensagens serão excluídos.`;
         onClose={() => setIsForwardModalOpen(false)} 
         selectedMessageIds={selectedMessages}
       />
+      {/* Full Emoji Picker Modal */}
+      {showFullEmojiPicker && (
+        <div 
+          className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setShowFullEmojiPicker(null)}
+        >
+          <div 
+            className="bg-white dark:bg-slate-900 w-full max-w-[320px] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-slate-100 dark:border-white/5 flex items-center justify-between">
+              <span className="text-xs font-black uppercase tracking-widest text-slate-400">Reagir com Emoji</span>
+              <button onClick={() => setShowFullEmojiPicker(null)} className="p-1 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-colors text-slate-400">
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 max-h-[400px] custom-scrollbar">
+              {EMOJI_CATEGORIES.map(category => (
+                <div key={category.name} className="mb-6">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">{category.name}</h4>
+                  <div className="grid grid-cols-6 gap-2">
+                    {category.emojis.map(emoji => (
+                      <button 
+                        key={emoji}
+                        onClick={() => {
+                          handleReaction(showFullEmojiPicker, emoji);
+                          setShowFullEmojiPicker(null);
+                        }}
+                        className="text-2xl hover:bg-slate-100 dark:hover:bg-white/5 p-2 rounded-xl transition-all hover:scale-125 transform active:scale-95 flex items-center justify-center"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

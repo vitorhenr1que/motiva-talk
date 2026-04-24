@@ -228,6 +228,21 @@ class EvolutionApiClient {
     });
   }
 
+  async sendReaction(instanceName: string, payload: {
+    number: string;
+    reaction: string;
+    key: {
+      remoteJid: string;
+      fromMe: boolean;
+      id: string;
+    };
+  }) {
+    return this.request<any>(`/message/sendReaction/${instanceName}`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   // --- Chat Advanced ---
 
   async fetchProfilePictureUrl(instanceName: string, number: string) {
