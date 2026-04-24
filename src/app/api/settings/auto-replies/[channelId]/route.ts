@@ -7,9 +7,9 @@ export const dynamic = 'force-dynamic';
 
 export async function PUT(
   req: Request,
-  { params }: { params: { channelId: string } }
+  { params }: { params: Promise<{ channelId: string }> }
 ) {
-  const { channelId } = (await params) as any;
+  const { channelId } = await params;
   const ROUTE = `/api/settings/auto-replies/${channelId}`;
 
   try {
