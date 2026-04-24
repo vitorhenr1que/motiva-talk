@@ -205,6 +205,8 @@ export class EvolutionProvider implements WhatsAppProvider {
         quoted: quotedPayload
       });
     }
+    throw new Error(`Tipo de mensagem ${type} ainda não implementado no provider.`);
+  }
 
   async sendReaction(channel: Channel, recipient: string, externalId: string, fromMe: boolean, emoji: string): Promise<any> {
     const instanceName = this.getInstanceName(channel);
@@ -220,9 +222,6 @@ export class EvolutionProvider implements WhatsAppProvider {
         id: externalId
       }
     });
-  }
-
-  throw new Error(`Tipo de mensagem ${type} ainda não implementado no provider.`);
   }
 
   /**
