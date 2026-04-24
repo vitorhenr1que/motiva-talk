@@ -20,7 +20,7 @@ export class ConversationRepository {
         finalizedAt,
         updatedAt,
         contact:Contact(id, name, phone, profilePictureUrl),
-        channel:Channel(id, name),
+        channel:Channel(id, name, allowAgentNameEdit),
         tags:ConversationTag(tag:Tag(id, name, color, emoji))
       `)
       .limit(limit)

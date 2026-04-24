@@ -10,10 +10,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Message ID e Emoji são obrigatórios.' }, { status: 400 });
     }
 
-    // 1. Busca os dados da mensagem no banco para obter o externalId e o canal
+    // 1. Busca os dados da mensagem no banco para obter o externalId, canal e contato
     const { data: message, error: msgError } = await supabase
       .from('Message')
-      .select('*, conversation:Conversation(*, channel:Channel(*))')
+      .select('*, conversation:Conversation(*, channel:Channel(*), contact:Contact(*))')
       .eq('id', messageId)
       .single();
 
@@ -24,9 +24,12 @@ export async function POST(req: Request) {
 
     const conversation = message.conversation;
     const channel = conversation?.channel;
+    const contact = conversation?.contact;
     const externalId = message.metadata?.externalId || message.externalMessageId;
+    
+    // De acordo com a Evolution API, fromMe deve ser true se a mensagem que estamos reagindo foi enviada por NÓS
     const fromMe = message.fromMe ?? (message.senderType === 'AGENT');
-    const recipient = conversation.contactPhone;
+    const recipient = contact?.phone;
 
     if (!channel || !externalId || !recipient) {
       console.error('[REACTION_API] Dados insuficientes:', { channel: !!channel, externalId, recipient });
@@ -42,6 +45,17 @@ export async function POST(req: Request) {
       fromMe,
       emoji
     );
+
+    // 3. Persiste a reação do atendente no banco para feedback imediato na UI
+    const currentReactions = Array.isArray(message.reactions) ? message.reactions : [];
+    // Remove reações anteriores do mesmo atendente para evitar duplicidade
+    const otherReactions = currentReactions.filter((r: any) => r.sender !== 'AGENT');
+    const newReactions = [...otherReactions, { emoji, sender: 'AGENT', timestamp: Date.now() }];
+
+    await supabase
+      .from('Message')
+      .update({ reactions: newReactions })
+      .eq('id', messageId);
 
     return NextResponse.json({ success: true, result });
   } catch (error: any) {

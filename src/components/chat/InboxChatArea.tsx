@@ -1094,18 +1094,20 @@ Todos os dados e mensagens serão excluídos.`;
                           </>
                         )}
 
-                        {/* Renderização das Reações */}
+                        {/* Renderização das Reações (WhatsApp Style) */}
                         {msg.reactions && Array.isArray(msg.reactions) && msg.reactions.length > 0 && (
                           <div className={cn(
-                            "absolute -bottom-3 flex flex-wrap gap-1 z-[10]",
-                            isSentByUs ? "right-2" : "left-2"
+                            "absolute -bottom-4 z-[10] animate-in zoom-in-50 duration-200",
+                            isSentByUs ? "right-3" : "left-3"
                           )}>
-                            <div className="flex -space-x-1 items-center bg-white dark:bg-slate-800 border border-slate-100 dark:border-white/10 rounded-full px-1.5 py-0.5 shadow-sm">
-                              {msg.reactions.slice(0, 3).map((r: any, idx: number) => (
-                                <span key={idx} className="text-[12px]" title={`Reagido por ${r.sender}`}>{r.emoji}</span>
-                              ))}
-                              {msg.reactions.length > 3 && (
-                                <span className="text-[9px] font-black ml-1 text-slate-400">+{msg.reactions.length - 3}</span>
+                            <div className="flex items-center gap-0.5 bg-white dark:bg-slate-800 border border-slate-100 dark:border-white/10 rounded-full px-2 py-1 shadow-md hover:shadow-lg transition-shadow cursor-default">
+                              <div className="flex -space-x-1.5">
+                                {msg.reactions.slice(0, 3).map((r: any, idx: number) => (
+                                  <span key={idx} className="text-[16px] leading-none drop-shadow-sm" title={`Reagido por ${r.sender}`}>{r.emoji}</span>
+                                ))}
+                              </div>
+                              {msg.reactions.length > 1 && (
+                                <span className="text-[10px] font-black ml-1 text-slate-500 dark:text-slate-400">{msg.reactions.length}</span>
                               )}
                             </div>
                           </div>
