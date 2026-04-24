@@ -293,6 +293,12 @@ export class WebhookIngestionService {
       }
       
       await ConversationRepository.update(conversation.id, updateData);
+      
+      // Cancelar agendamentos se o cliente responder
+      if (senderType === 'USER') {
+        const { MessageService } = await import('@/services/messages');
+        await MessageService.cancelScheduledByCustomerReply(conversation.id);
+      }
 
       // 8. Notificação em Tempo Real
       const { RealtimeService } = await import('@/services/realtime.service');
