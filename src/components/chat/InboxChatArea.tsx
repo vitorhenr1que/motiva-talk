@@ -5,7 +5,7 @@ import { useChatStore } from '@/store/useChatStore';
 import { 
   MoreVertical, Search, MessageCircle, FileText, Reply, Trash2,
   Loader2, Check, Pin, UserPlus, CheckCircle2, XCircle, X, ChevronDown, UserPlus as ContactIcon,
-  Mic, Play, Pause, Volume2, Eye, Forward, AlertCircle, Smile, Plus, Edit2, Clock
+  Mic, Play, Pause, Volume2, Eye, Forward, AlertCircle, Smile, Plus, Edit2, Clock, Bot
 } from 'lucide-react';
 import { TagSelector } from './TagSelector';
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
@@ -975,6 +975,13 @@ Todos os dados e mensagens serão excluídos.`;
                           <div className="flex items-center gap-1.5 mb-1 opacity-60">
                             <Forward size={12} className="text-slate-400 italic" />
                             <span className="text-[10px] font-bold text-slate-400 italic tracking-tight">Encaminhada</span>
+                          </div>
+                        )}
+
+                        {msg.metadata?.isAutoReply && (
+                          <div className="flex items-center gap-1.5 mb-1 text-blue-600">
+                            <Bot size={12} className="shrink-0" />
+                            <span className="text-[10px] font-black uppercase tracking-widest">Mensagem Automática</span>
                           </div>
                         )}
 

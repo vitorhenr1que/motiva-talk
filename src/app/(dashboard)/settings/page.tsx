@@ -110,6 +110,7 @@ export default function SettingsPage() {
   const navItems = [
     { label: 'Perfil', icon: <UserIcon size={18} />, href: '/settings' },
     { label: 'Acessibilidade', icon: <Globe size={18} />, href: '/settings/accessibility' },
+    { label: 'Mensagens Automáticas', icon: <MessageSquare size={18} />, href: '/settings/auto-replies' },
     { label: 'Notificações', icon: <Bell size={18} />, href: '/settings/notifications' },
     { label: 'Segurança', icon: <Shield size={18} />, href: '/settings/security' },
     { label: 'API', icon: <Key size={18} />, href: '/settings/api' },

@@ -306,11 +306,129 @@ export class WebhookIngestionService {
       await RealtimeService.notifyNewMessage(conversation.id, newMessage);
       console.log(`[INGEST] Fluxo concluído com sucesso para ${newMessage.id}.`);
 
+      // 9. Resposta Automática (Auto-Reply)
+      if (senderType === 'USER') {
+        // Dispara de forma assíncrona para não atrasar o retorno do webhook
+        this.handleAutoReply(channel, contact, conversation).catch(err => {
+          console.error(`[INGEST] Erro ao processar Auto-Reply:`, err);
+        });
+      }
+
       return { conversation, message: newMessage };
 
     } catch (error) {
       console.error('CRITICAL: Message ingestion failed:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Processa e envia uma resposta automática se as condições forem atendidas.
+   */
+  private static async handleAutoReply(channel: any, contact: any, conversation: any) {
+    try {
+      console.log(`[AUTO-REPLY] Verificando configuração para canal ${channel.id}...`);
+      
+      // 1. Buscar configuração em auto_reply_settings
+      const { data: settings } = await supabaseAdmin
+        .from('auto_reply_settings')
+        .select('*')
+        .eq('channelId', channel.id)
+        .maybeSingle();
+
+      if (!settings || !settings.enabled || !settings.message) {
+        console.log(`[AUTO-REPLY] Configuração desativada ou mensagem vazia para canal ${channel.id}.`);
+        return;
+      }
+
+      // 2. Verificar cooldown em contact_auto_replies
+      const { data: lastReply } = await supabaseAdmin
+        .from('contact_auto_replies')
+        .select('*')
+        .eq('contactId', contact.id)
+        .eq('channelId', channel.id)
+        .maybeSingle();
+
+      const cooldownMs = (settings.cooldownHours || 24) * 60 * 60 * 1000;
+      const now = new Date();
+
+      if (lastReply) {
+        const lastReplyAt = new Date(lastReply.lastAutoReplyAt);
+        const timeSinceLastReply = now.getTime() - lastReplyAt.getTime();
+
+        if (timeSinceLastReply < cooldownMs) {
+          const remainingMinutes = Math.round((cooldownMs - timeSinceLastReply) / 1000 / 60);
+          console.log(`[AUTO-REPLY] Cooldown ativo para contato ${contact.id}. Faltam ${remainingMinutes} minutos.`);
+          return;
+        }
+      }
+
+      // 3. Enviar mensagem via Evolution API
+      const instanceName = channel.providerSessionId || channel.id;
+      console.log(`[AUTO-REPLY] Enviando mensagem automática no canal ${channel.name} para ${contact.phone}...`);
+      
+      try {
+        await evolutionApi.sendMessage(instanceName, {
+          number: contact.phone,
+          text: settings.message
+        });
+      } catch (evoError) {
+        console.error(`[AUTO-REPLY] Erro da Evolution API:`, evoError);
+        return; // Se falhou o envio externo, não registramos no banco
+      }
+
+      const { generateId } = await import('@/lib/utils');
+      const { ConversationRepository } = await import('@/repositories/conversationRepository');
+      const { RealtimeService } = await import('@/services/realtime.service');
+
+      // 4. Salvar no banco como mensagem enviada pelo sistema
+      const { data: autoMsg, error: autoMsgError } = await supabaseAdmin
+        .from('Message')
+        .insert([{
+          id: generateId(),
+          conversationId: conversation.id,
+          channelId: channel.id,
+          senderType: 'SYSTEM',
+          content: settings.message,
+          type: 'TEXT',
+          sendStatus: 'sent',
+          metadata: { isAutoReply: true },
+          createdAt: now.toISOString()
+        }])
+        .select()
+        .single();
+
+      if (autoMsgError) throw autoMsgError;
+
+      // 5. Atualizar contact_auto_replies.lastAutoReplyAt
+      if (lastReply) {
+        await supabaseAdmin
+          .from('contact_auto_replies')
+          .update({ lastAutoReplyAt: now.toISOString(), updatedAt: now.toISOString() })
+          .eq('id', lastReply.id);
+      } else {
+        await supabaseAdmin
+          .from('contact_auto_replies')
+          .insert([{
+            contactId: contact.id,
+            channelId: channel.id,
+            lastAutoReplyAt: now.toISOString()
+          }]);
+      }
+
+      // 6. Atualizar conversa (lastMessageAt para subir no topo)
+      await ConversationRepository.update(conversation.id, {
+        lastMessageAt: now.toISOString(),
+        lastMessagePreview: settings.message.substring(0, 100)
+      });
+
+      // 7. Notificar via Realtime para aparecer no chat imediatamente
+      await RealtimeService.notifyNewMessage(conversation.id, autoMsg);
+      
+      console.log(`[AUTO-REPLY] Sucesso! Mensagem automática registrada: ${autoMsg.id}`);
+
+    } catch (error) {
+      console.error(`[AUTO-REPLY] Erro crítico no fluxo:`, error);
     }
   }
 }
