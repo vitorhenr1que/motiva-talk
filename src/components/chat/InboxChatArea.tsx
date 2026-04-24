@@ -523,7 +523,7 @@ Todos os dados e mensagens serão excluídos.`;
       return;
     }
     try {
-      const resp = await fetch(`/api/messages/${id}/delete`, { 
+      const resp = await fetch(`/api/messages/${messageId}/delete`, { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode }) 
