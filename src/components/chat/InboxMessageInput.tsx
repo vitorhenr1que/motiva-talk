@@ -52,6 +52,16 @@ export const MessageInput = () => {
   const [contactSelectorOpen, setContactSelectorOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   
+  useEffect(() => {
+    const handleGlobalDrop = (e: any) => {
+      setLocalPendingFile(e.detail);
+      setLocalMediaCaption('');
+      setAttachmentMenuOpen(false);
+    };
+    window.addEventListener('motiva_chat_file_drop', handleGlobalDrop);
+    return () => window.removeEventListener('motiva_chat_file_drop', handleGlobalDrop);
+  }, []);
+
   const [customName, setCustomName] = useState('');
   const [defaultName, setDefaultName] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);

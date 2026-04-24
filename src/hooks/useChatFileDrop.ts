@@ -5,7 +5,7 @@ import { useChatStore } from '@/store/useChatStore';
 import { getFileTypeInfo } from '@/lib/file-type';
 import { PendingFile } from '@/types/chat';
 
-export const useChatFileDrop = (onFileDrop: (pendingFile: PendingFile) => void) => {
+export const useChatFileDrop = (onFileDrop?: (pendingFile: PendingFile) => void) => {
   const [isDragging, setIsDragging] = useState(false);
   const { activeConversation } = useChatStore();
 
@@ -48,16 +48,21 @@ export const useChatFileDrop = (onFileDrop: (pendingFile: PendingFile) => void) 
       media.src = previewUrl;
       media.onloadedmetadata = () => {
         const roundedDuration = Math.round(media.duration);
-        onFileDrop({ 
-           file, 
-           previewUrl, 
-           kind, 
-           duration: roundedDuration 
-        });
+        const payload = { file, previewUrl, kind, duration: roundedDuration };
+        if (onFileDrop) {
+           onFileDrop(payload);
+        } else {
+           window.dispatchEvent(new CustomEvent('motiva_chat_file_drop', { detail: payload }));
+        }
         console.log(`[MEDIA_DROP_DEBUG] Duração extraída: ${roundedDuration}s`);
       };
     } else {
-      onFileDrop({ file, previewUrl, kind, duration: 0 });
+      const payload = { file, previewUrl, kind, duration: 0 };
+      if (onFileDrop) {
+        onFileDrop(payload);
+      } else {
+        window.dispatchEvent(new CustomEvent('motiva_chat_file_drop', { detail: payload }));
+      }
     }
   }, [activeConversation, isClosed, onFileDrop]);
 
