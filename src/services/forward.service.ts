@@ -278,6 +278,7 @@ export class ForwardService {
 
       await MessageRepository.update(row.id, {
         sendStatus: 'sent',
+        status: 'sent',
         errorMessage: null,
         externalMessageId,
       });
