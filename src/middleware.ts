@@ -15,6 +15,7 @@ export async function middleware(req: NextRequest) {
     publicRoutes.some(route => pathname === route) || 
     pathname.startsWith('/api/webhooks') || 
     pathname.startsWith('/api/public') || 
+    pathname.startsWith('/api/messages/process-scheduled') ||
     pathname.startsWith('/feedback') || 
     pathname.startsWith('/_next') || 
     pathname.includes('.')
