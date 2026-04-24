@@ -207,7 +207,7 @@ class EvolutionApiClient {
       id: string;
     }
   }) {
-    return this.request<any>(`/message/edit/${instanceName}`, {
+    return this.request<any>(`/chat/updateMessage/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
@@ -285,7 +285,7 @@ class EvolutionApiClient {
   }
 
   async sendPresence(instanceName: string, payload: { number: string; presence: 'composing' | 'paused' }) {
-    return this.request<any>(`/chat/presence/${instanceName}`, {
+    return this.request<any>(`/chat/sendPresence/${instanceName}`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
