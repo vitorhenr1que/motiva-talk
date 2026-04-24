@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { X, Clock, Trash2, Calendar, MessageSquare, Loader2, AlertCircle, Send, Plus } from 'lucide-react';
+import { X, Clock, Trash2, Calendar, MessageSquare, Loader2, AlertCircle, Send, Plus, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
 
