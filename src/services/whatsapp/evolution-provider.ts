@@ -370,7 +370,9 @@ export class EvolutionProvider implements WhatsAppProvider {
 
     let quotedMessageExternalId: string | null = null;
     let quotedMessageSnapshot: any = null;
-    const contextInfo = inner.contextInfo || 
+    const contextInfo = rawMessage.contextInfo ||
+                        data.contextInfo ||
+                        inner.contextInfo || 
                         inner.extendedTextMessage?.contextInfo ||
                         inner.imageMessage?.contextInfo || 
                         inner.videoMessage?.contextInfo ||
