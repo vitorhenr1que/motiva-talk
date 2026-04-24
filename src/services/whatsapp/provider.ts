@@ -25,6 +25,7 @@ export interface WebhookEvent {
   duration?: number;
   base64?: string;
   thumbnailUrl?: string;
+  targetMessageId?: string;
   metadata?: any;
 }
 

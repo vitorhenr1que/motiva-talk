@@ -379,6 +379,12 @@ export class EvolutionProvider implements WhatsAppProvider {
         fileSize: inner.documentMessage.fileLength,
         base64: inner.documentMessage.base64
       };
+    } else if (inner.reactionMessage) {
+      type = 'REACTION' as any;
+      content = inner.reactionMessage.text;
+      mediaFields = {
+        targetMessageId: inner.reactionMessage.key?.id
+      } as any;
     } else if (inner.contactMessage || inner.contactsArrayMessage) {
       type = 'CONTACT';
     }
@@ -480,6 +486,7 @@ export class EvolutionProvider implements WhatsAppProvider {
           duration: (normalized as any).duration,
           base64: (normalized as any).base64,
           thumbnailUrl: (normalized as any).thumbnailUrl,
+          targetMessageId: (normalized as any).targetMessageId,
           metadata: { 
             ...normalized.raw, 
             externalId: normalized.externalMessageId,

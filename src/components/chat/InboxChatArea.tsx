@@ -528,7 +528,7 @@ Todos os dados e mensagens serão excluídos.`;
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode }) 
       });
-      if (resp.ok) deleteMessageLocally(id, mode);
+      if (resp.ok) deleteMessageLocally(messageId, mode);
     } catch (e) {
       console.error('Erro ao deletar msg:', e);
     } finally {
@@ -1093,6 +1093,24 @@ Todos os dados e mensagens serão excluídos.`;
                             )}
                           </>
                         )}
+
+                        {/* Renderização das Reações */}
+                        {msg.reactions && Array.isArray(msg.reactions) && msg.reactions.length > 0 && (
+                          <div className={cn(
+                            "absolute -bottom-3 flex flex-wrap gap-1 z-[10]",
+                            isSentByUs ? "right-2" : "left-2"
+                          )}>
+                            <div className="flex -space-x-1 items-center bg-white dark:bg-slate-800 border border-slate-100 dark:border-white/10 rounded-full px-1.5 py-0.5 shadow-sm">
+                              {msg.reactions.slice(0, 3).map((r: any, idx: number) => (
+                                <span key={idx} className="text-[12px]" title={`Reagido por ${r.sender}`}>{r.emoji}</span>
+                              ))}
+                              {msg.reactions.length > 3 && (
+                                <span className="text-[9px] font-black ml-1 text-slate-400">+{msg.reactions.length - 3}</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
                         <div className="mt-1 flex items-center justify-end gap-1.5">
                           <span className="text-[9px] text-slate-400 font-bold opacity-60">{formatTimeBahia(msg.createdAt)}</span>
                           {isSentByUs && !(isEveryoneDeleted || msg.deletedForMe) && (

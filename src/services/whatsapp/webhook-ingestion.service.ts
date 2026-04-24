@@ -210,6 +210,36 @@ export class WebhookIngestionService {
         console.log(`[INGEST] 3. Conversa ativa encontrada: ${conversation.id}`);
       }
 
+      // --- TRATAMENTO ESPECIAL PARA REAÇÕES ---
+      if (dbMessageType === 'REACTION') {
+        const targetExternalId = event.targetMessageId;
+        console.log(`[INGEST] Processando REAÇÃO "${content}" para mensagem original ${targetExternalId}`);
+        
+        if (targetExternalId) {
+          const { data: targetMsg } = await supabaseAdmin
+            .from('Message')
+            .select('id, reactions')
+            .eq('externalMessageId', targetExternalId)
+            .maybeSingle();
+
+          if (targetMsg) {
+            const currentReactions = Array.isArray(targetMsg.reactions) ? targetMsg.reactions : [];
+            // Adiciona a nova reação (ou atualiza se for do mesmo remetente, mas aqui simplificaremos adicionando)
+            const newReactions = [...currentReactions, { emoji: content, sender: senderPhone, timestamp: event.timestamp }];
+            
+            await supabaseAdmin
+              .from('Message')
+              .update({ reactions: newReactions })
+              .eq('id', targetMsg.id);
+            
+            console.log(`[INGEST] Reação persistida na mensagem ${targetMsg.id}`);
+            return { conversation }; // Retorna cedo, pois não queremos criar uma nova mensagem
+          }
+        }
+        return { conversation };
+      }
+      // ----------------------------------------
+
       // 5.5 Identificar se é uma resposta (Reply)
       const replyToMessageId = metadata?.resolvedReplyToId;
 
