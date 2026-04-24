@@ -6,10 +6,10 @@ const ROUTE = 'PATCH /api/messages/[id]/cancel'
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = params.id
+    const { id } = await params
     if (!id) throw new AppError('ID da mensagem é obrigatório', 400);
 
     console.log(`[API] ${ROUTE}: Cancelando mensagem ${id}`);
