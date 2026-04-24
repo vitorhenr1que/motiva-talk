@@ -271,16 +271,19 @@ export class ForwardService {
         }
       );
 
-      const externalMessageId = result?.key?.id || result?.message?.key?.id;
-      if (!externalMessageId) {
-        throw new Error('A Evolution API não retornou o ID da mensagem enviada.');
-      }
+      console.log(`[FORWARD] Resultado Evolution para ${row.id}:`, JSON.stringify(result));
+
+      // Busca o ID em múltiplos lugares possíveis dependendo da versão/tipo da mensagem
+      const externalMessageId = 
+        result?.key?.id || 
+        result?.message?.key?.id || 
+        result?.data?.key?.id ||
+        (typeof result === 'string' ? result : null);
 
       await MessageRepository.update(row.id, {
         sendStatus: 'sent',
-        status: 'sent',
         errorMessage: null,
-        externalMessageId,
+        externalMessageId: externalMessageId || 'sent_via_evolution',
       });
     } catch (err: any) {
       const msg = err?.message || 'Falha desconhecida no envio';
