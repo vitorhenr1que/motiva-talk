@@ -288,7 +288,12 @@ export class ForwardService {
     } catch (err: any) {
       const msg = err?.message || 'Falha desconhecida no envio';
       console.error(`[FORWARD] Falha ao enviar ${row.id} (${row.type}):`, msg);
-      await this.markFailed(row.id, msg);
+      
+      // Se falhou, atualizamos no banco para o usuário ver o erro em vez de carregar para sempre
+      await MessageRepository.update(row.id, {
+        sendStatus: 'failed',
+        errorMessage: msg
+      });
     }
   }
 

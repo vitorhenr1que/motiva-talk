@@ -263,10 +263,10 @@ export const ChatWindow = () => {
     setSearchQuery('');
     setSearchResults([]);
     
-    const existingMsg = messages.find(m => m.id === msgId);
+    const existingMsg = messages.find(m => m.id === msgId || m.externalMessageId === msgId);
     
     if (existingMsg) {
-       setTimeout(() => scrollToAndHighlight(msgId), 100);
+       setTimeout(() => scrollToAndHighlight(existingMsg.id), 100);
     } else {
        const targetDate = new Date(createdAt);
        targetDate.setSeconds(targetDate.getSeconds() + 2);
@@ -923,8 +923,12 @@ Todos os dados e mensagens serão excluídos.`;
                         {(msg.replyToMessage || msg.metadata?.quotedMessageSnapshot) && !(isEveryoneDeleted || msg.deletedForMe) && (
                           <div 
                             className="mb-2 border-l-4 border-blue-400 bg-black/10 p-2 rounded-r-lg text-[11px] opacity-90 cursor-pointer hover:bg-black/20 transition-colors"
-                            onClick={() => {
-                              if (msg.replyToMessageId) handleNavigateToMessage(msg.replyToMessageId, msg.createdAt);
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const targetId = msg.replyToMessageId || msg.metadata?.quotedMessageSnapshot?.stanzaId || msg.metadata?.quotedMessageSnapshot?.externalId;
+                              if (targetId) {
+                                handleNavigateToMessage(targetId, msg.createdAt);
+                              }
                             }}
                           >
                             <span className="block font-bold text-blue-600 mb-0.5">

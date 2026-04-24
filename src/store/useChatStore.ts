@@ -358,19 +358,30 @@ export const useChatStore = create<ChatState>((set) => ({
   }),
 
   upsertMessage: (message, tempId) => set((state) => {
-    if (!message || !message.id) return state
+    if (!message || !message.id) return state;
+    
     const existing = state.messages.find(m => m.id === message.id);
     
-    // Se o banco enviou sendStatus='sent', limpamos o status local de 'sending'
+    // Forçamos a limpeza do estado de carregamento se o banco enviou algo diferente de 'sending'
     const update = { ...message };
-    if (update.sendStatus === 'sent' || update.sendStatus === 'failed') {
+    if (update.sendStatus && update.sendStatus !== 'sending') {
       update.status = update.sendStatus;
+    } else if (update.status && update.status !== 'sending') {
+      update.sendStatus = update.status;
     }
 
     const merged = existing ? { ...existing, ...update } : update;
+    
+    // Se a mensagem agora é 'sent' ou 'failed', garantimos que as flags de carregamento sumam
+    if (merged.sendStatus === 'sent' || merged.status === 'sent') {
+      merged.status = 'sent';
+      merged.sendStatus = 'sent';
+    }
+
     const otherMessages = state.messages.filter(m => m.id !== message.id && (!tempId || m.id !== tempId));
     const newMessages = [...otherMessages, merged].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    return { messages: newMessages }
+    
+    return { messages: newMessages };
   }),
 
   removeMessage: (id) => set((state) => ({

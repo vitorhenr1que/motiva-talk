@@ -54,6 +54,10 @@ class EvolutionApiClient {
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     const url = `${this.baseUrl}${normalizedPath}`;
     
+    // Timeout de 60 segundos
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+
     const headers = {
       'Content-Type': 'application/json',
       'apikey': this.apiKey,
@@ -61,21 +65,20 @@ class EvolutionApiClient {
     };
 
     console.log(`[EVO_DEBUG] Request: ${options.method || 'GET'} ${url}`);
-    if (options.body) {
-      console.log(`[EVO_DEBUG] Request Body:`, options.body);
-    }
-
+    
     try {
       const response = await fetch(url, { 
         ...options, 
         headers,
+        signal: controller.signal,
         cache: 'no-store' 
       });
+
+      clearTimeout(timeoutId);
 
       console.log(`[EVO_DEBUG] Response Status: ${response.status} ${response.statusText}`);
 
       const responseText = await response.text();
-      console.log(`[EVO_DEBUG] Response Body:`, responseText);
 
       let responseData: any = {};
       try {
@@ -85,16 +88,6 @@ class EvolutionApiClient {
       }
 
       if (!response.ok) {
-        if (response.status === 403) {
-          console.error('[EVO_DEBUG] Error 403: Forbidden. Check API Key or Admin permissions.');
-        } else if (response.status === 400) {
-          console.error('[EVO_DEBUG] Error 400: Bad Request. Check payload structure.');
-        }
-
-        if (response.status === 404) {
-          throw new Error('NOT_FOUND');
-        }
-
         throw new Error(
           responseData.message || 
           responseData.error || 
@@ -105,6 +98,10 @@ class EvolutionApiClient {
 
       return (responseData.response !== undefined ? responseData.response : responseData) as T;
     } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error('A Evolution API demorou muito para responder (Timeout de 60s).');
+      }
       if (error.message !== 'NOT_FOUND') {
         console.error(`[EVO_DEBUG] Request failed (${path}):`, error.message);
       }
