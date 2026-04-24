@@ -1042,7 +1042,7 @@ Todos os dados e mensagens serão excluídos.`;
                                   >
                                      <div className="aspect-[3/4] max-h-[140px] w-full flex items-center justify-center bg-slate-100/50">
                                         <iframe 
-                                          src={`${msg.mediaUrl}#view=FitH&toolbar=0&navpanes=0&scrollbar=0`} 
+                                          src={msg.mediaUrl ? (msg.mediaUrl.includes('?') ? `${msg.mediaUrl}&view=FitH` : `${msg.mediaUrl}#view=FitH`) : ''} 
                                           className="w-full h-full border-none pointer-events-none scale-100"
                                           title="Mini PDF Preview"
                                         />
