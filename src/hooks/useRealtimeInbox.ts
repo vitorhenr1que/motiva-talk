@@ -4,10 +4,11 @@ import { useChatStore } from '@/store/useChatStore';
 import { Message, Conversation } from '@/types/chat';
 
 export const useRealtimeInbox = () => {
-  const { 
-    activeConversation, 
-    addMessage, 
-    selectedChannelId, 
+  const {
+    activeConversation,
+    addMessage,
+    upsertMessage,
+    selectedChannelId,
     upsertConversationLocally,
     removeConversationLocally
   } = useChatStore();
@@ -68,7 +69,20 @@ export const useRealtimeInbox = () => {
         },
         (payload) => {
           const newMessage = payload.new as Message;
-          addMessage(newMessage); 
+          addMessage(newMessage);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'Message',
+          filter: `conversationId=eq.${activeConversation.id}`
+        },
+        (payload) => {
+          const updated = payload.new as Message;
+          upsertMessage(updated);
         }
       )
       // Also listen to broadcast if available (faster UX)
@@ -81,5 +95,5 @@ export const useRealtimeInbox = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [activeConversation?.id, addMessage]);
+  }, [activeConversation?.id, addMessage, upsertMessage]);
 };

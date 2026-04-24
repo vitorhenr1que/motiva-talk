@@ -93,6 +93,9 @@ export interface Message {
   deletedForEveryone?: boolean;
   isForwarded?: boolean;
   forwardedFromMessageId?: string | null;
+  sendStatus?: 'sending' | 'sent' | 'failed';
+  errorMessage?: string | null;
+  status?: 'sending' | 'sent' | 'failed';
   replyToMessage?: {
     id: string;
     content: string;

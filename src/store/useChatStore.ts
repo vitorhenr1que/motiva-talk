@@ -359,8 +359,10 @@ export const useChatStore = create<ChatState>((set) => ({
 
   upsertMessage: (message, tempId) => set((state) => {
     if (!message || !message.id) return state
+    const existing = state.messages.find(m => m.id === message.id);
+    const merged = existing ? { ...existing, ...message } : message;
     const otherMessages = state.messages.filter(m => m.id !== message.id && (!tempId || m.id !== tempId));
-    const newMessages = [...otherMessages, message].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const newMessages = [...otherMessages, merged].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     return { messages: newMessages }
   }),
 

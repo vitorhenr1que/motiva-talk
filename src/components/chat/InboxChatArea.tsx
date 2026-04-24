@@ -3,9 +3,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useChatStore } from '@/store/useChatStore';
 import { 
-  MoreVertical, Search, MessageCircle, FileText, Reply, Trash2, 
-  Loader2, Check, Pin, UserPlus, CheckCircle2, XCircle, X, ChevronDown, UserPlus as ContactIcon, 
-  Mic, Play, Pause, Volume2, Eye, Forward
+  MoreVertical, Search, MessageCircle, FileText, Reply, Trash2,
+  Loader2, Check, Pin, UserPlus, CheckCircle2, XCircle, X, ChevronDown, UserPlus as ContactIcon,
+  Mic, Play, Pause, Volume2, Eye, Forward, AlertCircle
 } from 'lucide-react';
 import { TagSelector } from './TagSelector';
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
@@ -911,7 +911,7 @@ Todos os dados e mensagens serão excluídos.`;
                         </div>
                       </div>
                     )}
-                    <div className={cn("relative max-w-[80%] md:max-w-[70%] rounded-2xl p-1.5 shadow-sm transition-all hover:shadow-md", isSentByUs ? "bg-[#d9fdd3] text-slate-800 rounded-tr-none" : "bg-white text-slate-800 rounded-tl-none border border-slate-100", msg.status === 'sending' && "opacity-60 grayscale-[0.2]", selectionMode && "pointer-events-none")}>
+                    <div className={cn("relative max-w-[80%] md:max-w-[70%] rounded-2xl p-1.5 shadow-sm transition-all hover:shadow-md", isSentByUs ? "bg-[#d9fdd3] text-slate-800 rounded-tr-none" : "bg-white text-slate-800 rounded-tl-none border border-slate-100", (msg.status === 'sending' || msg.sendStatus === 'sending') && "opacity-60 grayscale-[0.2]", msg.sendStatus === 'failed' && "ring-2 ring-red-200", selectionMode && "pointer-events-none")}>
                       <div className="px-2.5 py-1">
                         {msg.isForwarded && (
                           <div className="flex items-center gap-1.5 mb-1 opacity-60">
@@ -1061,7 +1061,15 @@ Todos os dados e mensagens serão excluídos.`;
                         )}
                         <div className="mt-1 flex items-center justify-end gap-1.5">
                           <span className="text-[9px] text-slate-400 font-bold opacity-60">{formatTimeBahia(msg.createdAt)}</span>
-                          {isSentByUs && !(isEveryoneDeleted || msg.deletedForMe) && <Check size={10} className={cn("opacity-60", msg.status === 'sending' ? "animate-pulse" : "text-blue-500")} />}
+                          {isSentByUs && !(isEveryoneDeleted || msg.deletedForMe) && (
+                            msg.sendStatus === 'failed' ? (
+                              <AlertCircle size={11} className="text-red-500" />
+                            ) : (msg.sendStatus === 'sending' || msg.status === 'sending') ? (
+                              <Loader2 size={10} className="animate-spin text-slate-400" />
+                            ) : (
+                              <Check size={10} className="opacity-60 text-blue-500" />
+                            )
+                          )}
                         </div>
                       </div>
 
