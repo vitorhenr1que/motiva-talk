@@ -91,6 +91,8 @@ export interface Message {
   thumbnailUrl?: string;
   deletedForMe?: boolean;
   deletedForEveryone?: boolean;
+  isForwarded?: boolean;
+  forwardedFromMessageId?: string | null;
   replyToMessage?: {
     id: string;
     content: string;

@@ -62,6 +62,12 @@ interface ChatState {
   kanbanData: any[]
   setKanbanData: (data: any[]) => void
   
+  selectionMode: boolean
+  selectedMessages: string[]
+  setSelectionMode: (mode: boolean) => void
+  toggleMessageSelection: (messageId: string) => void
+  clearSelection: () => void
+  
   setConversations: (conversations: any[]) => void
   setActiveConversation: (conversation: any | null) => void
   setReplyToMessage: (message: any | null) => void
@@ -109,6 +115,20 @@ export const useChatStore = create<ChatState>((set) => ({
   setActiveTab: (tab) => set({ activeTab: tab }),
   isProfileOpen: false,
   kanbanData: [],
+  
+  selectionMode: false,
+  selectedMessages: [],
+  setSelectionMode: (mode) => set({ selectionMode: mode, selectedMessages: mode ? useChatStore.getState().selectedMessages : [] }),
+  toggleMessageSelection: (messageId) => set((state) => {
+    const isSelected = state.selectedMessages.includes(messageId);
+    return {
+      selectedMessages: isSelected
+        ? state.selectedMessages.filter(id => id !== messageId)
+        : [...state.selectedMessages, messageId]
+    };
+  }),
+  clearSelection: () => set({ selectionMode: false, selectedMessages: [] }),
+
   tabData: {
     unread: { list: [], hasMore: true, loading: false, loadingMore: false, initialized: false },
     in_progress: { list: [], hasMore: true, loading: false, loadingMore: false, initialized: false },

@@ -5,7 +5,7 @@ import { useChatStore } from '@/store/useChatStore';
 import { 
   MoreVertical, Search, MessageCircle, FileText, Reply, Trash2, 
   Loader2, Check, Pin, UserPlus, CheckCircle2, XCircle, X, ChevronDown, UserPlus as ContactIcon, 
-  Mic, Play, Pause, Volume2, Eye
+  Mic, Play, Pause, Volume2, Eye, Forward
 } from 'lucide-react';
 import { TagSelector } from './TagSelector';
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
@@ -16,6 +16,7 @@ import { formatDateDivider, formatTimeBahia, parseSafeDate } from '@/lib/date-ut
 import { useChatFileDrop } from '@/hooks/useChatFileDrop';
 import { Send } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { ForwardMessageModal } from './ForwardMessageModal';
 
 const CustomAudioPlayer = ({ url, duration, fileName, mimeType, mediaUrl }: { url: string, duration?: number, fileName?: string, mimeType?: string, mediaUrl?: string }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -219,7 +220,12 @@ export const ChatWindow = () => {
     deleteMessageLocally,
     updateConversationLocally,
     isProfileOpen,
-    setIsProfileOpen
+    setIsProfileOpen,
+    selectionMode,
+    selectedMessages,
+    setSelectionMode,
+    toggleMessageSelection,
+    clearSelection
   } = useChatStore();
 
   const { isDragging, onDragOver, onDragLeave, onDrop } = useChatFileDrop();
@@ -227,6 +233,7 @@ export const ChatWindow = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [deleteMenuId, setDeleteMenuId] = useState<string | null>(null);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [isForwardModalOpen, setIsForwardModalOpen] = useState(false);
 
   // Estados de busca e destaque
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -656,7 +663,31 @@ Todos os dados e mensagens serão excluídos.`;
 
       {/* Header */}
       <div className="flex h-16 items-center justify-between border-b bg-white px-6 shadow-sm z-30 shrink-0 relative">
-        {isSearchOpen ? (
+        {selectionMode ? (
+          <div className="flex-1 flex items-center justify-between animate-in slide-in-from-top-4 duration-300">
+            <div className="flex items-center gap-4">
+               <button 
+                 onClick={() => clearSelection()}
+                 className="p-2 hover:bg-slate-100 rounded-full text-slate-500 hover:text-slate-700 transition-colors"
+                 title="Cancelar seleção"
+               >
+                 <X size={20} />
+               </button>
+               <span className="text-sm font-bold text-slate-700">
+                  {selectedMessages.length} {selectedMessages.length === 1 ? 'selecionada' : 'selecionadas'}
+               </span>
+            </div>
+            <div className="flex items-center gap-2">
+               <button 
+                 disabled={selectedMessages.length === 0}
+                 onClick={() => setIsForwardModalOpen(true)}
+                 className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl font-bold text-sm hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+               >
+                 <Forward size={16} /> Encaminhar
+               </button>
+            </div>
+          </div>
+        ) : isSearchOpen ? (
           <div className="flex-1 flex items-center gap-4 animate-in slide-in-from-right-4 duration-300">
             <div className="flex-1 relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -858,13 +889,37 @@ Todos os dados e mensagens serão excluídos.`;
                   <div 
                     id={`msg-${msg.id}`}
                     className={cn(
-                      "flex w-full group anim-fade-in transition-all duration-1000 p-1 rounded-2xl", 
+                      "flex w-full group anim-fade-in transition-all duration-1000 p-1 rounded-2xl items-center", 
                       isSentByUs ? "justify-end" : "justify-start",
-                      highlightedMessageId === msg.id && "bg-yellow-100/50 shadow-inner ring-2 ring-yellow-200"
+                      highlightedMessageId === msg.id && "bg-yellow-100/50 shadow-inner ring-2 ring-yellow-200",
+                      selectionMode && "cursor-pointer hover:bg-black/5"
                     )}
+                    onClick={(e) => {
+                      if (selectionMode) {
+                        e.stopPropagation();
+                        toggleMessageSelection(msg.id);
+                      }
+                    }}
                   >
-                    <div className={cn("relative max-w-[80%] md:max-w-[70%] rounded-2xl p-1.5 shadow-sm transition-all hover:shadow-md", isSentByUs ? "bg-[#d9fdd3] text-slate-800 rounded-tr-none" : "bg-white text-slate-800 rounded-tl-none border border-slate-100", msg.status === 'sending' && "opacity-60 grayscale-[0.2]")}>
+                    {selectionMode && (
+                      <div className="mx-2 shrink-0">
+                        <div className={cn(
+                          "w-5 h-5 rounded flex items-center justify-center transition-colors border",
+                          selectedMessages.includes(msg.id) ? "bg-blue-500 border-blue-500 text-white" : "border-slate-300 bg-white"
+                        )}>
+                          {selectedMessages.includes(msg.id) && <Check size={14} strokeWidth={3} />}
+                        </div>
+                      </div>
+                    )}
+                    <div className={cn("relative max-w-[80%] md:max-w-[70%] rounded-2xl p-1.5 shadow-sm transition-all hover:shadow-md", isSentByUs ? "bg-[#d9fdd3] text-slate-800 rounded-tr-none" : "bg-white text-slate-800 rounded-tl-none border border-slate-100", msg.status === 'sending' && "opacity-60 grayscale-[0.2]", selectionMode && "pointer-events-none")}>
                       <div className="px-2.5 py-1">
+                        {msg.isForwarded && (
+                          <div className="flex items-center gap-1.5 mb-1 opacity-60">
+                            <Forward size={12} className="text-slate-400 italic" />
+                            <span className="text-[10px] font-bold text-slate-400 italic tracking-tight">Encaminhada</span>
+                          </div>
+                        )}
+
                         {(msg.replyToMessage || msg.metadata?.quotedMessageSnapshot) && !(isEveryoneDeleted || msg.deletedForMe) && (
                           <div 
                             className="mb-2 border-l-4 border-blue-400 bg-black/10 p-2 rounded-r-lg text-[11px] opacity-90 cursor-pointer hover:bg-black/20 transition-colors"
@@ -1010,11 +1065,22 @@ Todos os dados e mensagens serão excluídos.`;
                         </div>
                       </div>
 
-                      {!(isEveryoneDeleted || msg.deletedForMe) && !isClosed && (
+                      {!(isEveryoneDeleted || msg.deletedForMe) && !isClosed && !selectionMode && (
                         <div className={cn(
                           "absolute top-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all z-[30]", 
                           isSentByUs ? "right-full mr-2" : "left-full ml-2"
                         )}>
+                           <button 
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               setSelectionMode(true);
+                               toggleMessageSelection(msg.id);
+                             }} 
+                             className="p-2 rounded-xl bg-white shadow-md border border-slate-100 text-slate-400 hover:bg-blue-600 hover:text-white transition-all transform hover:scale-110" 
+                             title="Encaminhar"
+                           >
+                             <Forward size={16} />
+                           </button>
                            <button 
                              onClick={() => useChatStore.getState().setReplyToMessage(msg)} 
                              className="p-2 rounded-xl bg-white shadow-md border border-slate-100 text-slate-400 hover:bg-blue-600 hover:text-white transition-all transform hover:scale-110" 
@@ -1139,6 +1205,11 @@ Todos os dados e mensagens serão excluídos.`;
              }} className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-[10px] font-black uppercase transition-all">Reabrir Atendimento</button>
         </div>
       )}
+      <ForwardMessageModal 
+        isOpen={isForwardModalOpen} 
+        onClose={() => setIsForwardModalOpen(false)} 
+        selectedMessageIds={selectedMessages}
+      />
     </div>
   );
 };
