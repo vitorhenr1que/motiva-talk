@@ -17,6 +17,7 @@ import { useChatFileDrop } from '@/hooks/useChatFileDrop';
 import { Send } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { ForwardMessageModal } from './ForwardMessageModal';
+import { ScheduledMessagesModal } from './ScheduledMessagesModal';
 
 const CustomAudioPlayer = ({ url, duration, fileName, mimeType, mediaUrl }: { url: string, duration?: number, fileName?: string, mimeType?: string, mediaUrl?: string }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -248,6 +249,7 @@ export const ChatWindow = () => {
   const [optionsMenuId, setOptionsMenuId] = useState<string | null>(null);
   const [reactionMenuId, setReactionMenuId] = useState<string | null>(null);
   const [showFullEmojiPicker, setShowFullEmojiPicker] = useState<string | null>(null);
+  const [isScheduledModalOpen, setIsScheduledModalOpen] = useState(false);
 
   const EMOJI_CATEGORIES = [
     { name: 'Rostos', emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕'] },
@@ -852,8 +854,16 @@ Todos os dados e mensagens serão excluídos.`;
               <button 
                 onClick={() => setIsSearchOpen(true)}
                 className="rounded-xl p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all"
+                title="Pesquisar mensagens"
               >
                 <Search size={20} />
+              </button>
+              <button 
+                onClick={() => setIsScheduledModalOpen(true)}
+                className="rounded-xl p-2 text-slate-400 hover:bg-slate-50 hover:text-amber-600 transition-all"
+                title="Mensagens agendadas"
+              >
+                <Clock size={20} />
               </button>
               <div className="relative">
                 <button onClick={() => setHeaderMenuOpen(!headerMenuOpen)} className={cn("rounded-xl p-2 transition-all", headerMenuOpen ? "bg-slate-100 text-slate-900" : "text-slate-400 hover:bg-slate-50 hover:text-slate-600")}><MoreVertical size={20} /></button>
@@ -1454,6 +1464,13 @@ Todos os dados e mensagens serão excluídos.`;
             </div>
           </div>
         </div>
+      )}
+
+      {isScheduledModalOpen && (
+        <ScheduledMessagesModal 
+          conversationId={activeConversation.id} 
+          onClose={() => setIsScheduledModalOpen(false)} 
+        />
       )}
     </div>
   );

@@ -153,6 +153,15 @@ export class MessageService {
     const { RealtimeService } = await import('@/services/realtime.service');
     await RealtimeService.notifyNewMessage(conversationId, newMessage);
 
+    // Se for mensagem do CLIENTE, cancelar agendamentos que dependem de resposta
+    if (senderType === 'USER') {
+      try {
+        await this.cancelScheduledByCustomerReply(conversationId);
+      } catch (e) {
+        console.error('[MSG_SERVICE] Erro ao processar cancelamento por resposta:', e);
+      }
+    }
+
     return newMessage
   }
 
@@ -490,5 +499,25 @@ export class MessageService {
     await RealtimeService.notifyMessageUpdate(msg.conversationId, updated);
 
     return updated;
+  }
+
+  static async cancelScheduledByCustomerReply(conversationId: string) {
+    const { supabaseAdmin } = await import('@/lib/supabase-admin');
+    
+    // Buscar mensagens agendadas desta conversa com cancelOnReply = true
+    const { data: scheduled, error } = await supabaseAdmin
+      .from('Message')
+      .select('id')
+      .eq('conversationId', conversationId)
+      .eq('sendStatus', 'scheduled')
+      .eq('cancelOnReply', true);
+
+    if (error || !scheduled || scheduled.length === 0) return;
+
+    console.log(`[MSG_SERVICE] Cancelando ${scheduled.length} mensagens agendadas por resposta do cliente na conv ${conversationId}`);
+
+    for (const msg of scheduled) {
+      await this.cancelScheduledMessage(msg.id);
+    }
   }
 }
