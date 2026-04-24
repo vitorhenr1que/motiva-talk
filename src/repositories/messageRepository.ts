@@ -106,4 +106,20 @@ export class MessageRepository {
     if (error) throw error
     return data
   }
+
+  /**
+   * Busca mensagens agendadas que já deveriam ter sido enviadas
+   */
+  static async findScheduledReady(limit: number = 10) {
+    const { data, error } = await supabaseAdmin
+      .from('Message')
+      .select('*')
+      .eq('sendStatus', 'scheduled')
+      .lte('scheduledAt', new Date().toISOString())
+      .order('scheduledAt', { ascending: true })
+      .limit(limit);
+
+    if (error) throw error;
+    return data;
+  }
 }

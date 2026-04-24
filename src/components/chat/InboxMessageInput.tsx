@@ -4,7 +4,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useChatStore } from '@/store/useChatStore';
 import { 
   Send, Smile, Paperclip, Zap, MessageSquareText, Loader2, X, Edit2, Check, Lock, 
-  Image as ImageIcon, Video, FileText, UserPlus as ContactIcon, Mic 
+  Image as ImageIcon, Video, FileText, UserPlus as ContactIcon, Mic,
+  Clock, Calendar
 } from 'lucide-react';
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
 import { QuickReplyMenu } from '@/components/quick-replies/Menu';
@@ -76,6 +77,9 @@ export const MessageInput = () => {
 
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isTyping, setIsTyping] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState('');
+  const scheduleMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!activeConversation || activeConversation.status === 'CLOSED') return;
@@ -144,12 +148,15 @@ export const MessageInput = () => {
       if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
         setEmojiPickerOpen(false);
       }
+      if (scheduleMenuRef.current && !scheduleMenuRef.current.contains(e.target as Node)) {
+        setShowSchedule(false);
+      }
     };
-    if (attachmentMenuOpen || emojiPickerOpen) {
+    if (attachmentMenuOpen || emojiPickerOpen || showSchedule) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [attachmentMenuOpen, emojiPickerOpen]);
+  }, [attachmentMenuOpen, emojiPickerOpen, showSchedule]);
 
   useEffect(() => {
     const init = async () => {
@@ -171,6 +178,57 @@ export const MessageInput = () => {
     init();
   }, []);
 
+  const openFileSearch = (accept?: string) => {
+    setAttachmentMenuOpen(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.accept = accept || '*/*';
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processFile(file);
+      e.target.value = ''; // Reset input
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (activeConversation?.status === 'CLOSED') return;
+    if (e.key === 'Enter' && !e.shiftKey && !isEditingName) {
+      e.preventDefault();
+      handleSend();
+    }
+    if (e.key === '/' && content === '' && !isEditingName) setRepliesOpen(true);
+    if (e.key === 'Escape') {
+      setAttachmentMenuOpen(false);
+      setEmojiPickerOpen(false);
+    }
+  };
+
+  const addEmoji = (emoji: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      setContent(prev => prev + emoji);
+      return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = content;
+    const before = text.substring(0, start);
+    const after = text.substring(end);
+    
+    setContent(before + emoji + after);
+    
+    // Devolve o foco e posiciona o cursor após o emoji
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + emoji.length, start + emoji.length);
+    }, 0);
+  };
+
   const handleSend = async () => {
     if (editingMessage) {
        handleUpdateMessage();
@@ -178,6 +236,11 @@ export const MessageInput = () => {
     }
 
     if (!content.trim() || !activeConversation || activeConversation.status === 'CLOSED') return;
+
+    if (scheduledAt) {
+      handleScheduleMessage();
+      return;
+    }
 
     const canEditName = activeConversation.channel?.allowAgentNameEdit ?? chatSettings.allowAgentNameEdit;
     const rawName = canEditName ? (customName || defaultName) : defaultName;
@@ -254,21 +317,58 @@ export const MessageInput = () => {
     }
   };
 
-  const openFileSearch = (accept?: string) => {
-    setAttachmentMenuOpen(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.accept = accept || '*/*';
-      fileInputRef.current.click();
+  const handleScheduleMessage = async () => {
+    if (!content.trim() || !activeConversation || !scheduledAt) return;
+
+    const canEditName = activeConversation.channel?.allowAgentNameEdit ?? chatSettings.allowAgentNameEdit;
+    const rawName = canEditName ? (customName || defaultName) : defaultName;
+    const nameToUse = capitalize(rawName);
+    const finalContent = `*${nameToUse}:*\n\n${content.trim()}`;
+
+    const tempId = `temp-${Date.now()}`;
+    const scheduledDate = new Date(scheduledAt);
+
+    const newMsg = {
+      id: tempId,
+      content: finalContent,
+      senderType: 'AGENT',
+      type: 'TEXT',
+      sendStatus: 'scheduled',
+      scheduledAt: scheduledDate.toISOString(),
+      isScheduled: true,
+      createdAt: new Date().toISOString(),
+      replyToMessage: replyToMessage 
+    } as any;
+    
+    upsertMessage(newMsg);
+    setContent('');
+    setScheduledAt('');
+    setShowSchedule(false);
+    setReplyToMessage(null);
+
+    try {
+      const resp = await fetch('/api/messages/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: activeConversation.id,
+          channelId: activeConversation.channel.id,
+          senderType: 'AGENT',
+          content: finalContent,
+          scheduledAt: scheduledDate.toISOString(),
+          replyToMessageId: replyToMessage?.id
+        })
+      });
+      if (resp.ok) {
+        const realMsg = await resp.json();
+        upsertMessage(realMsg.data, tempId);
+      }
+    } catch (error) {
+      console.error('Erro ao agendar mensagem:', error);
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      processFile(file);
-      e.target.value = ''; // Reset input
-    }
-  };
+
 
   const handleSendMedia = async () => {
     if (!localPendingFile || !activeConversation || activeConversation.status === 'CLOSED') return;
@@ -357,42 +457,9 @@ export const MessageInput = () => {
     } catch (e) {}
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (activeConversation?.status === 'CLOSED') return;
-    if (e.key === 'Enter' && !e.shiftKey && !isEditingName) {
-      e.preventDefault();
-      handleSend();
-    }
-    if (e.key === '/' && content === '' && !isEditingName) setRepliesOpen(true);
-    if (e.key === 'Escape') {
-      setAttachmentMenuOpen(false);
-      setEmojiPickerOpen(false);
-    }
-  };
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const addEmoji = (emoji: string) => {
-    const textarea = textareaRef.current;
-    if (!textarea) {
-      setContent(prev => prev + emoji);
-      return;
-    }
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = content;
-    const before = text.substring(0, start);
-    const after = text.substring(end);
-    
-    setContent(before + emoji + after);
-    
-    // Devolve o foco e posiciona o cursor após o emoji
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + emoji.length, start + emoji.length);
-    }, 0);
-  };
 
   const EMOJI_CATEGORIES = [
     { name: 'Populares', emojis: ['😀', '😂', '😍', '👍', '🙏', '🔥', '🚀', '✅', '❤️', '🤔', '🎉', '🙌'] },
@@ -650,8 +717,54 @@ export const MessageInput = () => {
         </div>
       )}
 
+      {scheduledAt && (
+        <div className="mb-4 flex items-start gap-3 rounded-2xl bg-amber-50 p-4 border border-amber-200 animate-in slide-in-from-bottom-2 duration-300 relative group overflow-hidden">
+          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-amber-500" />
+          <div className="flex-1 overflow-hidden">
+            <div className="flex items-center gap-2 mb-1">
+              <Clock size={10} className="text-amber-600" />
+              <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">Agendado para {new Date(scheduledAt).toLocaleString()}</p>
+            </div>
+          </div>
+          <button onClick={() => setScheduledAt('')} className="rounded-xl p-1.5 text-slate-400 hover:bg-white hover:text-red-500 hover:shadow-sm transition-all"><X size={18} /></button>
+        </div>
+      )}
+
       <div className="flex items-end gap-3 max-w-[1200px] mx-auto">
         <div className="flex items-center gap-1 pb-1 relative">
+          <div className="relative" ref={scheduleMenuRef}>
+            <button 
+              onClick={() => setShowSchedule(!showSchedule)}
+              className={cn(
+                "p-2 rounded-xl transition-all",
+                showSchedule ? "bg-amber-100 text-amber-600" : "text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              )}
+            >
+              <Clock size={22} />
+            </button>
+
+            {showSchedule && (
+              <div className="absolute bottom-full left-0 mb-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-200 z-[100]">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Agendar Envio</p>
+                <input 
+                  type="datetime-local" 
+                  value={scheduledAt}
+                  min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+                  onChange={(e) => setScheduledAt(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+                <div className="mt-3 flex justify-end">
+                   <button 
+                     onClick={() => setShowSchedule(false)}
+                     className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-slate-700 p-2"
+                   >
+                     Fechar
+                   </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <button 
             type="button" 
             onClick={() => setAttachmentMenuOpen(!attachmentMenuOpen)} 
@@ -775,10 +888,9 @@ export const MessageInput = () => {
           )}
         </button>
       </div>
+    </div>
 
-      </div>
-
-      {repliesOpen && (
+    {repliesOpen && (
         <QuickReplyMenu 
           search={content.startsWith('/') ? content.slice(1) : content} 
           onSelect={(replyContent) => { setContent(replyContent); setRepliesOpen(false); }} 

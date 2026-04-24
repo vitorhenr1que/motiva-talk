@@ -5,7 +5,7 @@ import { useChatStore } from '@/store/useChatStore';
 import { 
   MoreVertical, Search, MessageCircle, FileText, Reply, Trash2,
   Loader2, Check, Pin, UserPlus, CheckCircle2, XCircle, X, ChevronDown, UserPlus as ContactIcon,
-  Mic, Play, Pause, Volume2, Eye, Forward, AlertCircle, Smile, Plus, Edit2
+  Mic, Play, Pause, Volume2, Eye, Forward, AlertCircle, Smile, Plus, Edit2, Clock
 } from 'lucide-react';
 import { TagSelector } from './TagSelector';
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
@@ -533,6 +533,24 @@ Todos os dados e mensagens serão excluídos.`;
       console.error('Erro ao deletar msg:', e);
     } finally {
       setDeletingMsgId(null);
+    }
+  };
+
+  const handleCancelSchedule = async (messageId: string) => {
+    if (!confirm('Deseja realmente cancelar o agendamento desta mensagem?')) return;
+
+    try {
+      const resp = await fetch(`/api/messages/${messageId}/cancel`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.message || 'Erro ao cancelar agendamento');
+      }
+    } catch (error: any) {
+      alert(error.message);
     }
   };
 
@@ -1116,7 +1134,12 @@ Todos os dados e mensagens serão excluídos.`;
                         <div className="mt-1 flex items-center justify-end gap-1.5">
                           <span className="text-[9px] text-slate-400 font-bold opacity-60">{formatTimeBahia(msg.createdAt)}</span>
                           {isSentByUs && !(isEveryoneDeleted || msg.deletedForMe) && (
-                            msg.sendStatus === 'failed' ? (
+                            msg.sendStatus === 'scheduled' ? (
+                              <div className="flex items-center gap-1 text-[9px] text-amber-500 font-black uppercase tracking-tighter bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-100">
+                                <Clock size={9} />
+                                <span>Agendada {new Date(msg.scheduledAt).toLocaleString()}</span>
+                              </div>
+                            ) : msg.sendStatus === 'failed' ? (
                               <AlertCircle size={11} className="text-red-500" />
                             ) : (msg.sendStatus === 'sending' || msg.status === 'sending') ? (
                               <Loader2 size={10} className="animate-spin text-slate-400" />
@@ -1224,6 +1247,20 @@ Todos os dados e mensagens serão excluídos.`;
                                   >
                                     <Edit2 size={16} />
                                     <span className="text-[11px] font-black uppercase tracking-tight">Editar Mensagem</span>
+                                  </button>
+                                )}
+
+                                {msg.sendStatus === 'scheduled' && (
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCancelSchedule(msg.id);
+                                      setOptionsMenuId(null);
+                                    }} 
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-all"
+                                  >
+                                    <Clock size={16} />
+                                    <span className="text-[11px] font-black uppercase tracking-tight">Cancelar Agendamento</span>
                                   </button>
                                 )}
 

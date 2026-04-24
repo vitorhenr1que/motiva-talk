@@ -298,6 +298,101 @@ export class MessageService {
     return updated;
   }
 
+  /**
+   * Agenda uma nova mensagem
+   */
+  static async scheduleMessage(data: any) {
+    const { scheduledAt, ...rest } = data;
+    
+    const message = await MessageRepository.create({
+      ...rest,
+      sendStatus: 'scheduled',
+      scheduledAt,
+      isScheduled: true
+    });
+
+    return message;
+  }
+
+  /**
+   * Processa a fila de mensagens agendadas
+   */
+  static async processScheduledMessages() {
+    const messages = await MessageRepository.findScheduledReady(10);
+    if (!messages.length) return { processed: 0 };
+
+    console.log(`[SCHEDULED] Processando ${messages.length} mensagens...`);
+
+    // Atualiza status para 'sending' imediatamente para evitar processamento duplo
+    await Promise.all(messages.map(m => 
+      MessageRepository.update(m.id, { sendStatus: 'sending' })
+    ));
+
+    const results = [];
+    
+    // Processamento com concorrência controlada
+    // Texto: até 3 simultâneos, Mídia: até 2 simultâneos
+    // Aqui usaremos uma abordagem sequencial simples ou chunks para garantir estabilidade
+    for (const msg of messages) {
+      try {
+        const { evolutionProvider } = await import('@/services/whatsapp/evolution-provider');
+        const { ConversationRepository } = await import('@/repositories/conversationRepository');
+        const conversation = await ConversationRepository.findById(msg.conversationId);
+
+        if (!conversation || !conversation.contact || !conversation.channel) {
+           throw new Error('Conversa ou canal não encontrado');
+        }
+
+        const metadata = {
+          mediaUrl: msg.mediaUrl,
+          fileName: msg.fileName,
+          mimeType: msg.mimeType,
+          fileSize: msg.fileSize,
+          thumbnailUrl: msg.thumbnailUrl,
+          duration: msg.duration
+        };
+
+        const response = await evolutionProvider.sendMessage(
+          conversation.channel,
+          conversation.contact.phone,
+          msg.content,
+          msg.type,
+          msg.replyToMessage, // Pass quoted if available
+          metadata
+        );
+
+        const externalId = response?.key?.id || response?.messageId;
+
+        // Sucesso
+        await MessageRepository.update(msg.id, {
+          sendStatus: 'sent',
+          sentAt: new Date().toISOString(),
+          externalMessageId: externalId
+        });
+
+        // Notificar via Realtime
+        const { RealtimeService } = await import('@/services/realtime.service');
+        await RealtimeService.notifyMessageUpdate(msg.conversationId, { ...msg, sendStatus: 'sent' });
+
+        results.push({ id: msg.id, success: true });
+      } catch (error: any) {
+        console.error(`[SCHEDULED_ERROR] Falha ao enviar mensagem ${msg.id}:`, error.message);
+        
+        await MessageRepository.update(msg.id, {
+          sendStatus: 'failed',
+          errorMessage: error.message
+        });
+
+        const { RealtimeService } = await import('@/services/realtime.service');
+        await RealtimeService.notifyMessageUpdate(msg.conversationId, { ...msg, sendStatus: 'failed', errorMessage: error.message });
+
+        results.push({ id: msg.id, success: false, error: error.message });
+      }
+    }
+
+    return { processed: messages.length, results };
+  }
+
   static async getMessageById(id: string) {
     return await MessageRepository.findById(id)
   }
@@ -378,5 +473,22 @@ export class MessageService {
     }
 
     return successCount;
+  }
+
+  static async cancelScheduledMessage(id: string) {
+    const msg = await MessageRepository.findById(id);
+    if (!msg) throw new AppError('Mensagem não encontrada', 404);
+    if (msg.sendStatus !== 'scheduled') {
+      throw new AppError('Apenas mensagens agendadas podem ser canceladas', 400);
+    }
+
+    const updated = await MessageRepository.update(id, {
+      sendStatus: 'cancelled'
+    });
+
+    const { RealtimeService } = await import('@/services/realtime.service');
+    await RealtimeService.notifyMessageUpdate(msg.conversationId, updated);
+
+    return updated;
   }
 }
