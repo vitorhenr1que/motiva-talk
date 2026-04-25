@@ -34,42 +34,29 @@ export async function PUT(
     }
 
     const body = await req.json()
+    console.log(`[AUTO-REPLY] Updating settings for channel ${channelId}:`, body)
+    
     const { enabled, message, cooldownHours } = body
 
-    const payload = {
-      channelId,
-      enabled,
-      message,
-      cooldownHours,
-      updatedByUserId: userId,
-      updatedAt: new Date().toISOString()
-    }
-
-    const { data: existing } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('auto_reply_settings')
-      .select('id')
-      .eq('channelId', channelId)
-      .maybeSingle()
+      .upsert({
+        channelId,
+        enabled,
+        message,
+        cooldownHours,
+        updatedByUserId: userId,
+        updatedAt: new Date().toISOString()
+      }, { onConflict: 'channelId' })
+      .select()
+      .single()
 
-    let result;
-    if (existing) {
-      result = await supabaseAdmin
-        .from('auto_reply_settings')
-        .update(payload)
-        .eq('id', existing.id)
-        .select()
-        .single()
-    } else {
-      result = await supabaseAdmin
-        .from('auto_reply_settings')
-        .insert([payload])
-        .select()
-        .single()
+    if (error) {
+      console.error('[AUTO-REPLY] Upsert error:', error)
+      throw error
     }
 
-    if (result.error) throw result.error
-
-    return NextResponse.json({ success: true, data: result.data })
+    return NextResponse.json({ success: true, data })
   } catch (error) {
     return handleApiError(error, req, { route: ROUTE })
   }

@@ -53,22 +53,25 @@ export default function AutoRepliesSettingsPage() {
     }
   }, [selectedChannelId, channels]);
 
-  const handleSave = async () => {
+
+  const handleSave = async (overrides?: any) => {
     if (!selectedChannelId) return;
+    const dataToSave = overrides || settings;
     setSaving(true);
     try {
       const resp = await fetch(`/api/settings/auto-replies/${selectedChannelId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
+        body: JSON.stringify(dataToSave)
       });
       
       if (resp.ok) {
-        alert('Configurações de resposta automática salvas!');
         // Update local state
         setChannels(prev => prev.map(c => 
-          c.id === selectedChannelId ? { ...c, autoReply: settings } : c
+          c.id === selectedChannelId ? { ...c, autoReply: dataToSave } : c
         ));
+        // Optional: show a small toast or just let it be silent for auto-save
+        if (!overrides) alert('Configurações de resposta automática salvas!');
       } else {
         const err = await resp.json();
         alert(err.error || 'Erro ao salvar configurações.');
@@ -168,7 +171,12 @@ export default function AutoRepliesSettingsPage() {
                           type="checkbox" 
                           className="sr-only peer"
                           checked={settings.enabled}
-                          onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            const newSettings = { ...settings, enabled: val };
+                            setSettings(newSettings);
+                            handleSave(newSettings);
+                          }}
                         />
                         <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 shadow-inner"></div>
                       </label>
