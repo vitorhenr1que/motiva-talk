@@ -19,12 +19,7 @@ export async function GET(req: Request) {
       id,
       name,
       phoneNumber,
-      isActive,
-      auto_reply_settings (
-        enabled,
-        message,
-        cooldownHours
-      )
+      isActive
     `)
 
     if (role !== 'ADMIN') {
@@ -38,19 +33,28 @@ export async function GET(req: Request) {
       channelQuery = channelQuery.in('id', allowedChannelIds)
     }
 
-    const { data: channels, error } = await channelQuery
+    const { data: channels, error: channelsError } = await channelQuery
+    if (channelsError) throw channelsError
 
-    if (error) throw error
+    // Fetch all auto-reply settings to map manually
+    const { data: allSettings, error: settingsError } = await supabaseAdmin
+      .from('auto_reply_settings')
+      .select('*')
+    
+    if (settingsError) throw settingsError
 
-    // Transform data to simplify frontend usage
-    const formattedChannels = channels?.map(channel => ({
-      ...channel,
-      autoReply: (channel.auto_reply_settings as any)?.[0] || {
-        enabled: false,
-        message: '',
-        cooldownHours: 24
+    // Map settings to channels
+    const formattedChannels = channels?.map(channel => {
+      const channelSettings = allSettings?.find(s => s.channelId === channel.id)
+      return {
+        ...channel,
+        autoReply: channelSettings || {
+          enabled: false,
+          message: '',
+          cooldownHours: 24
+        }
       }
-    }))
+    })
 
     return NextResponse.json({ 
       success: true, 
