@@ -222,8 +222,8 @@ export default function AutoRepliesSettingsPage() {
 
                   {/* Botão Salvar */}
                   <div className="pt-6 flex justify-end">
-                    <button 
-                      onClick={handleSave}
+                    <button
+                      onClick={() => handleSave()}
                       disabled={saving || !selectedChannelId}
                       className="flex items-center gap-2 rounded-xl bg-slate-900 px-8 py-3 text-sm font-bold text-white shadow-lg hover:shadow-2xl transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50"
                     >
