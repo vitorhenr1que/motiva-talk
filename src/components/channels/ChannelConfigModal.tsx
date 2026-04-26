@@ -29,6 +29,7 @@ interface ChannelConfigModalProps {
     phoneNumber: string;
     connectionStatus: string;
     allowAgentNameEdit?: boolean;
+    defaultSectorId?: string | null;
   } | null;
   onActionSuccess: () => void;
   onOpenConnect: (id: string, name: string) => void;
@@ -51,13 +52,29 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
   const [loadingWebhook, setLoadingWebhook] = useState(false);
   const [updatingField, setUpdatingField] = useState<string | null>(null);
   const [allowAgentNameEdit, setAllowAgentNameEdit] = useState(false);
+  const [defaultSectorId, setDefaultSectorId] = useState<string | null>(null);
+  const [sectors, setSectors] = useState<{ id: string, name: string }[]>([]);
 
   React.useEffect(() => {
     if (isOpen && channel) {
       setAllowAgentNameEdit(channel.allowAgentNameEdit || false);
+      setDefaultSectorId(channel.defaultSectorId || null);
       fetchWebhook();
+      fetchSectors();
     }
-  }, [isOpen, channel?.id, channel?.allowAgentNameEdit]);
+  }, [isOpen, channel?.id, channel?.allowAgentNameEdit, channel?.defaultSectorId]);
+
+  const fetchSectors = async () => {
+    try {
+      const res = await fetch('/api/sectors');
+      const data = await res.json();
+      if (data.success) {
+        setSectors(data.data);
+      }
+    } catch (e) {
+      console.error('Falha ao buscar setores:', e);
+    }
+  };
 
   const fetchWebhook = async () => {
     setLoadingWebhook(true);
@@ -127,6 +144,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
       const data = await res.json();
       if (data.success) {
         if (field === 'allowAgentNameEdit') setAllowAgentNameEdit(value);
+        if (field === 'defaultSectorId') setDefaultSectorId(value ? (value as any) : null);
         onActionSuccess();
       } else {
         alert('Falha ao atualizar configuração: ' + (data.message || 'Erro desconhecido'));
@@ -348,6 +366,35 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
                   allowAgentNameEdit ? "translate-x-5" : "translate-x-0"
                 )} />
               </button>
+            </div>
+
+            <div className="h-px bg-slate-100 dark:bg-slate-800/50 my-2" />
+
+            {/* Select Default Sector */}
+            <div className="flex items-center justify-between group/toggle">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded-lg transition-colors bg-blue-100 text-blue-600">
+                  <ShieldCheck size={14} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Setor Padrão (Triagem)</p>
+                  <p className="text-[9px] font-medium text-slate-400">Setor inicial para novas conversas deste canal</p>
+                </div>
+              </div>
+              <select
+                value={defaultSectorId || ''}
+                onChange={(e) => updateChannelSetting('defaultSectorId', e.target.value as any)}
+                disabled={updatingField === 'defaultSectorId'}
+                className={cn(
+                  "rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all",
+                  updatingField === 'defaultSectorId' && "opacity-50 cursor-wait"
+                )}
+              >
+                <option value="">Fila Geral (Sem Setor)</option>
+                {sectors.map(sector => (
+                  <option key={sector.id} value={sector.id}>{sector.name}</option>
+                ))}
+              </select>
             </div>
           </div>
         </div>

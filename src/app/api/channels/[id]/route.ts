@@ -42,15 +42,19 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const { allowAgentNameEdit } = await req.json();
+    const body = await req.json();
 
     if (!id) {
       return NextResponse.json({ success: false, message: 'ID do canal é obrigatório' }, { status: 400 });
     }
 
+    const updateData: any = {};
+    if (body.allowAgentNameEdit !== undefined) updateData.allowAgentNameEdit = body.allowAgentNameEdit;
+    if (body.defaultSectorId !== undefined) updateData.defaultSectorId = body.defaultSectorId;
+
     const { data, error } = await supabaseAdmin
       .from('Channel')
-      .update({ allowAgentNameEdit })
+      .update(updateData)
       .eq('id', id)
       .select()
       .single();

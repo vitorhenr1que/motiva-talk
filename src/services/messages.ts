@@ -16,6 +16,8 @@ export interface CreateMessageData {
   duration?: number;
   thumbnailUrl?: string;
   metadata?: any;
+  isInternal?: boolean;
+  sectorId?: string | null;
 }
 
 export class MessageService {
@@ -23,11 +25,13 @@ export class MessageService {
    * Lista histórico de mensagens paginado
    * Filtra mensagens apagadas (me/todos)
    */
-  static async listByConversation(conversationId: string, limit: number = 20, before?: string) {
+  static async listByConversation(conversationId: string, limit: number = 20, before?: string, allowedSectorIds?: string[], sectorId?: string) {
     const messages = await MessageRepository.findMany({ 
       conversationId,
       limit,
-      before
+      before,
+      allowedSectorIds,
+      sectorId
     })
     
     // Filtrar localmente as deletadas para o atendente
@@ -66,7 +70,9 @@ export class MessageService {
       mimeType,
       fileSize,
       thumbnailUrl,
-      duration
+      duration,
+      isInternal,
+      sectorId
     } = data
     
     let externalMessageId: string | undefined = data.externalMessageId
@@ -84,7 +90,9 @@ export class MessageService {
       }
     }
 
-    if (senderType === 'AGENT' || senderType === 'SYSTEM') {
+    const isActuallyInternal = isInternal || !!metadata?.isInternal;
+
+    if (!isActuallyInternal && (senderType === 'AGENT' || senderType === 'SYSTEM')) {
       try {
         const { ConversationRepository } = await import('@/repositories/conversationRepository')
         const { evolutionProvider } = await import('@/services/whatsapp/evolution-provider')
@@ -124,6 +132,14 @@ export class MessageService {
       }
     }
 
+    // Se o sectorId não foi passado explicitamente, tentamos pegar o atual da conversa
+    let finalSectorId = sectorId;
+    if (!finalSectorId) {
+       const { ConversationRepository } = await import('@/repositories/conversationRepository');
+       const conv = await ConversationRepository.findById(conversationId);
+       finalSectorId = conv?.currentSectorId || null;
+    }
+
     const newMessage = await MessageRepository.create({
       conversationId,
       channelId,
@@ -139,6 +155,8 @@ export class MessageService {
       fileSize,
       thumbnailUrl,
       duration,
+      isInternal: isActuallyInternal,
+      sectorId: finalSectorId,
       createdAt: new Date().toISOString()
     })
 
@@ -414,8 +432,8 @@ export class MessageService {
     return await MessageRepository.findLastByConversation(conversationId)
   }
 
-  static async searchMessages(conversationId: string, query: string) {
-    const results = await MessageRepository.search(conversationId, query)
+  static async searchMessages(conversationId: string, query: string, sectorId?: string) {
+    const results = await MessageRepository.search(conversationId, query, sectorId)
     
     // Filtrar mensagens apagadas para todos (opcional: o atendente pode querer saber que algo existiu, mas aqui limpamos)
     return results.filter((m: any) => !m.deletedForEveryone).map((m: any) => ({

@@ -5,7 +5,8 @@ import { useChatStore } from '@/store/useChatStore';
 import { 
   MoreVertical, Search, MessageCircle, FileText, Reply, Trash2,
   Loader2, Check, Pin, UserPlus, CheckCircle2, XCircle, X, ChevronDown, UserPlus as ContactIcon,
-  Mic, Play, Pause, Volume2, Eye, Forward, AlertCircle, Smile, Plus, Edit2, Clock, Bot
+  Mic, Play, Pause, Volume2, Eye, Forward, AlertCircle, Smile, Plus, Edit2, Clock, Bot, Info,
+  Send, ArrowRightLeft
 } from 'lucide-react';
 import { TagSelector } from './TagSelector';
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
@@ -14,10 +15,10 @@ import { twMerge } from 'tailwind-merge';
 import { formatPhone } from '@/lib/utils';
 import { formatDateDivider, formatTimeBahia, parseSafeDate } from '@/lib/date-utils';
 import { useChatFileDrop } from '@/hooks/useChatFileDrop';
-import { Send } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { ForwardMessageModal } from './ForwardMessageModal';
 import { ScheduledMessagesModal } from './ScheduledMessagesModal';
+import UnifiedTransferModal from './UnifiedTransferModal';
 
 const CustomAudioPlayer = ({ url, duration, fileName, mimeType, mediaUrl }: { url: string, duration?: number, fileName?: string, mimeType?: string, mediaUrl?: string }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -226,7 +227,8 @@ export const ChatWindow = () => {
     selectedMessages,
     setSelectionMode,
     toggleMessageSelection,
-    clearSelection
+    clearSelection,
+    selectedSectorId
   } = useChatStore();
 
   const { isDragging, onDragOver, onDragLeave, onDrop } = useChatFileDrop();
@@ -247,9 +249,11 @@ export const ChatWindow = () => {
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [optionsMenuId, setOptionsMenuId] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [reactionMenuId, setReactionMenuId] = useState<string | null>(null);
   const [showFullEmojiPicker, setShowFullEmojiPicker] = useState<string | null>(null);
   const [isScheduledModalOpen, setIsScheduledModalOpen] = useState(false);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
 
   const EMOJI_CATEGORIES = [
     { name: 'Rostos', emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕'] },
@@ -321,7 +325,9 @@ export const ChatWindow = () => {
     
     setIsSearching(true);
     try {
-      const resp = await fetch(`/api/messages/search?conversationId=${activeConversation.id}&query=${encodeURIComponent(query)}`);
+      let url = `/api/messages/search?conversationId=${activeConversation.id}&query=${encodeURIComponent(query)}`;
+      if (selectedSectorId) url += `&sectorId=${selectedSectorId}`;
+      const resp = await fetch(url);
       if (resp.ok) {
         const data = await resp.json();
         setSearchResults(data.data || []);
@@ -406,7 +412,9 @@ Todos os dados e mensagens serão excluídos.`;
     setLoadingMore(true);
     try {
       const encodedCursor = encodeURIComponent(nextCursor);
-      const resp = await fetch(`/api/messages?conversationId=${activeConversation.id}&limit=20&before=${encodedCursor}`);
+      let url = `/api/messages?conversationId=${activeConversation.id}&limit=20&before=${encodedCursor}`;
+      if (selectedSectorId) url += `&sectorId=${selectedSectorId}`;
+      const resp = await fetch(url);
       if (resp.ok) {
         const data = await resp.json();
         addMoreMessages({
@@ -561,7 +569,9 @@ Todos os dados e mensagens serão excluídos.`;
     const fetchMessages = async () => {
       setLoadingMessages(true);
       try {
-        const resp = await fetch(`/api/messages?conversationId=${activeConversation.id}&limit=20`);
+        let url = `/api/messages?conversationId=${activeConversation.id}&limit=20`;
+        if (selectedSectorId) url += `&sectorId=${selectedSectorId}`;
+        const resp = await fetch(url);
         if (resp.ok) {
           const data = await resp.json();
           setMessages({
@@ -577,7 +587,7 @@ Todos os dados e mensagens serão excluídos.`;
       }
     };
     fetchMessages();
-  }, [activeConversation?.id, setMessages, setLoadingMessages]);
+  }, [activeConversation?.id, refreshKey, setMessages, setLoadingMessages, selectedSectorId]);
 
   // Busca papel do usuário e permissões globais
   useEffect(() => {
@@ -865,6 +875,13 @@ Todos os dados e mensagens serão excluídos.`;
               >
                 <Clock size={20} />
               </button>
+              <button 
+                onClick={() => setIsTransferModalOpen(true)}
+                className="rounded-xl p-2 text-slate-400 hover:bg-slate-50 hover:text-indigo-600 transition-all"
+                title="Transferir conversa"
+              >
+                <ArrowRightLeft size={20} />
+              </button>
               <div className="relative">
                 <button onClick={() => setHeaderMenuOpen(!headerMenuOpen)} className={cn("rounded-xl p-2 transition-all", headerMenuOpen ? "bg-slate-100 text-slate-900" : "text-slate-400 hover:bg-slate-50 hover:text-slate-600")}><MoreVertical size={20} /></button>
                 {headerMenuOpen && (
@@ -885,6 +902,14 @@ Todos os dados e mensagens serão excluídos.`;
                         </button>
                       </>
                     )}
+                    <div className="h-px bg-slate-100 my-1 mx-2" />
+                    <button 
+                      onClick={() => setIsTransferModalOpen(true)} 
+                      className="w-full text-left px-4 py-2.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50 rounded-xl flex items-center gap-3 transition-colors"
+                    >
+                      <ArrowRightLeft size={16} className="text-indigo-500" />
+                      Transferir Canal
+                    </button>
                   </div>
                 )}
               </div>
@@ -935,6 +960,7 @@ Todos os dados e mensagens serão excluídos.`;
             )}
             {messages.map((msg: any, index: number) => {
               const isSentByUs = msg.senderType === 'AGENT' || msg.senderType === 'SYSTEM';
+              const isInternal = msg.isInternal;
               const isEveryoneDeleted = msg.deletedForEveryone;
               const currentMsgDate = parseSafeDate(msg.createdAt);
               const prevMsg = index > 0 ? messages[index - 1] : null;
@@ -948,7 +974,7 @@ Todos os dados e mensagens serão excluídos.`;
                     id={`msg-${msg.id}`}
                     className={cn(
                       "flex w-full group anim-fade-in transition-all duration-1000 p-1 rounded-2xl items-center", 
-                      isSentByUs ? "justify-end" : "justify-start",
+                      isInternal ? "justify-center" : (isSentByUs ? "justify-end" : "justify-start"),
                       highlightedMessageId === msg.id && "bg-yellow-100/50 shadow-inner ring-2 ring-yellow-200",
                       selectionMode && "cursor-pointer hover:bg-black/5"
                     )}
@@ -969,7 +995,25 @@ Todos os dados e mensagens serão excluídos.`;
                         </div>
                       </div>
                     )}
-                    <div className={cn("relative max-w-[80%] md:max-w-[70%] rounded-2xl p-1.5 shadow-sm transition-all hover:shadow-md", isSentByUs ? "bg-[#d9fdd3] text-slate-800 rounded-tr-none" : "bg-white text-slate-800 rounded-tl-none border border-slate-100", (msg.status === 'sending' || msg.sendStatus === 'sending') && "opacity-60 grayscale-[0.2]", msg.sendStatus === 'failed' && "ring-2 ring-red-200", selectionMode && "pointer-events-none")}>
+                    <div className={cn(
+                      "relative max-w-[80%] md:max-w-[70%] rounded-2xl p-1.5 shadow-sm transition-all hover:shadow-md", 
+                      isInternal 
+                        ? "bg-amber-100/80 backdrop-blur-md border border-amber-300 text-amber-900 rounded-3xl" 
+                        : isSentByUs 
+                          ? "bg-[#d9fdd3] text-slate-800 rounded-tr-none" 
+                          : "bg-white text-slate-800 rounded-tl-none border border-slate-100", 
+                      (msg.status === 'sending' || msg.sendStatus === 'sending') && "opacity-60 grayscale-[0.2]", 
+                      msg.sendStatus === 'failed' && "ring-2 ring-red-200", 
+                      selectionMode && "pointer-events-none"
+                    )}>
+                      {isInternal && (
+                        <div className="px-4 py-1 flex items-center gap-2 border-b border-amber-200/50 mb-1">
+                          <div className="h-4 w-4 rounded bg-amber-200 flex items-center justify-center text-amber-700">
+                             <Info size={10} strokeWidth={3} />
+                          </div>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-amber-700/60">Nota Interna</span>
+                        </div>
+                      )}
                       <div className="px-2.5 py-1">
                         {msg.isForwarded && (
                           <div className="flex items-center gap-1.5 mb-1 opacity-60">
@@ -1020,7 +1064,7 @@ Todos os dados e mensagens serão excluídos.`;
                           </div>
                         ) : (
                           <>
-                            {msg.type === 'TEXT' && <p className="whitespace-pre-wrap leading-relaxed text-[13px]">{formatWhatsappText(msg.content)}</p>}
+                            {(msg.type === 'TEXT' || msg.type === 'SYSTEM') && <p className="whitespace-pre-wrap leading-relaxed text-[13px]">{formatWhatsappText(msg.content)}</p>}
                             {msg.type === 'IMAGE' && (
                                <div className="flex flex-col gap-2">
                                  <img 
@@ -1149,6 +1193,14 @@ Todos os dados e mensagens serão excluídos.`;
                         )}
 
                         <div className="mt-1 flex items-center justify-end gap-1.5">
+                          {msg.sector && (
+                            <span 
+                              className="text-[8px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200"
+                              title={`Setor: ${msg.sector.name}`}
+                            >
+                              {msg.sector.name}
+                            </span>
+                          )}
                           <span className="text-[9px] text-slate-400 font-bold opacity-60">{formatTimeBahia(msg.createdAt)}</span>
                           {isSentByUs && !(isEveryoneDeleted || msg.deletedForMe) && (
                             msg.sendStatus === 'scheduled' ? (
@@ -1431,6 +1483,26 @@ Todos os dados e mensagens serão excluídos.`;
         onClose={() => setIsForwardModalOpen(false)} 
         selectedMessageIds={selectedMessages}
       />
+
+      {isScheduledModalOpen && (
+        <ScheduledMessagesModal
+          onClose={() => setIsScheduledModalOpen(false)}
+          conversationId={activeConversation.id}
+          channelId={activeConversation.channelId}
+        />
+      )}
+
+      {isTransferModalOpen && (
+        <UnifiedTransferModal
+          isOpen={isTransferModalOpen}
+          onClose={() => setIsTransferModalOpen(false)}
+          conversation={activeConversation}
+          onTransferComplete={() => {
+            setRefreshKey(k => k + 1);
+            refetchConversations();
+          }}
+        />
+      )}
       {/* Full Emoji Picker Modal */}
       {showFullEmojiPicker && (
         <div 
@@ -1471,14 +1543,6 @@ Todos os dados e mensagens serão excluídos.`;
             </div>
           </div>
         </div>
-      )}
-
-      {isScheduledModalOpen && (
-        <ScheduledMessagesModal 
-          conversationId={activeConversation.id} 
-          channelId={activeConversation.channelId}
-          onClose={() => setIsScheduledModalOpen(false)} 
-        />
       )}
     </div>
   );

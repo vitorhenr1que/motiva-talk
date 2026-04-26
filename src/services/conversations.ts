@@ -210,4 +210,71 @@ export class ConversationService {
 
     return success;
   }
+
+  /**
+   * Transfere uma conversa (Referral Mode): Mantém a conversa original no canal atual
+   * e cria/encontra uma conversa no canal de destino para enviar a Nota Interna.
+   */
+  static async transferToChannel(conversationId: string, targetChannelId: string, agentId?: string, note?: string) {
+    const { MessageService } = await import('@/services/messages');
+    const { ChannelRepository } = await import('@/repositories/channelRepository');
+
+    // 1. Buscar a conversa de origem
+    const sourceConversation = await ConversationRepository.findById(conversationId);
+    if (!sourceConversation) throw new Error('Conversa de origem não encontrada');
+
+    const contactId = sourceConversation.contactId;
+    if (!contactId) throw new Error('Contato não identificado na conversa');
+
+    const oldChannelId = sourceConversation.channelId;
+    if (oldChannelId === targetChannelId) return sourceConversation;
+
+    // 2. Buscar detalhes dos canais para a mensagem do sistema
+    const [oldChannel, newChannel] = await Promise.all([
+      ChannelRepository.findById(oldChannelId),
+      ChannelRepository.findById(targetChannelId)
+    ]);
+
+    // 3. Encontrar ou Criar a conversa no canal de destino
+    const targetConversation = await this.startConversation(contactId, targetChannelId);
+
+    // 4. Criar a Nota Interna na conversa de DESTINO
+    const transferMsgTarget = `📥 Conversa referenciada do canal "${oldChannel?.name || 'Desconhecido'}".${note ? `\n\nNota: ${note}` : '\n\nSem nota adicional.'}`;
+    
+    await MessageService.createMessage({
+      conversationId: targetConversation.id,
+      channelId: targetChannelId,
+      senderType: 'SYSTEM',
+      content: transferMsgTarget,
+      type: 'TEXT',
+      isInternal: true,
+      metadata: { 
+        isTransfer: true, 
+        sourceConversationId: conversationId,
+        sourceChannelId: oldChannelId,
+        transferredBy: agentId 
+      }
+    });
+
+    // 5. Criar uma Nota Interna na conversa de ORIGEM (para histórico)
+    const transferMsgSource = `📤 Conversa referenciada para o canal "${newChannel?.name || 'Desconhecido'}".${note ? `\n\nNota enviada: ${note}` : ''}`;
+    
+    await MessageService.createMessage({
+      conversationId: sourceConversation.id,
+      channelId: oldChannelId,
+      senderType: 'SYSTEM',
+      content: transferMsgSource,
+      type: 'TEXT',
+      isInternal: true,
+      metadata: { 
+        isTransfer: true, 
+        targetConversationId: targetConversation.id,
+        targetChannelId,
+        transferredBy: agentId 
+      }
+    });
+
+    // Retorna a conversa de origem (que permanece ativa no canal atual)
+    return sourceConversation;
+  }
 }

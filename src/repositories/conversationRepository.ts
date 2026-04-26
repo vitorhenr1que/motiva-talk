@@ -16,11 +16,13 @@ export class ConversationRepository {
         pinnedAt,
         contactId,
         channelId,
+        currentSectorId,
         lastMessagePreview,
         finalizedAt,
         updatedAt,
         contact:Contact(id, name, phone, profilePictureUrl),
         channel:Channel(id, name, allowAgentNameEdit),
+        sector:Sector(id, name),
         tags:ConversationTag(tag:Tag(id, name, color, emoji))
       `)
       .limit(limit)
@@ -64,10 +66,16 @@ export class ConversationRepository {
     // 1. Filtro de Status e Segurança (RBAC) combinados
     if (where.status) {
       if (where.allowedChannelIds && where.currentUserId) {
-        // Se for atendente, filtramos por canal E (atribuído a mim ou sem dono) dentro do status
+        // Se for atendente, filtramos por canal, por setor permitido E (atribuído a mim ou sem dono)
         query = query.eq('status', where.status)
                      .in('channelId', where.allowedChannelIds)
                      .or(`assignedTo.eq.${where.currentUserId},assignedTo.is.null`);
+                     
+        if (where.allowedSectorIds && where.allowedSectorIds.length > 0) {
+          query = query.or(`currentSectorId.in.(${where.allowedSectorIds.join(',')}),currentSectorId.is.null`);
+        } else {
+          query = query.is('currentSectorId', null); // Se não tem setor, só vê os sem setor
+        }
       } else if (where.allowedChannelIds) {
         // Se for supervisor com canais limitados
         query = query.eq('status', where.status)
@@ -78,8 +86,30 @@ export class ConversationRepository {
       }
     }
 
-    if (where.assignedTo) query = query.eq('assignedTo', where.assignedTo)
-    if (where.channelId) query = query.eq('channelId', where.channelId)
+    if (where.assignedTo) {
+      if (where.assignedTo === 'UNASSIGNED') {
+        query = query.is('assignedTo', null);
+      } else {
+        query = query.eq('assignedTo', where.assignedTo);
+      }
+    }
+    if (where.channelId) query = query.eq('channelId', where.channelId);
+    
+    // Filtros de Setor e Data
+    if (where.sectorId) {
+      if (where.sectorId === 'UNASSIGNED') {
+        query = query.is('currentSectorId', null);
+      } else {
+        query = query.eq('currentSectorId', where.sectorId);
+      }
+    }
+    
+    if (where.startDate) {
+      query = query.gte('createdAt', where.startDate);
+    }
+    if (where.endDate) {
+      query = query.lte('createdAt', where.endDate);
+    }
     
     // Filtro por Etiqueta (Tag)
     if (where.tagId) {
@@ -162,6 +192,7 @@ export class ConversationRepository {
         contact:Contact(*),
         channel:Channel(*),
         agent:User(*),
+        sector:Sector(*),
         tags:ConversationTag(*, tag:Tag(*))
       `)
       .eq('id', id)
@@ -179,7 +210,8 @@ export class ConversationRepository {
         *,
         contact:Contact(*),
         channel:Channel(*),
-        agent:User(*)
+        agent:User(*),
+        sector:Sector(*)
       `)
       .single()
 
@@ -196,7 +228,8 @@ export class ConversationRepository {
         *,
         contact:Contact(*),
         channel:Channel(*),
-        agent:User(*)
+        agent:User(*),
+        sector:Sector(*)
       `)
       .single()
 
@@ -212,6 +245,7 @@ export class ConversationRepository {
         contact:Contact(*),
         channel:Channel(*),
         agent:User(*),
+        sector:Sector(*),
         tags:ConversationTag(*, tag:Tag(*))
       `)
       .eq('contactId', contactId)

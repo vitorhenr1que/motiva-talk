@@ -41,7 +41,7 @@ export async function PATCH(
     const body = await req.json();
     console.log('[API] PATCH ' + ROUTE + ':', { id, body });
 
-    const { status, unreadCount, pinnedNote, pinnedAt } = body;
+    const { status, unreadCount, pinnedNote, pinnedAt, currentSectorId } = body;
     let { assignedTo } = body;
 
     // Se a conversa for finalizada, garante que o atendente atual seja registrado
@@ -65,9 +65,10 @@ export async function PATCH(
       if (unreadCount !== undefined) updateData.unreadCount = Number(unreadCount);
       if (pinnedAt !== undefined) updateData.pinnedAt = pinnedAt;
       if (assignedTo) updateData.assignedTo = assignedTo;
+      if (currentSectorId !== undefined) updateData.currentSectorId = currentSectorId;
 
       if (Object.keys(updateData).length === 0) {
-        throw new AppError('Nenhum campo válido para atualização (status, pinnedNote, unreadCount, pinnedAt)', 400, 'VALIDATION_ERROR');
+        throw new AppError('Nenhum campo válido para atualização (status, pinnedNote, unreadCount, pinnedAt, currentSectorId, assignedTo)', 400, 'VALIDATION_ERROR');
       }
 
       updated = await ConversationService.updateConversation(id, updateData);

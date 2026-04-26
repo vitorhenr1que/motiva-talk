@@ -111,6 +111,7 @@ export default function SettingsPage() {
     { label: 'Perfil', icon: <UserIcon size={18} />, href: '/settings' },
     { label: 'Acessibilidade', icon: <Globe size={18} />, href: '/settings/accessibility' },
     { label: 'Mensagens Automáticas', icon: <MessageSquare size={18} />, href: '/settings/auto-replies' },
+    { label: 'Setores', icon: <Shield size={18} />, href: '/settings/sectors' },
     { label: 'Notificações', icon: <Bell size={18} />, href: '/settings/notifications' },
     { label: 'Segurança', icon: <Shield size={18} />, href: '/settings/security' },
     { label: 'API', icon: <Key size={18} />, href: '/settings/api' },

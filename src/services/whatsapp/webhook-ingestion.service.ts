@@ -202,6 +202,7 @@ export class WebhookIngestionService {
         conversation = await ConversationRepository.create({
           contactId: contact.id,
           channelId: channel.id,
+          currentSectorId: channel.defaultSectorId || null,
           status: 'OPEN',
           lastMessageAt: new Date().toISOString()
         });
@@ -258,6 +259,7 @@ export class WebhookIngestionService {
           id: generateId(),
           conversationId: conversation.id,
           channelId: channel.id,
+          sectorId: conversation.currentSectorId || null,
           senderType,
           content: content || '[Arquivo de Mídia]',
           type: dbMessageType,

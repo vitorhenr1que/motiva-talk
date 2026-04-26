@@ -58,6 +58,10 @@ interface ChatState {
   
   tags: any[]
   selectedTagId: string | null
+  selectedSectorId: string | null
+  selectedUserId: string | null
+  startDate: string | null
+  endDate: string | null
   isProfileOpen: boolean
   setIsProfileOpen: (open: boolean) => void
   kanbanData: any[]
@@ -90,6 +94,10 @@ interface ChatState {
   setTags: (tags: any[]) => void;
   setSelectedChannelId: (id: string | null) => void
   setSelectedTagId: (id: string | null) => void
+  setSelectedSectorId: (id: string | null) => void
+  setSelectedUserId: (id: string | null) => void
+  setStartDate: (date: string | null) => void
+  setEndDate: (date: string | null) => void
   setLoadingConversations: (loading: boolean) => void
   setLoadingMessages: (loading: boolean) => void
   setLoadingMore: (loading: boolean) => void
@@ -109,6 +117,10 @@ export const useChatStore = create<ChatState>((set) => ({
   tags: [],
   selectedChannelId: null,
   selectedTagId: null,
+  selectedSectorId: null,
+  selectedUserId: null,
+  startDate: null,
+  endDate: null,
   loadingConversations: false,
   loadingMessages: false,
   loadingMore: false,
@@ -521,6 +533,10 @@ export const useChatStore = create<ChatState>((set) => ({
   setTags: (tags) => set({ tags }),
   setSelectedChannelId: (id) => set({ selectedChannelId: id }),
   setSelectedTagId: (id) => set({ selectedTagId: id }),
+  setSelectedSectorId: (id) => set({ selectedSectorId: id }),
+  setSelectedUserId: (id) => set({ selectedUserId: id }),
+  setStartDate: (date) => set({ startDate: date }),
+  setEndDate: (date) => set({ endDate: date }),
   setLoadingConversations: (loading) => set({ loadingConversations: loading }),
   setLoadingMessages: (loading) => set({ loadingMessages: loading }),
   setLoadingMore: (loading) => set({ loadingMore: loading }),

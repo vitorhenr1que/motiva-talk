@@ -31,6 +31,10 @@ export async function GET(req: Request) {
       channelId: channelId || undefined,
       status: status || undefined,
       tagId: tagId || undefined,
+      sectorId: searchParams.get('sectorId') || undefined,
+      assignedTo: searchParams.get('assignedTo') || undefined,
+      startDate: searchParams.get('startDate') || undefined,
+      endDate: searchParams.get('endDate') || undefined,
       search: search || undefined,
       limit
     }
@@ -43,6 +47,13 @@ export async function GET(req: Request) {
       }
     }
 
+    // Buscar setores permitidos do usuário
+    const { data: userSectors } = await supabaseAdmin
+      .from('UserSector')
+      .select('sectorId')
+      .eq('userId', dbUser?.id)
+    const allowedSectorIds = userSectors?.map((us: any) => us.sectorId) || []
+
     // Lógica de Filtro por Role (Segurança)
     if (role !== 'ADMIN' && role !== 'SUPERVISOR') {
       const { data: userChannels } = await supabaseAdmin
@@ -50,10 +61,11 @@ export async function GET(req: Request) {
         .select('channelId')
         .eq('userId', dbUser?.id)
       
-      const allowedChannelIds = userChannels?.map(uc => uc.channelId) || []
+      const allowedChannelIds = userChannels?.map((uc: any) => uc.channelId) || []
       
       // Filtro Especial: Ver conversas atribuídas a mim OU abertas nos meus canais
       where.allowedChannelIds = allowedChannelIds;
+      where.allowedSectorIds = allowedSectorIds;
       where.currentUserId = dbUser?.id;
     }
 

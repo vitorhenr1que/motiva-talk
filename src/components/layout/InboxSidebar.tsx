@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useChatStore } from '@/store/useChatStore';
 import { MoreVertical, Trash2, Loader2, Search, Filter, MessageSquare, Tag as TagIcon, Plus, CheckCircle, RefreshCw, Pin } from 'lucide-react';
 import { TagSelector } from '@/components/chat/TagSelector';
+import { SidebarFiltersPopover } from '@/components/chat/SidebarFiltersPopover';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { formatPhone } from '@/lib/utils';
@@ -167,6 +168,10 @@ export const Sidebar = () => {
     setTags,
     selectedTagId,
     setSelectedTagId,
+    selectedSectorId,
+    selectedUserId,
+    startDate,
+    endDate,
     updateConversationLocally,
     upsertConversationLocally,
     tabData,
@@ -209,6 +214,10 @@ export const Sidebar = () => {
     try {
       let url = `/api/conversations/counts?channelId=${selectedChannelId}`;
       if (selectedTagId) url += `&tagId=${selectedTagId}`;
+      if (selectedSectorId) url += `&sectorId=${selectedSectorId}`;
+      if (selectedUserId) url += `&assignedTo=${selectedUserId}`;
+      if (startDate) url += `&startDate=${startDate}`;
+      if (endDate) url += `&endDate=${endDate}`;
       if (debouncedSearch) url += `&search=${encodeURIComponent(debouncedSearch)}`;
       
       const res = await fetch(url);
@@ -246,6 +255,10 @@ export const Sidebar = () => {
       }
 
       if (selectedTagId) url += `&tagId=${selectedTagId}`;
+      if (selectedSectorId) url += `&sectorId=${selectedSectorId}`;
+      if (selectedUserId) url += `&assignedTo=${selectedUserId}`;
+      if (startDate) url += `&startDate=${startDate}`;
+      if (endDate) url += `&endDate=${endDate}`;
       if (debouncedSearch) url += `&search=${encodeURIComponent(debouncedSearch)}`;
       
       const res = await fetch(url);
@@ -265,7 +278,15 @@ export const Sidebar = () => {
     }
   };
 
-  const prevFiltersRef = useRef({ channel: selectedChannelId, tag: selectedTagId, search: debouncedSearch });
+  const prevFiltersRef = useRef({ 
+    channel: selectedChannelId, 
+    tag: selectedTagId, 
+    sector: selectedSectorId,
+    user: selectedUserId,
+    start: startDate,
+    end: endDate,
+    search: debouncedSearch 
+  });
 
   // Efeito principal: troca de aba, canal, etiqueta ou busca
   useEffect(() => {
@@ -275,12 +296,24 @@ export const Sidebar = () => {
     const filtersChanged = 
       prevFiltersRef.current.channel !== selectedChannelId ||
       prevFiltersRef.current.tag !== selectedTagId ||
+      prevFiltersRef.current.sector !== selectedSectorId ||
+      prevFiltersRef.current.user !== selectedUserId ||
+      prevFiltersRef.current.start !== startDate ||
+      prevFiltersRef.current.end !== endDate ||
       prevFiltersRef.current.search !== debouncedSearch;
 
     if (filtersChanged) {
        // Se o filtro mudou, limpamos as abas antes de buscar
        resetTabs();
-       prevFiltersRef.current = { channel: selectedChannelId, tag: selectedTagId, search: debouncedSearch };
+              prevFiltersRef.current = { 
+         channel: selectedChannelId, 
+         tag: selectedTagId, 
+         sector: selectedSectorId,
+         user: selectedUserId,
+         start: startDate,
+         end: endDate,
+         search: debouncedSearch 
+       };
        // O resetTabs zera o initialized, então o fetchTabItems abaixo vai carregar do zero
     }
 
@@ -289,7 +322,7 @@ export const Sidebar = () => {
 
     // Busca itens da aba atual
     fetchTabItems(activeTab);
-  }, [activeTab, selectedChannelId, selectedTagId, debouncedSearch]);
+  }, [activeTab, selectedChannelId, selectedTagId, selectedSectorId, selectedUserId, startDate, endDate, debouncedSearch]);
 
   // Infinite Scroll com Intersection Observer
   useEffect(() => {
@@ -455,44 +488,18 @@ export const Sidebar = () => {
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] block px-1">Canal</label>
-            <select 
-              value={selectedChannelId || ''} 
-              onChange={(e) => setSelectedChannelId(e.target.value)}
-              className="w-full rounded-xl border border-slate-100 bg-white py-2 px-2.5 text-[11px] font-black text-slate-700 shadow-inner focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
-            >
-              {channels.map(ch => (
-                <option key={ch.id} value={ch.id}>{ch.name}</option>
-              ))}
-              {channels.length === 0 && <option value="">Nenhum canal</option>}
-            </select>
+        <div className="flex items-center gap-3">
+          <SidebarFiltersPopover />
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            <input
+              type="text"
+              placeholder="Buscar atendimento..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-lg bg-white border border-slate-200 py-1.5 pl-9 pr-4 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+            />
           </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] block px-1">Etiquetas</label>
-            <select 
-              value={selectedTagId || ''} 
-              onChange={(e) => setSelectedTagId(e.target.value)}
-              className="w-full rounded-xl border border-slate-100 bg-white py-2 px-2.5 text-[11px] font-black text-slate-700 shadow-inner focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-            >
-              <option value="">🎯 Todas</option>
-              {tags.map(t => (
-                <option key={t.id} value={t.id}>{t.emoji} {t.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-          <input
-            type="text"
-            placeholder="Buscar atendimento..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg bg-white border border-slate-200 py-1.5 pl-9 pr-4 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
-          />
         </div>
 
         {/* Tabs */}

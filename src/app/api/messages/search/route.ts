@@ -11,9 +11,10 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const conversationId = searchParams.get('conversationId')
     const query = searchParams.get('query')
+    const sectorId = searchParams.get('sectorId') || undefined
 
     // Logs temporários solicitados
-    console.log(`[SEARCH_DEBUG] conversationId: ${conversationId} | query: ${query}`)
+    console.log(`[SEARCH_DEBUG] conversationId: ${conversationId} | query: ${query} | sectorId: ${sectorId}`)
 
     if (!conversationId) {
       throw new AppError('conversationId é obrigatório para busca', 400, 'VALIDATION_ERROR')
@@ -23,7 +24,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: true, data: [] })
     }
 
-    const results = await MessageService.searchMessages(conversationId, query.trim())
+    const results = await MessageService.searchMessages(conversationId, query.trim(), sectorId)
     
     console.log(`[SEARCH_DEBUG] Resultados encontrados: ${results.length}`)
 

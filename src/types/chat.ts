@@ -38,6 +38,21 @@ export interface Channel {
   providerSessionId?: string;
   connectionStatus?: string;
   allowAgentNameEdit?: boolean;
+  defaultSectorId?: string | null;
+}
+
+export interface Sector {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserSector {
+  userId: string;
+  sectorId: string;
+  createdAt: string;
+  sector?: Sector;
 }
 
 export interface Tag {
@@ -58,6 +73,7 @@ export interface Conversation {
   contactId: string;
   channelId: string;
   assignedTo?: string;
+  currentSectorId?: string | null;
   status: ConversationStatus;
   createdAt: string;
   lastMessageAt?: string;
@@ -71,15 +87,18 @@ export interface Conversation {
   messages?: Message[];
   pinnedNote?: string;
   pinnedAt?: string | null;
+  sector?: Sector;
 }
 
 export interface Message {
   id: string;
   conversationId: string;
   channelId: string;
+  sectorId?: string | null;
   senderType: SenderType;
   content: string;
   type: MessageType;
+  sector?: Sector;
   createdAt: string;
   externalMessageId?: string;
   replyToMessageId?: string;
@@ -103,8 +122,10 @@ export interface Message {
     type: MessageType;
     externalMessageId?: string;
   };
-  metadata?: any;
+  isInternal?: boolean;
+  transferredToChannelId?: string;
   reactions?: { emoji: string; sender: string; timestamp: number }[];
+  sector?: Sector;
 }
 
 export interface QuickReply {

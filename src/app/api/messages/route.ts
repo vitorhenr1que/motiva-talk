@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { MessageService } from '@/services/messages'
 import { handleApiError, validateBody, AppError } from '@/lib/api-errors'
+import { getServerSession, getUserRole } from '@/lib/auth-server'
+import { supabaseAdmin } from '@/lib/supabase-admin'
+import { UserRepository } from '@/repositories/userRepository'
 
 export const dynamic = 'force-dynamic';
 
@@ -8,8 +11,15 @@ const ROUTE = '/api/messages';
 
 export async function GET(req: Request) {
   try {
+    const user = await getServerSession()
+    if (!user) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
+    
+    const role = await getUserRole(user.email!)
+    const dbUser = await UserRepository.findMany({ email: user.email! }).then(users => users?.[0])
+
     const { searchParams } = new URL(req.url)
     const conversationId = searchParams.get('conversationId')
+    const sectorId = searchParams.get('sectorId') || undefined
     const limit = parseInt(searchParams.get('limit') || '20')
     const before = searchParams.get('before') || undefined
 
@@ -17,7 +27,18 @@ export async function GET(req: Request) {
       throw new AppError('conversationId é obrigatório', 400, 'VALIDATION_ERROR');
     }
 
-    const result = await MessageService.listByConversation(conversationId, limit, before)
+    let allowedSectorIds: string[] | undefined = undefined;
+
+    if (role !== 'ADMIN' && role !== 'SUPERVISOR' && dbUser) {
+      const { data: userSectors } = await supabaseAdmin
+        .from('UserSector')
+        .select('sectorId')
+        .eq('userId', dbUser.id)
+      
+      allowedSectorIds = userSectors?.map(us => us.sectorId) || [];
+    }
+
+    const result = await MessageService.listByConversation(conversationId, limit, before, allowedSectorIds, sectorId)
     
     // Logs temporários para validação de paginação
     console.log(`[PAGINATION_DEBUG] Conv: ${conversationId} | Limit: ${limit} | Cursor: ${before || 'NONE'}`);
@@ -53,7 +74,8 @@ export async function POST(req: Request) {
       mimeType,
       fileSize,
       thumbnailUrl,
-      duration
+      duration,
+      sectorId
     } = body
 
     const message = await MessageService.createMessage({
@@ -69,7 +91,8 @@ export async function POST(req: Request) {
       mimeType,
       fileSize,
       thumbnailUrl,
-      duration
+      duration,
+      sectorId
     })
 
     return NextResponse.json({ success: true, data: message }, { status: 201 })
