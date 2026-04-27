@@ -589,7 +589,8 @@ Todos os dados e mensagens serão excluídos.`;
       }
     };
     fetchMessages();
-  }, [activeConversation?.id, refreshKey, setMessages, setLoadingMessages, selectedSectorId]);
+    // currentSectorId entra como dep para refazer o fetch quando uma "retomada" muda o tenure ativo
+  }, [activeConversation?.id, activeConversation?.currentSectorId, refreshKey, setMessages, setLoadingMessages, selectedSectorId]);
 
   // Busca papel do usuário e permissões globais
   useEffect(() => {

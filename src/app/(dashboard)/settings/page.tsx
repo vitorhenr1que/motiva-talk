@@ -26,8 +26,10 @@ export default function SettingsPage() {
       contacts: false,
       suggestions: true,
       settings: true
-    }
+    },
+    defaultTriageSectorId: null as string | null
   });
+  const [sectors, setSectors] = useState<any[]>([]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -53,6 +55,13 @@ export default function SettingsPage() {
        const settingsData = await settingsRes.json();
        if (settingsData.success) {
          setChatSettings(settingsData.data);
+       }
+
+       // 3. Fetch sectors
+       const sectorsRes = await fetch('/api/sectors');
+       const sectorsData = await sectorsRes.json();
+       if (sectorsData.success) {
+         setSectors(sectorsData.data);
        }
     } catch (e) {
       console.error('[SETTINGS] Failed to load settings:', e);
@@ -252,6 +261,8 @@ export default function SettingsPage() {
                          <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600 shadow-inner"></div>
                       </label>
                    </div>
+
+
 
                     <div className="px-4 py-2 space-y-2">
                        <h3 className="font-bold text-slate-800 text-sm">Mensagem de Finalização Automática</h3>

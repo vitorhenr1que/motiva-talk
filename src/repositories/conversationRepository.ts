@@ -95,11 +95,22 @@ export class ConversationRepository {
     }
     if (where.channelId) query = query.eq('channelId', where.channelId);
     
-    // Filtros de Setor e Data — visibilidade ESTRITA pelo currentSectorId.
-    // Conversa só aparece no setor X se for o setor responsável atual.
+    // Filtros de Setor:
+    // - Padrão: visibilidade ESTRITA por currentSectorId (fila ativa).
+    // - historical=true: apenas conversas com tenure passado naquele setor (leftAt IS NOT NULL),
+    //   excluindo as que ainda estão na fila ativa do setor (currentSectorId !== sectorId).
     if (where.sectorId) {
       if (where.sectorId === 'UNASSIGNED') {
         query = query.is('currentSectorId', null);
+      } else if (where.historical) {
+        const { data: pastRows } = await supabaseAdmin
+          .from('ConversationSectorHistory')
+          .select('conversationId')
+          .eq('sectorId', where.sectorId)
+          .not('leftAt', 'is', null);
+        const pastIds = Array.from(new Set((pastRows || []).map((r: any) => r.conversationId)));
+        if (pastIds.length === 0) return [];
+        query = query.in('id', pastIds).neq('currentSectorId', where.sectorId);
       } else {
         query = query.eq('currentSectorId', where.sectorId);
       }
@@ -138,6 +149,38 @@ export class ConversationRepository {
     if (error) throw error
 
     return data
+  }
+
+  /**
+   * Conta conversas com tenures PASSADOS no setor selecionado (aba "Histórico"),
+   * excluindo as que ainda estão na fila ativa daquele setor.
+   * Retorna 0 quando não há sectorId específico ou for UNASSIGNED.
+   */
+  static async countHistorical(where: any): Promise<number> {
+    if (!where.sectorId || where.sectorId === 'UNASSIGNED') return 0;
+
+    const { data: pastRows } = await supabaseAdmin
+      .from('ConversationSectorHistory')
+      .select('conversationId')
+      .eq('sectorId', where.sectorId)
+      .not('leftAt', 'is', null);
+    const pastIds = Array.from(new Set((pastRows || []).map((r: any) => r.conversationId)));
+    if (pastIds.length === 0) return 0;
+
+    let query = supabaseAdmin
+      .from('Conversation')
+      .select('*', { count: 'exact', head: true })
+      .in('id', pastIds)
+      .neq('currentSectorId', where.sectorId);
+
+    if (where.channelId) query = query.eq('channelId', where.channelId);
+    if (where.allowedChannelIds && where.allowedChannelIds.length > 0) {
+      query = query.in('channelId', where.allowedChannelIds);
+    }
+
+    const { count, error } = await query;
+    if (error) return 0;
+    return count || 0;
   }
 
   static async countByStatus(where: any) {

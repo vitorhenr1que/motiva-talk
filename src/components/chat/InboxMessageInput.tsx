@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useChatStore } from '@/store/useChatStore';
-import { 
-  Send, Smile, Paperclip, Zap, MessageSquareText, Loader2, X, Edit2, Check, Lock, 
-  Image as ImageIcon, Video, FileText, UserPlus as ContactIcon, Mic
+import {
+  Send, Smile, Paperclip, Zap, MessageSquareText, Loader2, X, Edit2, Check, Lock,
+  Image as ImageIcon, Video, FileText, UserPlus as ContactIcon, Mic, ArrowLeftCircle
 } from 'lucide-react';
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
 import { QuickReplyMenu } from '@/components/quick-replies/Menu';
@@ -25,6 +25,67 @@ function cn(...inputs: ClassValue[]) {
 const capitalize = (str: string) => {
   if (!str) return '';
   return str.charAt(0).toUpperCase() + str.slice(1);
+};
+
+/**
+ * Banner exibido quando o usuário está visualizando uma conversa que pertence ao tenure
+ * passado do setor atualmente filtrado (modo somente leitura). Permite "retomar" a conversa,
+ * o que dispara um transfer-sector de volta para o selectedSectorId — abrindo um novo tenure
+ * e devolvendo a conversa à fila ativa do setor.
+ */
+const HistoricalSectorBanner: React.FC<{ conversationId: string; targetSectorId: string }> = ({ conversationId, targetSectorId }) => {
+  const [resuming, setResuming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleResume = async () => {
+    if (resuming) return;
+    setResuming(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/conversations/transfer-sector', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId,
+          targetSectorId,
+          note: 'Atendimento retomado'
+        })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || 'Falha ao retomar');
+      // O update da conversa chega via realtime e atualiza activeConversation +
+      // dispara o refetch das mensagens (via dep currentSectorId no InboxChatArea).
+    } catch (e: any) {
+      setError(e.message || 'Erro ao retomar conversa');
+    } finally {
+      setResuming(false);
+    }
+  };
+
+  return (
+    <div className="bg-slate-900 text-white px-8 py-5 flex items-center justify-between gap-6 animate-in slide-in-from-bottom duration-300">
+      <div className="flex items-center gap-4">
+        <div className="h-10 w-10 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 border border-amber-500/20">
+          <Lock size={20} />
+        </div>
+        <div>
+          <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-white">Histórico do Setor — Somente Leitura</h4>
+          <p className="text-[11px] text-slate-400 font-medium mt-1">Esta conversa foi transferida e está em modo de visualização.</p>
+        </div>
+      </div>
+      <button
+        onClick={handleResume}
+        disabled={resuming}
+        className="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2 shadow-2xl shadow-blue-900/50 shrink-0"
+      >
+        {resuming ? <Loader2 size={14} className="animate-spin" /> : <ArrowLeftCircle size={14} />}
+        {resuming ? 'Retomando...' : 'Retomar Atendimento'}
+      </button>
+      {error && (
+        <p className="absolute bottom-1 left-8 text-[9px] font-bold text-rose-400">{error}</p>
+      )}
+    </div>
+  );
 };
 
 export const MessageInput = () => {
@@ -461,18 +522,7 @@ export const MessageInput = () => {
   }
 
   if (isHistoricalSector) {
-    return (
-      <div className="border-t bg-amber-50/40 p-6 flex flex-col items-center justify-center gap-2">
-         <div className="flex items-center gap-2 text-amber-600">
-           <Lock size={16} />
-           <p className="text-xs font-black uppercase tracking-widest">Histórico do Setor — Somente Leitura</p>
-         </div>
-         <p className="text-[11px] text-amber-600/80 font-medium text-center">
-           Esta conversa foi transferida para outro setor. Você consegue ver apenas as mensagens
-           até o momento da transferência. Para responder, alterne para o setor atual da conversa.
-         </p>
-      </div>
-    );
+    return <HistoricalSectorBanner conversationId={activeConversation.id} targetSectorId={selectedSectorId!} />;
   }
 
   return (

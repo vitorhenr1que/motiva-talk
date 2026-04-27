@@ -199,7 +199,10 @@ export class WebhookIngestionService {
 
       if (!conversation) {
         console.log(`[INGEST] Criando nova conversa para o contato...`);
-        const initialSectorId: string | null = channel.defaultSectorId || null;
+        // Tenta pegar o setor do canal, se não tiver, pega o global
+        const { data: globalSettings } = await supabaseAdmin.from('ChatSetting').select('defaultTriageSectorId').single();
+        const initialSectorId: string | null = channel.defaultSectorId || globalSettings?.defaultTriageSectorId || null;
+        
         conversation = await ConversationRepository.create({
           contactId: contact.id,
           channelId: channel.id,
@@ -219,6 +222,26 @@ export class WebhookIngestionService {
         console.log(`[INGEST] 3. Conversa criada: ${conversation.id} (setor inicial: ${initialSectorId || 'NULL'})`);
       } else {
         console.log(`[INGEST] 3. Conversa ativa encontrada: ${conversation.id}`);
+        
+        // Se a conversa existe mas não tem setor, move para a triagem agora
+        if (!conversation.currentSectorId) {
+          const { data: globalSettings } = await supabaseAdmin.from('ChatSetting').select('defaultTriageSectorId').single();
+          const initialSectorId = channel.defaultSectorId || globalSettings?.defaultTriageSectorId || null;
+          
+          if (initialSectorId) {
+            console.log(`[INGEST] Movendo conversa existente ${conversation.id} para triagem: ${initialSectorId}`);
+            await ConversationRepository.update(conversation.id, { currentSectorId: initialSectorId });
+            
+            const { ConversationSectorHistoryRepository } = await import('@/repositories/conversationSectorHistoryRepository');
+            await ConversationSectorHistoryRepository.insert({
+              conversationId: conversation.id,
+              sectorId: initialSectorId,
+              enteredAt: new Date().toISOString()
+            });
+            
+            conversation.currentSectorId = initialSectorId;
+          }
+        }
       }
 
       // --- TRATAMENTO ESPECIAL PARA REAÇÕES ---

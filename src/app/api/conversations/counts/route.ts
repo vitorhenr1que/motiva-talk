@@ -41,8 +41,11 @@ export async function GET(req: Request) {
       where.currentUserId = dbUser?.id;
     }
 
-    const counts = await ConversationRepository.countByStatus(where)
-    return NextResponse.json({ success: true, data: counts })
+    const [counts, historical] = await Promise.all([
+      ConversationRepository.countByStatus(where),
+      ConversationRepository.countHistorical(where)
+    ]);
+    return NextResponse.json({ success: true, data: { ...counts, HISTORICAL: historical } })
   } catch (error) {
     return handleApiError(error, req, { route: '/api/conversations/counts' })
   }

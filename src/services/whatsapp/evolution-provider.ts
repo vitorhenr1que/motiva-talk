@@ -411,6 +411,17 @@ export class EvolutionProvider implements WhatsAppProvider {
       };
     } else if (inner.contactMessage || inner.contactsArrayMessage) {
       type = 'CONTACT';
+    } else if (inner.stickerMessage) {
+      type = 'STICKER';
+      mediaFields = {
+        mediaUrl: inner.stickerMessage.url,
+        mimeType: inner.stickerMessage.mimetype,
+        fileSize: inner.stickerMessage.fileLength,
+        base64: inner.stickerMessage.base64
+      };
+    } else if (inner.locationMessage) {
+      type = 'LOCATION';
+      content = `📍 Localização: ${inner.locationMessage.address || ''} (${inner.locationMessage.degreesLatitude}, ${inner.locationMessage.degreesLongitude})`;
     }
 
     let quotedMessageExternalId: string | null = null;

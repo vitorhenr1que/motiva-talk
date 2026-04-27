@@ -1,6 +1,6 @@
 export type UserRole = 'ADMIN' | 'SUPERVISOR' | 'AGENT';
 export type ConversationStatus = 'OPEN' | 'IN_PROGRESS' | 'CLOSED' | 'FOLLOW_UP';
-export type MessageType = 'TEXT' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'DOCUMENT' | 'CONTACT' | 'REACTION' | 'SYSTEM';
+export type MessageType = 'TEXT' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'DOCUMENT' | 'CONTACT' | 'REACTION' | 'SYSTEM' | 'STICKER' | 'LOCATION';
 export type SenderType = 'USER' | 'AGENT' | 'SYSTEM';
 export type FileKind = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'PDF' | 'DOCUMENT' | 'UNKNOWN';
 

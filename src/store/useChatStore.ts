@@ -86,26 +86,28 @@ interface ChatState {
   loadingMore: boolean,
   nextCursor: string | null,
   hasMore: boolean,
-  activeTab: 'unread' | 'in_progress' | 'closed',
-  setActiveTab: (tab: 'unread' | 'in_progress' | 'closed') => void;
+  activeTab: 'unread' | 'in_progress' | 'closed' | 'history',
+  setActiveTab: (tab: 'unread' | 'in_progress' | 'closed' | 'history') => void;
 
   tabData: {
     unread: { list: Conversation[], hasMore: boolean, loading: boolean, loadingMore: boolean, initialized: boolean },
     in_progress: { list: Conversation[], hasMore: boolean, loading: boolean, loadingMore: boolean, initialized: boolean },
     closed: { list: Conversation[], hasMore: boolean, loading: boolean, loadingMore: boolean, initialized: boolean },
+    history: { list: Conversation[], hasMore: boolean, loading: boolean, loadingMore: boolean, initialized: boolean },
   }
 
   tabCounts: {
     unread: number,
     in_progress: number,
-    closed: number
+    closed: number,
+    history: number
   }
 
-  setTabCounts: (counts: { unread?: number, in_progress?: number, closed?: number }) => void;
-  incrementCount: (tab: 'unread' | 'in_progress' | 'closed') => void;
-  decrementCount: (tab: 'unread' | 'in_progress' | 'closed') => void;
+  setTabCounts: (counts: { unread?: number, in_progress?: number, closed?: number, history?: number }) => void;
+  incrementCount: (tab: 'unread' | 'in_progress' | 'closed' | 'history') => void;
+  decrementCount: (tab: 'unread' | 'in_progress' | 'closed' | 'history') => void;
 
-  setTabData: (tab: 'unread' | 'in_progress' | 'closed', data: Partial<{ list: Conversation[], hasMore: boolean, loading: boolean, loadingMore: boolean, initialized: boolean }>, append?: boolean) => void;
+  setTabData: (tab: 'unread' | 'in_progress' | 'closed' | 'history', data: Partial<{ list: Conversation[], hasMore: boolean, loading: boolean, loadingMore: boolean, initialized: boolean }>, append?: boolean) => void;
   resetTabs: () => void;
 
   tags: any[]
@@ -200,11 +202,13 @@ export const useChatStore = create<ChatState>((set) => ({
     unread: { list: [], hasMore: true, loading: false, loadingMore: false, initialized: false },
     in_progress: { list: [], hasMore: true, loading: false, loadingMore: false, initialized: false },
     closed: { list: [], hasMore: true, loading: false, loadingMore: false, initialized: false },
+    history: { list: [], hasMore: true, loading: false, loadingMore: false, initialized: false },
   },
   tabCounts: {
     unread: 0,
     in_progress: 0,
-    closed: 0
+    closed: 0,
+    history: 0
   },
 
   setTabCounts: (counts) => set((state) => ({
@@ -256,15 +260,16 @@ export const useChatStore = create<ChatState>((set) => ({
       unread: { list: [], hasMore: true, loading: false, loadingMore: false, initialized: false },
       in_progress: { list: [], hasMore: true, loading: false, loadingMore: false, initialized: false },
       closed: { list: [], hasMore: true, loading: false, loadingMore: false, initialized: false },
+      history: { list: [], hasMore: true, loading: false, loadingMore: false, initialized: false },
     },
-    tabCounts: { unread: 0, in_progress: 0, closed: 0 }
+    tabCounts: { unread: 0, in_progress: 0, closed: 0, history: 0 }
   }),
 
   removeConversationLocally: (id) => set((state) => {
     const nextTabData = { ...state.tabData };
     const nextTabCounts = { ...state.tabCounts };
 
-    (['unread', 'in_progress', 'closed'] as const).forEach(tabKey => {
+    (['unread', 'in_progress', 'closed', 'history'] as const).forEach(tabKey => {
       const tab = nextTabData[tabKey];
       const conv = tab.list.find(c => c.id === id);
       if (conv) {

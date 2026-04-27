@@ -219,14 +219,15 @@ export const Sidebar = () => {
       if (startDate) url += `&startDate=${startDate}`;
       if (endDate) url += `&endDate=${endDate}`;
       if (debouncedSearch) url += `&search=${encodeURIComponent(debouncedSearch)}`;
-      
+
       const res = await fetch(url);
       const data = await res.json();
       if (data.success) {
         setTabCounts({
           unread: data.data.OPEN,
           in_progress: data.data.IN_PROGRESS,
-          closed: data.data.CLOSED
+          closed: data.data.CLOSED,
+          history: data.data.HISTORICAL || 0
         });
       }
     } catch (e) {
@@ -234,9 +235,12 @@ export const Sidebar = () => {
     }
   };
 
-  const fetchTabItems = async (tab: 'unread' | 'in_progress' | 'closed', append = false) => {
+  const fetchTabItems = async (tab: 'unread' | 'in_progress' | 'closed' | 'history', append = false) => {
     if (!selectedChannelId) return;
-    
+
+    // Aba "history" só faz sentido com filtro de setor selecionado
+    if (tab === 'history' && !selectedSectorId) return;
+
     const currentTab = tabData[tab];
     // Evita requisições duplicadas
     if (currentTab.loading || currentTab.loadingMore) return;
@@ -246,8 +250,11 @@ export const Sidebar = () => {
     setTabData(tab, { [append ? 'loadingMore' : 'loading']: true });
     try {
       const status = getTabStatus(tab);
-      let url = `/api/conversations?channelId=${selectedChannelId}&status=${status}&limit=15`;
-      
+      const isHistory = tab === 'history';
+      let url = `/api/conversations?channelId=${selectedChannelId}&limit=15`;
+      if (status) url += `&status=${status}`;
+      if (isHistory) url += `&historical=true`;
+
       if (lastItem) {
          const value = lastItem.lastMessageAt;
          url += `&cursorValue=${encodeURIComponent(value || '')}&cursorId=${lastItem.id}`;
@@ -287,6 +294,13 @@ export const Sidebar = () => {
     end: endDate,
     search: debouncedSearch 
   });
+
+  // Se o filtro de setor sair enquanto a aba Histórico está ativa, voltamos para "Não Lidas"
+  useEffect(() => {
+    if (activeTab === 'history' && !selectedSectorId) {
+      setActiveTab('unread');
+    }
+  }, [selectedSectorId, activeTab, setActiveTab]);
 
   // Efeito principal: troca de aba, canal, etiqueta ou busca
   useEffect(() => {
@@ -532,7 +546,7 @@ export const Sidebar = () => {
               </span>
             )}
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('closed')}
             className={cn(
                "flex-1 py-1.5 text-[10px] font-black uppercase tracking-tight rounded-lg transition-all flex items-center justify-center gap-1.5",
@@ -546,6 +560,23 @@ export const Sidebar = () => {
               </span>
             )}
           </button>
+          {selectedSectorId && (
+            <button
+              onClick={() => setActiveTab('history')}
+              title="Conversas que já passaram por este setor (somente leitura)"
+              className={cn(
+                "flex-1 py-1.5 text-[10px] font-black uppercase tracking-tight rounded-lg transition-all flex items-center justify-center gap-1.5",
+                activeTab === 'history' ? "bg-white text-amber-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              Histórico
+              {tabCounts.history > 0 && (
+                <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-100 px-1 text-[9px] font-black text-amber-600">
+                  {tabCounts.history}
+                </span>
+              )}
+            </button>
+          )}
         </div>
       </div>
 

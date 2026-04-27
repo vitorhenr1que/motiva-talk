@@ -31,7 +31,8 @@ export async function GET(req: Request) {
             contacts: false,
             suggestions: true,
             settings: true
-          }
+          },
+          defaultTriageSectorId: null
         } 
       })
     }
@@ -40,22 +41,23 @@ export async function GET(req: Request) {
     
     return NextResponse.json({ 
       success: true, 
-      data: {
-        autoIdentifyAgent: settings.autoIdentifyAgent,
-        allowAgentNameEdit: settings.allowAgentNameEdit ?? (settings as any).allowAgentEditName ?? false,
-        allowAgentDeleteConversation: settings.allowAgentDeleteConversation ?? false,
-        finishMessage: settings.finishMessage || 'Seu atendimento foi finalizado. Gostaríamos de saber sua opinião sobre o nosso atendimento:',
-        agentMenuVisibility: settings.agentMenuVisibility || {
-          conversations: true,
-          funnel: true,
-          reports: false,
-          channels: false,
-          contacts: false,
-          suggestions: true,
-          settings: true
+        data: {
+          autoIdentifyAgent: settings.autoIdentifyAgent,
+          allowAgentNameEdit: settings.allowAgentNameEdit ?? (settings as any).allowAgentEditName ?? false,
+          allowAgentDeleteConversation: settings.allowAgentDeleteConversation ?? false,
+          finishMessage: settings.finishMessage || 'Seu atendimento foi finalizado. Gostaríamos de saber sua opinião sobre o nosso atendimento:',
+          agentMenuVisibility: settings.agentMenuVisibility || {
+            conversations: true,
+            funnel: true,
+            reports: false,
+            channels: false,
+            contacts: false,
+            suggestions: true,
+            settings: true
+          },
+          defaultTriageSectorId: settings.defaultTriageSectorId || null
         }
-      }
-    })
+      })
   } catch (error) {
     return handleApiError(error, req, { route: ROUTE })
   }
@@ -72,7 +74,7 @@ export async function PATCH(req: Request) {
     const body = await req.json()
     console.log(`[API] ${req.method} ${ROUTE}:`, body);
 
-    const { autoIdentifyAgent, allowAgentNameEdit, allowAgentDeleteConversation, agentMenuVisibility, finishMessage } = body
+    const { autoIdentifyAgent, allowAgentNameEdit, allowAgentDeleteConversation, agentMenuVisibility, finishMessage, defaultTriageSectorId } = body
 
     // Tenta atualizar ou inserir se não existir
     const { data: existing } = await supabaseAdmin.from('ChatSetting').select('id').single()
@@ -83,7 +85,8 @@ export async function PATCH(req: Request) {
       allowAgentNameEdit,
       allowAgentDeleteConversation,
       agentMenuVisibility,
-      finishMessage
+      finishMessage,
+      defaultTriageSectorId
     };
 
     if (existing) {

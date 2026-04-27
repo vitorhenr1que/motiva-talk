@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
 import { useChatStore } from '@/store/useChatStore';
 import { X, Filter, ChevronDown, Calendar, User, Layers, Tag, Phone } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -25,12 +26,24 @@ export function SidebarFiltersPopover() {
   const [sectors, setSectors] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [userRole, setUserRole] = useState<string>('AGENT');
 
   useEffect(() => {
     if (isOpen) {
       const fetchData = async () => {
         setLoading(true);
         try {
+          const { data: { session } } = await supabase.auth.getSession();
+          let currentRole = 'AGENT';
+          if (session?.user) {
+             const resUser = await fetch(`/api/users/${session.user.id}`);
+             const userData = await resUser.json();
+             if (userData.success) {
+               setUserRole(userData.data.role);
+               currentRole = userData.data.role;
+             }
+          }
+
           const [secRes, userRes] = await Promise.all([
             fetch('/api/sectors?mine=true'),
             fetch('/api/users')
@@ -39,8 +52,15 @@ export function SidebarFiltersPopover() {
             secRes.json(),
             userRes.json()
           ]);
-          setSectors(secData.data || []);
+          
+          const fetchedSectors = secData.data || [];
+          setSectors(fetchedSectors);
           setUsers(userData.data || []);
+
+          // Se for AGENTE e não tiver setor selecionado, seleciona o primeiro disponível
+          if (currentRole === 'AGENT' && !selectedSectorId && fetchedSectors.length > 0) {
+            setSelectedSectorId(fetchedSectors[0].id);
+          }
         } catch (e) {
           console.error('Failed to fetch filters data:', e);
         } finally {
@@ -62,7 +82,11 @@ export function SidebarFiltersPopover() {
 
   const clearFilters = () => {
     setSelectedTagId(null);
-    setSelectedSectorId(null);
+    if (userRole === 'ADMIN' || userRole === 'SUPERVISOR') {
+      setSelectedSectorId(null);
+    } else if (sectors.length > 0) {
+      setSelectedSectorId(sectors[0].id);
+    }
     setSelectedUserId(null);
     setStartDate(null);
     setEndDate(null);
@@ -141,7 +165,9 @@ export function SidebarFiltersPopover() {
                     onChange={(e) => setSelectedSectorId(e.target.value || null)}
                     className="w-full rounded-xl border border-slate-100 bg-slate-50 py-2 px-3 text-[11px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
                   >
-                    <option value="">Todos os Setores</option>
+                    {(userRole === 'ADMIN' || userRole === 'SUPERVISOR') && (
+                      <option value="">Todos os Setores</option>
+                    )}
                     {sectors.map(s => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}

@@ -36,8 +36,12 @@ export async function GET(req: Request) {
       startDate: searchParams.get('startDate') || undefined,
       endDate: searchParams.get('endDate') || undefined,
       search: search || undefined,
+      historical: searchParams.get('historical') === 'true',
       limit
     }
+
+    // No modo histórico, status é ignorado (a aba lista todas as conversas com tenure passado)
+    if (where.historical) where.status = undefined;
 
     if (cursorValue && cursorId) {
       where.cursor = {
