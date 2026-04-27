@@ -4,7 +4,10 @@
       "mcp__supabase__execute_sql",
       "mcp__supabase__apply_migration",
       "Bash(npx tsc *)",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(npm run *)",
+      "Bash(awk '/conversationRepository\\\\.ts/,/^$/')",
+      "Bash(git stash *)"
     ]
   },
   "enabledMcpjsonServers": [

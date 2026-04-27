@@ -1,6 +1,34 @@
 import { ConversationRepository } from '@/repositories/conversationRepository'
+import { ConversationSectorHistoryRepository } from '@/repositories/conversationSectorHistoryRepository'
 
 export class ConversationService {
+  /**
+   * Aplica reset de setor no fechamento da conversa.
+   * Por regra de negócio, ao fechar a conversa o currentSectorId volta para o
+   * setor padrão do canal (Channel.defaultSectorId) e um novo tenure é registrado.
+   * Idempotente: se já está no setor padrão, não faz nada.
+   */
+  private static async applySectorResetOnClose(conversationId: string) {
+    const conversation = await ConversationRepository.findById(conversationId);
+    if (!conversation) return;
+
+    const { ChannelRepository } = await import('@/repositories/channelRepository');
+    const channel = await ChannelRepository.findById(conversation.channelId);
+    const defaultSectorId: string | null = channel?.defaultSectorId || null;
+
+    if (conversation.currentSectorId === defaultSectorId) return;
+
+    const closeAt = new Date().toISOString();
+    await ConversationSectorHistoryRepository.closeActive(conversationId, closeAt);
+    await ConversationSectorHistoryRepository.insert({
+      conversationId,
+      sectorId: defaultSectorId,
+      enteredAt: closeAt
+    });
+    await ConversationRepository.update(conversationId, { currentSectorId: defaultSectorId });
+    console.log(`[CONVERSA] Reset de setor no fechamento: ${conversation.currentSectorId || 'NULL'} -> ${defaultSectorId || 'NULL'}`);
+  }
+
   /**
    * Lista conversas por filtro genérico (suporta RBAC)
    */
@@ -33,7 +61,12 @@ export class ConversationService {
    */
   static async updateStatus(conversationId: string, status: string) {
     console.log(`[CONVERSA] Alterando status da conversa ${conversationId} para: ${status}`);
-    
+
+    // Reset de setor antes da atualização do status (gera história e ajusta currentSectorId)
+    if (status === 'CLOSED') {
+      await this.applySectorResetOnClose(conversationId);
+    }
+
     const updated = await ConversationRepository.update(conversationId, { status })
     
     // Se a conversa foi fechada, gera uma solicitação de feedback e envia a mensagem automática
@@ -94,17 +127,32 @@ export class ConversationService {
   }
 
   /**
-   * Cria uma nova conversa (ex: contato enviou mensagem pela primeira vez)
+   * Cria uma nova conversa (ex: contato enviou mensagem pela primeira vez).
+   * Já gera o tenure inicial em ConversationSectorHistory usando o setor padrão do canal.
    */
   static async startConversation(contactId: string, channelId: string) {
     const existing = await ConversationRepository.findActive(contactId, channelId)
     if (existing) return existing
 
-    return await ConversationRepository.create({
+    const { ChannelRepository } = await import('@/repositories/channelRepository');
+    const channel = await ChannelRepository.findById(channelId);
+    const initialSectorId: string | null = channel?.defaultSectorId || null;
+
+    const created = await ConversationRepository.create({
       contactId: contactId,
       channelId: channelId,
-      status: 'OPEN'
-    })
+      status: 'OPEN',
+      currentSectorId: initialSectorId
+    });
+
+    // Tenure inicial: o setor padrão "entrou" no momento da criação
+    await ConversationSectorHistoryRepository.insert({
+      conversationId: created.id,
+      sectorId: initialSectorId,
+      enteredAt: created.createdAt
+    });
+
+    return created;
   }
 
   /**
@@ -118,6 +166,11 @@ export class ConversationService {
    * Atualização genérica de conversa
    */
   static async updateConversation(id: string, data: any) {
+    // Se está fechando via update genérico, aplica o reset de setor primeiro
+    if (data.status === 'CLOSED') {
+      await this.applySectorResetOnClose(id);
+    }
+
     const updated = await ConversationRepository.update(id, data);
 
     // Mesma lógica caso o status venha no update genérico
@@ -152,7 +205,8 @@ export class ConversationService {
           channelId: updated.channelId,
           senderType: 'SYSTEM',
           content: finalMessage,
-          type: 'TEXT'
+          type: 'TEXT',
+          isInternal: true
         });
 
         console.log(`[FEEDBACK] Mensagem automática (update genérico) enviada para ${id}`);
@@ -246,7 +300,7 @@ export class ConversationService {
       channelId: targetChannelId,
       senderType: 'SYSTEM',
       content: transferMsgTarget,
-      type: 'TEXT',
+      type: 'SYSTEM',
       isInternal: true,
       metadata: { 
         isTransfer: true, 
@@ -264,7 +318,7 @@ export class ConversationService {
       channelId: oldChannelId,
       senderType: 'SYSTEM',
       content: transferMsgSource,
-      type: 'TEXT',
+      type: 'SYSTEM',
       isInternal: true,
       metadata: { 
         isTransfer: true, 
@@ -276,5 +330,93 @@ export class ConversationService {
 
     // Retorna a conversa de origem (que permanece ativa no canal atual)
     return sourceConversation;
+  }
+
+  /**
+   * Transfere uma conversa para outro setor (Modo Handoff):
+   * 1. Mantém a mesma conversa.
+   * 2. Atualiza o currentSectorId e assignedTo.
+   * 3. Registra as notas de transferência.
+   */
+  static async transferToSector(params: {
+    conversationId: string,
+    targetSectorId: string,
+    targetAgentId?: string,
+    note?: string,
+    /** ID do atendente que está realizando a transferência */
+    transferredById?: string | null
+  }) {
+    const { MessageService } = await import('@/services/messages');
+    const { supabaseAdmin } = await import('@/lib/supabase-admin');
+
+    // 1. Buscar a conversa
+    const conversation = await ConversationRepository.findById(params.conversationId);
+    if (!conversation) throw new Error('Conversa não encontrada');
+
+    const channelId = conversation.channelId;
+    const originSectorId: string | null = conversation.currentSectorId || null;
+
+    // Idempotência: se já está no setor destino, não duplica history nem note
+    if (originSectorId === params.targetSectorId) {
+      console.log(`[CONVERSA] Transferência ignorada — conversa ${conversation.id} já está no setor ${params.targetSectorId}`);
+      return conversation;
+    }
+
+    // 2. Buscar nomes para a nota privada
+    const sectorIds = [originSectorId, params.targetSectorId].filter(Boolean) as string[];
+    const { data: sectors } = await supabaseAdmin
+      .from('Sector')
+      .select('id, name')
+      .in('id', sectorIds);
+    const originName = sectors?.find(s => s.id === originSectorId)?.name || 'Geral';
+    const targetName = sectors?.find(s => s.id === params.targetSectorId)?.name || 'Setor';
+
+    let agentName = 'Sistema';
+    if (params.transferredById) {
+      const { data: u } = await supabaseAdmin
+        .from('User')
+        .select('name')
+        .eq('id', params.transferredById)
+        .maybeSingle();
+      if (u?.name) agentName = u.name;
+    }
+
+    // 3. Transição de tenure: encerra o tenure atual ANTES de mexer em qualquer outra coisa
+    const transferAt = new Date().toISOString();
+    await ConversationSectorHistoryRepository.closeActive(params.conversationId, transferAt);
+
+    // 4. Atualiza a conversa (ownership)
+    const updatedConversation = await ConversationRepository.update(params.conversationId, {
+      currentSectorId: params.targetSectorId,
+      assignedTo: params.targetAgentId || null,
+      updatedAt: transferAt
+    });
+
+    // 5. Insere o novo tenure (setor destino é o atual a partir de transferAt)
+    await ConversationSectorHistoryRepository.insert({
+      conversationId: params.conversationId,
+      sectorId: params.targetSectorId,
+      enteredAt: transferAt,
+      transferredById: params.transferredById || null
+    });
+
+    console.log(`[CONVERSA] Transferência ${conversation.id}: ${originSectorId || 'NULL'} -> ${params.targetSectorId}`);
+
+    // 6. ÚNICA private note (criada APÓS transferAt → invisível ao setor de origem,
+    //    visível apenas ao setor destino, que vê tudo a partir de enteredAt = transferAt).
+    const reasonPart = params.note?.trim() ? params.note.trim() : 'Não informado';
+    const noteContent = `🔄 Conversa transferida de ${originName} para ${targetName} por ${agentName}. Motivo: ${reasonPart}`;
+
+    await MessageService.createMessage({
+      conversationId: conversation.id,
+      channelId: channelId,
+      content: noteContent,
+      type: 'SYSTEM',
+      senderType: 'SYSTEM',
+      isInternal: true,
+      sectorId: params.targetSectorId
+    });
+
+    return updatedConversation;
   }
 }

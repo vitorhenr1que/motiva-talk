@@ -5,7 +5,7 @@ import { AppError, handleApiError } from '@/lib/api-errors';
 
 const ROUTE = '/api/sectors/[id]';
 
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
+export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await getServerSession();
     if (!user) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
@@ -15,7 +15,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
       throw new AppError('Apenas administradores podem editar setores', 403, 'FORBIDDEN');
     }
 
-    const id = params.id;
+    const { id } = await params;
     const { name, userIds } = await req.json();
 
     if (!name) {
@@ -38,8 +38,10 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
       await supabaseAdmin.from('UserSector').delete().eq('sectorId', id);
 
       // Adicionar os novos
-      if (userIds.length > 0) {
-        const userSectors = userIds.map((userId: string) => ({
+      const validUserIds = userIds.filter((uid: any) => uid && uid !== 'undefined');
+      
+      if (validUserIds.length > 0) {
+        const userSectors = validUserIds.map((userId: string) => ({
           userId,
           sectorId: id
         }));
@@ -54,7 +56,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   }
 }
 
-export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await getServerSession();
     if (!user) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
@@ -64,7 +66,7 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
       throw new AppError('Apenas administradores podem remover setores', 403, 'FORBIDDEN');
     }
 
-    const id = params.id;
+    const { id } = await params;
 
     const { error } = await supabaseAdmin.from('Sector').delete().eq('id', id);
 

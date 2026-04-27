@@ -11,13 +11,13 @@ import { ContactProfileSidebar } from '@/components/chat/ContactProfileSidebar';
 
 export default function InboxPage() {
   const {
-     setConversations,
-     setChannels,
-     selectedChannelId,
-     setSelectedChannelId,
-     isProfileOpen
-   } = useChatStore();
-  
+    setConversations,
+    setChannels,
+    selectedChannelId,
+    setSelectedChannelId,
+    isProfileOpen
+  } = useChatStore();
+
   // Realtime Subscriptions
   useRealtimeInbox();
 

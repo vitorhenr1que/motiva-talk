@@ -12,7 +12,7 @@ export function SectorForm({ item, users, onClose, onSuccess }: SectorFormProps)
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: item?.name || '',
-    userIds: item?.users?.map((u: any) => u.userId) || [],
+    userIds: item?.users?.map((u: any) => u.userId).filter((id: any) => !!id) || [],
   });
   const [searchUser, setSearchUser] = useState('');
 

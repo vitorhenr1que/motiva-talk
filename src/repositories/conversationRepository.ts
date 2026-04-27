@@ -74,7 +74,7 @@ export class ConversationRepository {
         if (where.allowedSectorIds && where.allowedSectorIds.length > 0) {
           query = query.or(`currentSectorId.in.(${where.allowedSectorIds.join(',')}),currentSectorId.is.null`);
         } else {
-          query = query.is('currentSectorId', null); // Se não tem setor, só vê os sem setor
+          query = query.is('currentSectorId', null);
         }
       } else if (where.allowedChannelIds) {
         // Se for supervisor com canais limitados
@@ -95,7 +95,8 @@ export class ConversationRepository {
     }
     if (where.channelId) query = query.eq('channelId', where.channelId);
     
-    // Filtros de Setor e Data
+    // Filtros de Setor e Data — visibilidade ESTRITA pelo currentSectorId.
+    // Conversa só aparece no setor X se for o setor responsável atual.
     if (where.sectorId) {
       if (where.sectorId === 'UNASSIGNED') {
         query = query.is('currentSectorId', null);
@@ -160,6 +161,22 @@ export class ConversationRepository {
         query = query.in('id', conversationIds);
       }
 
+      if (where.sectorId) {
+        if (where.sectorId === 'UNASSIGNED') {
+          query = query.is('currentSectorId', null);
+        } else {
+          query = query.eq('currentSectorId', where.sectorId);
+        }
+      }
+
+      if (where.assignedTo) {
+        if (where.assignedTo === 'UNASSIGNED') {
+          query = query.is('assignedTo', null);
+        } else {
+          query = query.eq('assignedTo', where.assignedTo);
+        }
+      }
+
       if (where.search) {
         const { data: contacts } = await supabaseAdmin
           .from('Contact')
@@ -174,6 +191,12 @@ export class ConversationRepository {
         query = query.in('channelId', where.allowedChannelIds);
         if (where.currentUserId) {
           query = query.or(`assignedTo.eq.${where.currentUserId},assignedTo.is.null`);
+        }
+
+        if (where.allowedSectorIds && where.allowedSectorIds.length > 0) {
+          query = query.or(`currentSectorId.in.(${where.allowedSectorIds.join(',')}),currentSectorId.is.null`);
+        } else if (where.allowedSectorIds) {
+          query = query.is('currentSectorId', null);
         }
       }
 

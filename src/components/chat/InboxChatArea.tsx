@@ -289,7 +289,9 @@ export const ChatWindow = () => {
 
        try {
          setLoadingMore(true);
-         const resp = await fetch(`/api/messages?conversationId=${activeConversation?.id}&limit=40&before=${encodeURIComponent(beforeCursor)}`);
+         let url = `/api/messages?conversationId=${activeConversation?.id}&limit=40&before=${encodeURIComponent(beforeCursor)}`;
+         if (selectedSectorId) url += `&sectorId=${selectedSectorId}`;
+         const resp = await fetch(url);
          if (resp.ok) {
             const data = await resp.json();
             addMoreMessages({

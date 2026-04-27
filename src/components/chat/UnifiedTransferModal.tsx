@@ -81,50 +81,22 @@ export default function UnifiedTransferModal({
     if (!selectedSectorId) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/conversations/${conversation.id}`, {
-        method: 'PATCH',
+      const res = await fetch('/api/conversations/transfer-sector', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          currentSectorId: selectedSectorId,
-          assignedTo: selectedAgentId || null
+          conversationId: conversation.id,
+          targetSectorId: selectedSectorId,
+          targetAgentId: selectedAgentId || undefined,
+          note: transferNote.trim() || undefined
         })
       });
 
-        const targetSectorName = sectors.find(s => s.id === selectedSectorId)?.name || 'Outro Setor';
-        const originSectorName = sectors.find(s => s.id === conversation.currentSectorId)?.name || 'Triagem/Geral';
-
-        // 1. Nota para o setor de ORIGEM
-        await fetch('/api/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            conversationId: conversation.id,
-            channelId: conversation.channelId,
-            content: `📤 *Transferência Realizada*\nPara o setor: *${targetSectorName}*${transferNote ? `\n\n📝 *Motivo:* ${transferNote}` : ''}`,
-            type: 'SYSTEM',
-            senderType: 'SYSTEM',
-            isInternal: true,
-            sectorId: conversation.currentSectorId
-          })
-        });
-
-        // 2. Nota para o setor de DESTINO
-        await fetch('/api/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            conversationId: conversation.id,
-            channelId: conversation.channelId,
-            content: `📥 *Nova Transferência Recebida*\nOrigem: *${originSectorName}*${transferNote ? `\n\n📝 *Motivo:* ${transferNote}` : ''}`,
-            type: 'SYSTEM',
-            senderType: 'SYSTEM',
-            isInternal: true,
-            sectorId: selectedSectorId
-          })
-        });
-
+      const data = await res.json();
+      if (data.success) {
         onTransferComplete();
         onClose();
+      }
     } catch (e) {
       console.error(e);
     } finally {

@@ -199,14 +199,24 @@ export class WebhookIngestionService {
 
       if (!conversation) {
         console.log(`[INGEST] Criando nova conversa para o contato...`);
+        const initialSectorId: string | null = channel.defaultSectorId || null;
         conversation = await ConversationRepository.create({
           contactId: contact.id,
           channelId: channel.id,
-          currentSectorId: channel.defaultSectorId || null,
+          currentSectorId: initialSectorId,
           status: 'OPEN',
           lastMessageAt: new Date().toISOString()
         });
-        console.log(`[INGEST] 3. Conversa criada: ${conversation.id}`);
+
+        // Tenure inicial: o setor padrão do canal "entrou" no momento da criação
+        const { ConversationSectorHistoryRepository } = await import('@/repositories/conversationSectorHistoryRepository');
+        await ConversationSectorHistoryRepository.insert({
+          conversationId: conversation.id,
+          sectorId: initialSectorId,
+          enteredAt: conversation.createdAt
+        });
+
+        console.log(`[INGEST] 3. Conversa criada: ${conversation.id} (setor inicial: ${initialSectorId || 'NULL'})`);
       } else {
         console.log(`[INGEST] 3. Conversa ativa encontrada: ${conversation.id}`);
       }

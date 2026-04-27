@@ -7,7 +7,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 export class RealtimeService {
   static async publish(channelName: string, event: string, payload: any) {
     console.log(`[REALTIME_BROADCAST] Channel: ${channelName}, Event: ${event}`);
-    
+
     try {
       const channel = supabaseAdmin.channel(channelName);
       await channel.subscribe(async (status) => {

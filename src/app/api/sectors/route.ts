@@ -11,13 +11,31 @@ export async function GET(req: Request) {
     if (!user) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
 
     const role = await getUserRole(user.email!);
+    const { searchParams } = new URL(req.url);
+    const onlyMine = searchParams.get('mine') === 'true';
     
-    // Only Admin or Supervisor can manage sectors, or we can allow agents to list them
-    // Let's allow everyone to list sectors, but manage is restricted
-    const { data: sectors, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('Sector')
       .select('*, users:UserSector(userId, user:User(id, name, email))')
       .order('createdAt', { ascending: true });
+
+    // Se for AGENTE e estiver pedindo "mine", ou se for ADMIN mas quiser filtrar os dele
+    if (onlyMine && role !== 'ADMIN') {
+      const { data: userSectors } = await supabaseAdmin
+        .from('UserSector')
+        .select('sectorId')
+        .eq('userId', user.id);
+      
+      const allowedIds = userSectors?.map(us => us.sectorId) || [];
+      
+      if (allowedIds.length > 0) {
+        query = query.in('id', allowedIds);
+      } else {
+        return NextResponse.json({ success: true, data: [] });
+      }
+    }
+
+    const { data: sectors, error } = await query;
 
     if (error) throw error;
 
@@ -53,17 +71,21 @@ export async function POST(req: Request) {
     if (sectorError) throw sectorError;
 
     // 2. Assign Users
-    if (userIds && Array.isArray(userIds) && userIds.length > 0) {
-      const userSectors = userIds.map((userId: string) => ({
-        userId,
-        sectorId: sector.id
-      }));
+    if (userIds && Array.isArray(userIds)) {
+      const validUserIds = userIds.filter((uid: any) => uid && uid !== 'undefined');
+      
+      if (validUserIds.length > 0) {
+        const userSectors = validUserIds.map((userId: string) => ({
+          userId,
+          sectorId: sector.id
+        }));
 
-      const { error: usersError } = await supabaseAdmin
-        .from('UserSector')
-        .insert(userSectors);
+        const { error: usersError } = await supabaseAdmin
+          .from('UserSector')
+          .insert(userSectors);
 
-      if (usersError) console.error('Error assigning users to sector:', usersError);
+        if (usersError) console.error('Error assigning users to sector:', usersError);
+      }
     }
 
     return NextResponse.json({ success: true, data: sector }, { status: 201 });

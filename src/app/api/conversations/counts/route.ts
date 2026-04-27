@@ -16,6 +16,8 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const channelId = searchParams.get('channelId') || undefined
     const tagId = searchParams.get('tagId') || undefined
+    const sectorId = searchParams.get('sectorId') || undefined
+    const assignedTo = searchParams.get('assignedTo') || undefined
     const search = searchParams.get('search') || undefined
 
     const dbUser = await UserRepository.findMany({ email: user.email! }).then(users => users?.[0])
@@ -23,16 +25,19 @@ export async function GET(req: Request) {
     let where: any = {
       channelId,
       tagId,
+      sectorId,
+      assignedTo,
       search
     }
 
     if (role !== 'ADMIN' && role !== 'SUPERVISOR') {
-      const { data: userChannels } = await supabaseAdmin
-        .from('UserChannel')
-        .select('channelId')
-        .eq('userId', dbUser?.id)
+      const [{ data: userChannels }, { data: userSectors }] = await Promise.all([
+        supabaseAdmin.from('UserChannel').select('channelId').eq('userId', dbUser?.id),
+        supabaseAdmin.from('UserSector').select('sectorId').eq('userId', dbUser?.id)
+      ]);
       
-      where.allowedChannelIds = userChannels?.map(uc => uc.channelId) || []
+      where.allowedChannelIds = userChannels?.map(uc => uc.channelId) || [];
+      where.allowedSectorIds = userSectors?.map(us => us.sectorId) || [];
       where.currentUserId = dbUser?.id;
     }
 

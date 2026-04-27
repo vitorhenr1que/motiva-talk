@@ -1,6 +1,6 @@
 export type UserRole = 'ADMIN' | 'SUPERVISOR' | 'AGENT';
 export type ConversationStatus = 'OPEN' | 'IN_PROGRESS' | 'CLOSED' | 'FOLLOW_UP';
-export type MessageType = 'TEXT' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'DOCUMENT' | 'CONTACT' | 'REACTION';
+export type MessageType = 'TEXT' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'DOCUMENT' | 'CONTACT' | 'REACTION' | 'SYSTEM';
 export type SenderType = 'USER' | 'AGENT' | 'SYSTEM';
 export type FileKind = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'PDF' | 'DOCUMENT' | 'UNKNOWN';
 
@@ -125,7 +125,6 @@ export interface Message {
   isInternal?: boolean;
   transferredToChannelId?: string;
   reactions?: { emoji: string; sender: string; timestamp: number }[];
-  sector?: Sector;
 }
 
 export interface QuickReply {

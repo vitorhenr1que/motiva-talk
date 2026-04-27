@@ -26,19 +26,38 @@ export class MessageService {
    * Filtra mensagens apagadas (me/todos)
    */
   static async listByConversation(conversationId: string, limit: number = 20, before?: string, allowedSectorIds?: string[], sectorId?: string) {
-    const messages = await MessageRepository.findMany({ 
+    // Quando o usuário está visualizando dentro de um setor específico, usamos o tenure
+    // (ConversationSectorHistory) daquele setor para limitar as mensagens ao período em que
+    // ele cuidou da conversa. Isso isola o histórico entre setores: o setor de origem só
+    // vê o que aconteceu até o leftAt; o destino só vê do enteredAt em diante.
+    let afterCreatedAt: string | undefined;
+    let untilCreatedAt: string | undefined;
+
+    if (sectorId) {
+      const { ConversationSectorHistoryRepository } = await import('@/repositories/conversationSectorHistoryRepository');
+      const range = await ConversationSectorHistoryRepository.findLatestRangeForSector(conversationId, sectorId);
+      if (!range) {
+        // Esse setor nunca cuidou dessa conversa — não há nada visível para ele
+        return { messages: [], nextCursor: null, hasMore: false };
+      }
+      afterCreatedAt = range.enteredAt;
+      untilCreatedAt = range.leftAt || undefined;
+    }
+
+    const messages = await MessageRepository.findMany({
       conversationId,
       limit,
       before,
       allowedSectorIds,
-      sectorId
+      afterCreatedAt,
+      untilCreatedAt
     })
-    
+
     // Filtrar localmente as deletadas para o atendente
     const filtered = messages.filter((m: any) => !m.deletedForMe);
 
     // Inverter para ASC antes de retornar para renderizar corretamente no chat (o repo mandou DESC)
-    const sorted = [...filtered].sort((a, b) => 
+    const sorted = [...filtered].sort((a, b) =>
       new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
 
@@ -46,7 +65,7 @@ export class MessageService {
     const hasMore = messages.length === limit;
     const nextCursor = hasMore ? messages[messages.length - 1].createdAt : null;
 
-    return { 
+    return {
       messages: sorted,
       nextCursor,
       hasMore
@@ -90,7 +109,7 @@ export class MessageService {
       }
     }
 
-    const isActuallyInternal = isInternal || !!metadata?.isInternal;
+    const isActuallyInternal = isInternal !== undefined ? isInternal : (senderType === 'SYSTEM' || !!metadata?.isInternal);
 
     if (!isActuallyInternal && (senderType === 'AGENT' || senderType === 'SYSTEM')) {
       try {
@@ -132,9 +151,11 @@ export class MessageService {
       }
     }
 
-    // Se o sectorId não foi passado explicitamente, tentamos pegar o atual da conversa
+    // Resolve o setor da mensagem: respeita sectorId explícito (ex.: nota interna do setor de origem
+    // na transferência) ou cai no currentSectorId atual da conversa. Visibilidade é estrita pelo
+    // currentSectorId, então toda mensagem nova carrega o setor responsável no momento.
     let finalSectorId = sectorId;
-    if (!finalSectorId) {
+    if (finalSectorId === undefined || finalSectorId === null) {
        const { ConversationRepository } = await import('@/repositories/conversationRepository');
        const conv = await ConversationRepository.findById(conversationId);
        finalSectorId = conv?.currentSectorId || null;
@@ -433,8 +454,20 @@ export class MessageService {
   }
 
   static async searchMessages(conversationId: string, query: string, sectorId?: string) {
-    const results = await MessageRepository.search(conversationId, query, sectorId)
-    
+    // Mesma regra de isolamento por tenure usada em listByConversation
+    let range: { afterCreatedAt?: string; untilCreatedAt?: string } | undefined;
+    if (sectorId) {
+      const { ConversationSectorHistoryRepository } = await import('@/repositories/conversationSectorHistoryRepository');
+      const tenure = await ConversationSectorHistoryRepository.findLatestRangeForSector(conversationId, sectorId);
+      if (!tenure) return [];
+      range = {
+        afterCreatedAt: tenure.enteredAt,
+        untilCreatedAt: tenure.leftAt || undefined
+      };
+    }
+
+    const results = await MessageRepository.search(conversationId, query, range)
+
     // Filtrar mensagens apagadas para todos (opcional: o atendente pode querer saber que algo existiu, mas aqui limpamos)
     return results.filter((m: any) => !m.deletedForEveryone).map((m: any) => ({
       id: m.id,

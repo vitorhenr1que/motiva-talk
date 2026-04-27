@@ -2,7 +2,16 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateId } from '@/lib/utils'
 
 export class MessageRepository {
-  static async findMany(where: { conversationId?: string; before?: string; limit?: number; allowedSectorIds?: string[]; sectorId?: string | null }) {
+  static async findMany(where: {
+    conversationId?: string;
+    before?: string;
+    limit?: number;
+    allowedSectorIds?: string[];
+    /** Lower bound (inclusive) baseado no enteredAt do tenure */
+    afterCreatedAt?: string;
+    /** Upper bound (exclusivo) baseado no leftAt do tenure */
+    untilCreatedAt?: string;
+  }) {
     let query = supabaseAdmin
       .from('Message')
       .select(`
@@ -18,8 +27,11 @@ export class MessageRepository {
       `)
 
     if (where.conversationId) query = query.eq('conversationId', where.conversationId);
-    if (where.sectorId) query = query.eq('sectorId', where.sectorId);
-    
+
+    // Range do tenure: limita as mensagens ao período em que aquele setor cuidou da conversa.
+    if (where.afterCreatedAt) query = query.gte('createdAt', where.afterCreatedAt);
+    if (where.untilCreatedAt) query = query.lt('createdAt', where.untilCreatedAt);
+
     if (where.allowedSectorIds && where.allowedSectorIds.length > 0) {
        // Filtra para mostrar apenas as mensagens do setor permitido OU mensagens enviadas sem setor
        query = query.or(`sectorId.in.(${where.allowedSectorIds.join(',')}),sectorId.is.null`);
@@ -101,14 +113,19 @@ export class MessageRepository {
     return data
   }
 
-  static async search(conversationId: string, queryText: string, sectorId?: string) {
+  static async search(
+    conversationId: string,
+    queryText: string,
+    range?: { afterCreatedAt?: string; untilCreatedAt?: string }
+  ) {
     let query = supabaseAdmin
       .from('Message')
       .select('id, content, createdAt, senderType, conversationId, deletedForEveryone')
       .eq('conversationId', conversationId)
       .ilike('content', `%${queryText}%`);
 
-    if (sectorId) query = query.eq('sectorId', sectorId);
+    if (range?.afterCreatedAt) query = query.gte('createdAt', range.afterCreatedAt);
+    if (range?.untilCreatedAt) query = query.lt('createdAt', range.untilCreatedAt);
 
     const { data, error } = await query
       .order('createdAt', { ascending: false })

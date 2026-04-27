@@ -32,7 +32,7 @@ export function SidebarFiltersPopover() {
         setLoading(true);
         try {
           const [secRes, userRes] = await Promise.all([
-            fetch('/api/sectors'),
+            fetch('/api/sectors?mine=true'),
             fetch('/api/users')
           ]);
           const [secData, userData] = await Promise.all([

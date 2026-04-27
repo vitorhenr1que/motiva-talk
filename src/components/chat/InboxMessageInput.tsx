@@ -38,10 +38,11 @@ export const MessageInput = () => {
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
 
-  const { 
-    activeConversation, addMessage, upsertMessage, messages, 
+  const {
+    activeConversation, addMessage, upsertMessage, messages,
     replyToMessage, setReplyToMessage,
-    editingMessage, setEditingMessage
+    editingMessage, setEditingMessage,
+    selectedSectorId
   } = useChatStore();
 
   const { isDragging, onDragOver, onDragLeave, onDrop, processFile } = useChatFileDrop((fileData) => {
@@ -440,6 +441,13 @@ export const MessageInput = () => {
 
   const isClosed = activeConversation.status === 'CLOSED';
 
+  // Setor selecionado é diferente do setor atual da conversa → visualização histórica somente leitura
+  const isHistoricalSector = !!(
+    selectedSectorId &&
+    activeConversation.currentSectorId &&
+    selectedSectorId !== activeConversation.currentSectorId
+  );
+
   if (isClosed) {
     return (
       <div className="border-t bg-slate-50/50 p-6 flex flex-col items-center justify-center gap-2">
@@ -448,6 +456,21 @@ export const MessageInput = () => {
            <p className="text-xs font-black uppercase tracking-widest">Chat Bloqueado</p>
          </div>
          <p className="text-[11px] text-slate-400 font-medium">Este atendimento foi finalizado. Reabra-o no menu superior para enviar novas mensagens.</p>
+      </div>
+    );
+  }
+
+  if (isHistoricalSector) {
+    return (
+      <div className="border-t bg-amber-50/40 p-6 flex flex-col items-center justify-center gap-2">
+         <div className="flex items-center gap-2 text-amber-600">
+           <Lock size={16} />
+           <p className="text-xs font-black uppercase tracking-widest">Histórico do Setor — Somente Leitura</p>
+         </div>
+         <p className="text-[11px] text-amber-600/80 font-medium text-center">
+           Esta conversa foi transferida para outro setor. Você consegue ver apenas as mensagens
+           até o momento da transferência. Para responder, alterne para o setor atual da conversa.
+         </p>
       </div>
     );
   }
