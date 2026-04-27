@@ -194,12 +194,26 @@ export class WebhookIngestionService {
       );
       console.log(`[INGEST] 2. Contato encontrado/criado: ${contact.name} (${contact.id})`);
 
-      // 5. Identificar ou Criar Conversa Aberta
-      let conversation = await ConversationRepository.findActive(contact.id, channel.id);
+      // 5. Identificar ou Criar Conversa
+      const { data: lastConversations } = await supabaseAdmin
+        .from('Conversation')
+        .select(`
+          *,
+          contact:Contact(*),
+          channel:Channel(*),
+          agent:User(*),
+          sector:Sector(*),
+          tags:ConversationTag(*, tag:Tag(*))
+        `)
+        .eq('contactId', contact.id)
+        .eq('channelId', channel.id)
+        .order('lastMessageAt', { ascending: false })
+        .limit(1);
+
+      let conversation = lastConversations?.[0];
 
       if (!conversation) {
         console.log(`[INGEST] Criando nova conversa para o contato...`);
-        // Tenta pegar o setor do canal, se não tiver, pega o global
         const { data: globalSettings } = await supabaseAdmin.from('ChatSetting').select('defaultTriageSectorId').single();
         const initialSectorId: string | null = channel.defaultSectorId || globalSettings?.defaultTriageSectorId || null;
         
@@ -211,7 +225,6 @@ export class WebhookIngestionService {
           lastMessageAt: new Date().toISOString()
         });
 
-        // Tenure inicial: o setor padrão do canal "entrou" no momento da criação
         const { ConversationSectorHistoryRepository } = await import('@/repositories/conversationSectorHistoryRepository');
         await ConversationSectorHistoryRepository.insert({
           conversationId: conversation.id,
@@ -220,10 +233,43 @@ export class WebhookIngestionService {
         });
 
         console.log(`[INGEST] 3. Conversa criada: ${conversation.id} (setor inicial: ${initialSectorId || 'NULL'})`);
+      } else if (conversation.status === 'CLOSED') {
+        console.log(`[INGEST] Reabrindo conversa finalizada ${conversation.id} e movendo para triagem...`);
+        
+        const { data: globalSettings } = await supabaseAdmin.from('ChatSetting').select('defaultTriageSectorId').single();
+        const triageSectorId = channel.defaultSectorId || globalSettings?.defaultTriageSectorId || null;
+        
+        const { data: reopened } = await supabaseAdmin
+          .from('Conversation')
+          .update({ 
+            status: 'OPEN', 
+            assignedTo: null,
+            finalizedBySectorId: null,
+            currentSectorId: triageSectorId,
+            unreadCount: 1 
+          })
+          .eq('id', conversation.id)
+          .select(`
+            *,
+            contact:Contact(*),
+            channel:Channel(*),
+            agent:User(*),
+            sector:Sector(*),
+            tags:ConversationTag(*, tag:Tag(*))
+          `)
+          .single();
+        
+        conversation = reopened;
+
+        const { ConversationSectorHistoryRepository } = await import('@/repositories/conversationSectorHistoryRepository');
+        await ConversationSectorHistoryRepository.insert({
+          conversationId: conversation.id,
+          sectorId: triageSectorId,
+          enteredAt: new Date().toISOString()
+        });
       } else {
         console.log(`[INGEST] 3. Conversa ativa encontrada: ${conversation.id}`);
         
-        // Se a conversa existe mas não tem setor, move para a triagem agora
         if (!conversation.currentSectorId) {
           const { data: globalSettings } = await supabaseAdmin.from('ChatSetting').select('defaultTriageSectorId').single();
           const initialSectorId = channel.defaultSectorId || globalSettings?.defaultTriageSectorId || null;

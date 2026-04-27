@@ -17,6 +17,7 @@ export class ConversationRepository {
         contactId,
         channelId,
         currentSectorId,
+        finalizedBySectorId,
         lastMessagePreview,
         finalizedAt,
         updatedAt,
@@ -124,6 +125,9 @@ export class ConversationRepository {
         const pastIds = Array.from(new Set((pastRows || []).map((r: any) => r.conversationId)));
         if (pastIds.length === 0) return [];
         query = query.in('id', pastIds).neq('currentSectorId', where.sectorId);
+      } else if (where.status === 'CLOSED') {
+        // Aba Finalizadas: filtro pelo setor que finalizou
+        query = query.eq('finalizedBySectorId', where.sectorId);
       } else {
         query = query.eq('currentSectorId', where.sectorId);
       }
@@ -238,6 +242,8 @@ export class ConversationRepository {
       if (where.sectorId) {
         if (where.sectorId === 'UNASSIGNED') {
           query = query.is('currentSectorId', null);
+        } else if (status === 'CLOSED') {
+          query = query.eq('finalizedBySectorId', where.sectorId);
         } else {
           query = query.eq('currentSectorId', where.sectorId);
         }

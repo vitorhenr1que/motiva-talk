@@ -10,23 +10,77 @@ export class ConversationService {
    */
   private static async applySectorResetOnClose(conversationId: string) {
     const conversation = await ConversationRepository.findById(conversationId);
-    if (!conversation) return;
+    if (!conversation || conversation.status === 'CLOSED') return;
 
     const { ChannelRepository } = await import('@/repositories/channelRepository');
     const channel = await ChannelRepository.findById(conversation.channelId);
     const defaultSectorId: string | null = channel?.defaultSectorId || null;
 
-    if (conversation.currentSectorId === defaultSectorId) return;
-
     const closeAt = new Date().toISOString();
+    
+    // Armazena qual era o setor ativo no momento da finalização
+    const finalizedBySectorId = conversation.currentSectorId;
+
     await ConversationSectorHistoryRepository.closeActive(conversationId, closeAt);
-    await ConversationSectorHistoryRepository.insert({
-      conversationId,
-      sectorId: defaultSectorId,
-      enteredAt: closeAt
-    });
-    await ConversationRepository.update(conversationId, { currentSectorId: defaultSectorId });
-    console.log(`[CONVERSA] Reset de setor no fechamento: ${conversation.currentSectorId || 'NULL'} -> ${defaultSectorId || 'NULL'}`);
+    
+    const updateData: any = { 
+      status: 'CLOSED',
+      finalizedAt: closeAt,
+      finalizedBySectorId: finalizedBySectorId
+    };
+
+    if (conversation.currentSectorId !== defaultSectorId) {
+      await ConversationSectorHistoryRepository.insert({
+        conversationId,
+        sectorId: defaultSectorId,
+        enteredAt: closeAt
+      });
+      updateData.currentSectorId = defaultSectorId;
+    }
+
+    await ConversationRepository.update(conversationId, updateData);
+    console.log(`[CONVERSA] Finalização Global: Setor=${finalizedBySectorId || 'NULL'} -> Reset para ${defaultSectorId || 'NULL'}`);
+
+    // ENVIAR FEEDBACK (Apenas uma vez, na transição para CLOSED)
+    if (conversation.contactId && conversation.contact?.phone) {
+      try {
+        const { FeedbackService } = await import('@/services/feedback.service');
+        const { SettingRepository } = await import('@/repositories/settingRepository');
+        const { MessageService } = await import('@/services/messages');
+
+        // 1. Gera o link público com o atendente responsável
+        const feedback = await FeedbackService.requestFeedback(
+          conversation.contactId, 
+          conversation.contact.phone, 
+          conversationId,
+          conversation.assignedTo,
+          conversation.agent?.name
+        );
+        
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motiva-talk.vercel.app';
+        const feedbackLink = `${baseUrl}/feedback/${feedback.token}`;
+
+        // 2. Busca a mensagem configurada pelo admin
+        const settings = await SettingRepository.getChatSettings();
+        const finishMessageBase = settings?.finishMessage || 'Seu atendimento foi finalizado. Gostaríamos de saber sua opinião sobre o nosso atendimento:';
+
+        // 3. Monta e envia a mensagem final
+        const finalMessage = `${finishMessageBase}\n\n${feedbackLink}`;
+        
+        await MessageService.createMessage({
+          conversationId,
+          channelId: conversation.channelId,
+          senderType: 'SYSTEM',
+          content: finalMessage,
+          type: 'TEXT',
+          isInternal: false
+        });
+
+        console.log(`[FEEDBACK] Mensagem automática enviada com sucesso para ${conversation.contact.phone}`);
+      } catch (e: any) {
+        console.warn(`[FEEDBACK] Erro no fluxo de pós-finalização: ${e.message}`);
+      }
+    }
   }
 
   /**
@@ -62,61 +116,12 @@ export class ConversationService {
   static async updateStatus(conversationId: string, status: string) {
     console.log(`[CONVERSA] Alterando status da conversa ${conversationId} para: ${status}`);
 
-    // Reset de setor antes da atualização do status (gera história e ajusta currentSectorId)
     if (status === 'CLOSED') {
       await this.applySectorResetOnClose(conversationId);
+      return await ConversationRepository.findById(conversationId);
     }
 
-    const updated = await ConversationRepository.update(conversationId, { status })
-    
-    // Se a conversa foi fechada, gera uma solicitação de feedback e envia a mensagem automática
-    if (status === 'CLOSED' && updated.contactId && updated.contact?.phone) {
-      console.log(`[CONVERSA] Conversa finalizada. Contato identificado: ${updated.contact.name || updated.contact.phone}`);
-      
-      try {
-        const { FeedbackService } = await import('@/services/feedback.service');
-        const { SettingRepository } = await import('@/repositories/settingRepository');
-        const { MessageService } = await import('@/services/messages');
-
-        // 1. Gera o link público com o atendente responsável
-        const feedback = await FeedbackService.requestFeedback(
-          updated.contactId, 
-          updated.contact.phone, 
-          conversationId,
-          updated.assignedTo,
-          updated.agent?.name
-        );
-        
-        // Constrói a URL do feedback (pode ser configurada via env)
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motiva-talk.vercel.app';
-        const feedbackLink = `${baseUrl}/feedback/${feedback.token}`;
-        console.log(`[FEEDBACK] Link gerado: ${feedbackLink}`);
-
-        // 2. Busca a mensagem configurada pelo admin
-        const settings = await SettingRepository.getChatSettings();
-        const finishMessageBase = settings?.finishMessage || 'Seu atendimento foi finalizado. Gostaríamos de saber sua opinião sobre o nosso atendimento:';
-
-        // 3. Monta e envia a mensagem final
-        const finalMessage = `${finishMessageBase}\n\n${feedbackLink}`;
-        
-        console.log(`[FEEDBACK] Enviando mensagem de encerramento via Evolution API...`);
-        
-        await MessageService.createMessage({
-          conversationId,
-          channelId: updated.channelId,
-          senderType: 'SYSTEM', // Ou AGENT se preferir, mas SYSTEM indica automação
-          content: finalMessage,
-          type: 'TEXT'
-        });
-
-        console.log(`[FEEDBACK] Mensagem automática enviada com sucesso para ${updated.contact.phone}`);
-
-      } catch (e: any) {
-        console.warn(`[FEEDBACK] Erro no fluxo de pós-finalização: ${e.message}`);
-      }
-    }
-
-    return updated
+    return await ConversationRepository.update(conversationId, { status });
   }
 
   /**
@@ -166,57 +171,13 @@ export class ConversationService {
    * Atualização genérica de conversa
    */
   static async updateConversation(id: string, data: any) {
-    // Se está fechando via update genérico, aplica o reset de setor primeiro
     if (data.status === 'CLOSED') {
       await this.applySectorResetOnClose(id);
+      // Remove status do data para não tentar atualizar novamente no repo se já foi feito
+      delete data.status;
     }
 
-    const updated = await ConversationRepository.update(id, data);
-
-    // Mesma lógica caso o status venha no update genérico
-    if (data.status === 'CLOSED' && updated.contactId && updated.contact?.phone) {
-      try {
-        const { FeedbackService } = await import('@/services/feedback.service');
-        const { SettingRepository } = await import('@/repositories/settingRepository');
-        const { MessageService } = await import('@/services/messages');
-
-        // 1. Gera o link público com o atendente responsável
-        const feedback = await FeedbackService.requestFeedback(
-          updated.contactId, 
-          updated.contact.phone, 
-          id,
-          updated.assignedTo,
-          updated.agent?.name
-        );
-        
-        // Constrói a URL do feedback
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motiva-talk.vercel.app';
-        const feedbackLink = `${baseUrl}/feedback/${feedback.token}`;
-
-        // 2. Busca a mensagem configurada pelo admin
-        const settings = await SettingRepository.getChatSettings();
-        const finishMessageBase = settings?.finishMessage || 'Seu atendimento foi finalizado. Gostaríamos de saber sua opinião sobre o nosso atendimento:';
-
-        // 3. Monta e envia a mensagem final
-        const finalMessage = `${finishMessageBase}\n\n${feedbackLink}`;
-        
-        await MessageService.createMessage({
-          conversationId: id,
-          channelId: updated.channelId,
-          senderType: 'SYSTEM',
-          content: finalMessage,
-          type: 'TEXT',
-          isInternal: true
-        });
-
-        console.log(`[FEEDBACK] Mensagem automática (update genérico) enviada para ${id}`);
-
-      } catch (e: any) {
-         console.warn(`[FEEDBACK] Erro em update genérico ao gerar feedback: ${e.message}`);
-      }
-    }
-
-    return updated;
+    return await ConversationRepository.update(id, data);
   }
 
   /**
