@@ -411,7 +411,9 @@ export const useChatStore = create<ChatState>((set) => ({
             ...conv,
             lastMessageAt: message.createdAt,
             lastMessagePreview: preview,
-            unreadCount: (isFromUser && isNotActive) ? (conv.unreadCount || 0) + 1 : 0
+            unreadCount: isFromUser 
+              ? (isNotActive ? (conv.unreadCount || 0) + 1 : 0)
+              : (message.senderType === 'AGENT' ? 0 : (conv.unreadCount || 0))
           };
           tab.list.sort(sortConversations);
         }

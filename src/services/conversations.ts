@@ -389,6 +389,8 @@ export class ConversationService {
     const updatedConversation = await ConversationRepository.update(params.conversationId, {
       currentSectorId: params.targetSectorId,
       assignedTo: params.targetAgentId || null,
+      status: 'OPEN',
+      unreadCount: 1,
       updatedAt: transferAt
     });
 

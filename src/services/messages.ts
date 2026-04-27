@@ -26,31 +26,16 @@ export class MessageService {
    * Filtra mensagens apagadas (me/todos)
    */
   static async listByConversation(conversationId: string, limit: number = 20, before?: string, allowedSectorIds?: string[], sectorId?: string) {
-    // Quando o usuário está visualizando dentro de um setor específico, usamos o tenure
-    // (ConversationSectorHistory) daquele setor para limitar as mensagens ao período em que
-    // ele cuidou da conversa. Isso isola o histórico entre setores: o setor de origem só
-    // vê o que aconteceu até o leftAt; o destino só vê do enteredAt em diante.
-    let afterCreatedAt: string | undefined;
-    let untilCreatedAt: string | undefined;
-
-    if (sectorId) {
-      const { ConversationSectorHistoryRepository } = await import('@/repositories/conversationSectorHistoryRepository');
-      const range = await ConversationSectorHistoryRepository.findLatestRangeForSector(conversationId, sectorId);
-      if (!range) {
-        // Esse setor nunca cuidou dessa conversa — não há nada visível para ele
-        return { messages: [], nextCursor: null, hasMore: false };
-      }
-      afterCreatedAt = range.enteredAt;
-      untilCreatedAt = range.leftAt || undefined;
-    }
+    // Quando um setor específico é solicitado (ex: filtro na barra lateral ou visão histórica),
+    // restringimos as mensagens para aquele setor. 
+    // Caso contrário, usamos a lista de setores permitidos do usuário (RBAC).
+    const filterSectorIds = sectorId ? [sectorId] : allowedSectorIds;
 
     const messages = await MessageRepository.findMany({
       conversationId,
       limit,
       before,
-      allowedSectorIds,
-      afterCreatedAt,
-      untilCreatedAt
+      allowedSectorIds: filterSectorIds
     })
 
     // Filtrar localmente as deletadas para o atendente

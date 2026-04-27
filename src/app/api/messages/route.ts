@@ -27,15 +27,52 @@ export async function GET(req: Request) {
       throw new AppError('conversationId é obrigatório', 400, 'VALIDATION_ERROR');
     }
 
+    const { data: conversation } = await supabaseAdmin
+      .from('Conversation')
+      .select('channelId, currentSectorId, assignedTo')
+      .eq('id', conversationId)
+      .single();
+
+    if (!conversation) throw new AppError('Conversa não encontrada', 404);
+
+    // 1. Verificar acesso ao canal
+    const { data: userChannel } = await supabaseAdmin
+      .from('UserChannel')
+      .select('channelId, Channel(allowAgentFilterAllSectors)')
+      .eq('userId', dbUser?.id)
+      .eq('channelId', conversation.channelId)
+      .maybeSingle();
+
+    if (role !== 'ADMIN' && role !== 'SUPERVISOR' && !userChannel) {
+      throw new AppError('Você não tem acesso ao canal desta conversa', 403, 'FORBIDDEN');
+    }
+
+    const canViewAllSectorsInChannel = role === 'ADMIN' || role === 'SUPERVISOR' || (userChannel as any)?.Channel?.allowAgentFilterAllSectors === true;
+    
     let allowedSectorIds: string[] | undefined = undefined;
 
-    if (role !== 'ADMIN' && role !== 'SUPERVISOR' && dbUser) {
+    if (!canViewAllSectorsInChannel && dbUser) {
       const { data: userSectors } = await supabaseAdmin
         .from('UserSector')
         .select('sectorId')
-        .eq('userId', dbUser.id)
+        .eq('userId', dbUser.id);
       
-      allowedSectorIds = userSectors?.map(us => us.sectorId) || [];
+      const mySectors = userSectors?.map(us => us.sectorId) || [];
+
+      // Se o usuário está solicitando um setor específico (Histórico), permitimos se ele tiver 
+      // acesso à conversa (pelo canal ou por ser o responsável), mas o MessageService já 
+      // vai filtrar pelo sectorId solicitado.
+      // Se não solicitou setor (Visão Geral), limitamos aos setores dele.
+      if (!sectorId) {
+        allowedSectorIds = mySectors;
+      } else {
+        // Se solicitou um setor que não é o dele, permitimos a visualização (Read Only)
+        // já que ele tem acesso à conversa pelo canal.
+        allowedSectorIds = [sectorId];
+      }
+    } else if (sectorId) {
+       // Admin/Supervisor/AllSectors filtering by specific sector
+       allowedSectorIds = [sectorId];
     }
 
     const result = await MessageService.listByConversation(conversationId, limit, before, allowedSectorIds, sectorId)

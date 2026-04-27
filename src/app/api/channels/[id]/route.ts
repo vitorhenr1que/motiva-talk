@@ -51,6 +51,7 @@ export async function PATCH(
     const updateData: any = {};
     if (body.allowAgentNameEdit !== undefined) updateData.allowAgentNameEdit = body.allowAgentNameEdit;
     if (body.defaultSectorId !== undefined) updateData.defaultSectorId = body.defaultSectorId;
+    if (body.allowAgentFilterAllSectors !== undefined) updateData.allowAgentFilterAllSectors = body.allowAgentFilterAllSectors;
 
     const { data, error } = await supabaseAdmin
       .from('Channel')

@@ -62,13 +62,17 @@ export async function GET(req: Request) {
     if (role !== 'ADMIN' && role !== 'SUPERVISOR') {
       const { data: userChannels } = await supabaseAdmin
         .from('UserChannel')
-        .select('channelId')
+        .select('channelId, Channel(allowAgentFilterAllSectors)')
         .eq('userId', dbUser?.id)
       
       const allowedChannelIds = userChannels?.map((uc: any) => uc.channelId) || []
+      const channelsWithAllSectorsAccess = userChannels
+        ?.filter((uc: any) => uc.Channel?.allowAgentFilterAllSectors)
+        .map((uc: any) => uc.channelId) || []
       
       // Filtro Especial: Ver conversas atribuídas a mim OU abertas nos meus canais
       where.allowedChannelIds = allowedChannelIds;
+      where.channelsWithAllSectorsAccess = channelsWithAllSectorsAccess;
       where.allowedSectorIds = allowedSectorIds;
       where.currentUserId = dbUser?.id;
     }

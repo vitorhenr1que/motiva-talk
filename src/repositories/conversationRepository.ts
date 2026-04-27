@@ -66,15 +66,28 @@ export class ConversationRepository {
     // 1. Filtro de Status e Segurança (RBAC) combinados
     if (where.status) {
       if (where.allowedChannelIds && where.currentUserId) {
-        // Se for atendente, filtramos por canal, por setor permitido E (atribuído a mim ou sem dono)
-        query = query.eq('status', where.status)
-                     .in('channelId', where.allowedChannelIds)
-                     .or(`assignedTo.eq.${where.currentUserId},assignedTo.is.null`);
-                     
-        if (where.allowedSectorIds && where.allowedSectorIds.length > 0) {
-          query = query.or(`currentSectorId.in.(${where.allowedSectorIds.join(',')}),currentSectorId.is.null`);
+        const channelsAllSectors = where.channelsWithAllSectorsAccess || [];
+        const channelsRestricted = where.allowedChannelIds.filter((id: string) => !channelsAllSectors.includes(id));
+        const conditions = [];
+        
+        // Condição 1: Canais com acesso total a setores (Atribuído a mim ou Sem Dono)
+        if (channelsAllSectors.length > 0) {
+          conditions.push(`and(channelId.in.(${channelsAllSectors.join(',')}),or(assignedTo.eq.${where.currentUserId},assignedTo.is.null))`);
+        }
+
+        // Condição 2: Canais restritos (Setores permitidos E (Atribuído a mim ou Sem Dono))
+        if (channelsRestricted.length > 0) {
+          const sectorFilter = where.allowedSectorIds && where.allowedSectorIds.length > 0
+            ? `or(currentSectorId.in.(${where.allowedSectorIds.join(',')}),currentSectorId.is.null)`
+            : 'currentSectorId.is.null';
+          
+          conditions.push(`and(channelId.in.(${channelsRestricted.join(',')}),or(assignedTo.eq.${where.currentUserId},assignedTo.is.null),${sectorFilter})`);
+        }
+
+        if (conditions.length > 0) {
+          query = query.eq('status', where.status).or(conditions.join(','));
         } else {
-          query = query.is('currentSectorId', null);
+          query = query.eq('status', where.status).is('id', 'null');
         }
       } else if (where.allowedChannelIds) {
         // Se for supervisor com canais limitados
@@ -175,7 +188,25 @@ export class ConversationRepository {
 
     if (where.channelId) query = query.eq('channelId', where.channelId);
     if (where.allowedChannelIds && where.allowedChannelIds.length > 0) {
-      query = query.in('channelId', where.allowedChannelIds);
+      if (where.currentUserId) {
+        const channelsAllSectors = where.channelsWithAllSectorsAccess || [];
+        const channelsRestricted = where.allowedChannelIds.filter((id: string) => !channelsAllSectors.includes(id));
+        const conditions = [];
+
+        if (channelsAllSectors.length > 0) {
+          conditions.push(`channelId.in.(${channelsAllSectors.join(',')})`);
+        }
+        if (channelsRestricted.length > 0) {
+          const sectorFilter = where.allowedSectorIds && where.allowedSectorIds.length > 0
+            ? `or(currentSectorId.in.(${where.allowedSectorIds.join(',')}),currentSectorId.is.null)`
+            : 'currentSectorId.is.null';
+          conditions.push(`and(channelId.in.(${channelsRestricted.join(',')}),${sectorFilter})`);
+        }
+        
+        if (conditions.length > 0) query = query.or(conditions.join(','));
+      } else {
+        query = query.in('channelId', where.allowedChannelIds);
+      }
     }
 
     const { count, error } = await query;
@@ -231,15 +262,24 @@ export class ConversationRepository {
       }
 
       if (where.allowedChannelIds) {
-        query = query.in('channelId', where.allowedChannelIds);
         if (where.currentUserId) {
-          query = query.or(`assignedTo.eq.${where.currentUserId},assignedTo.is.null`);
-        }
+          const channelsAllSectors = where.channelsWithAllSectorsAccess || [];
+          const channelsRestricted = where.allowedChannelIds.filter((id: string) => !channelsAllSectors.includes(id));
+          const conditions = [];
+          
+          if (channelsAllSectors.length > 0) {
+            conditions.push(`and(channelId.in.(${channelsAllSectors.join(',')}),or(assignedTo.eq.${where.currentUserId},assignedTo.is.null))`);
+          }
+          if (channelsRestricted.length > 0) {
+            const sectorFilter = where.allowedSectorIds && where.allowedSectorIds.length > 0
+              ? `or(currentSectorId.in.(${where.allowedSectorIds.join(',')}),currentSectorId.is.null)`
+              : 'currentSectorId.is.null';
+            conditions.push(`and(channelId.in.(${channelsRestricted.join(',')}),or(assignedTo.eq.${where.currentUserId},assignedTo.is.null),${sectorFilter})`);
+          }
 
-        if (where.allowedSectorIds && where.allowedSectorIds.length > 0) {
-          query = query.or(`currentSectorId.in.(${where.allowedSectorIds.join(',')}),currentSectorId.is.null`);
-        } else if (where.allowedSectorIds) {
-          query = query.is('currentSectorId', null);
+          if (conditions.length > 0) query = query.or(conditions.join(','));
+        } else {
+          query = query.in('channelId', where.allowedChannelIds);
         }
       }
 

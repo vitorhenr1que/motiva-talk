@@ -30,6 +30,7 @@ interface ChannelConfigModalProps {
     connectionStatus: string;
     allowAgentNameEdit?: boolean;
     defaultSectorId?: string | null;
+    allowAgentFilterAllSectors?: boolean;
   } | null;
   onActionSuccess: () => void;
   onOpenConnect: (id: string, name: string) => void;
@@ -52,17 +53,19 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
   const [loadingWebhook, setLoadingWebhook] = useState(false);
   const [updatingField, setUpdatingField] = useState<string | null>(null);
   const [allowAgentNameEdit, setAllowAgentNameEdit] = useState(false);
+  const [allowAgentFilterAllSectors, setAllowAgentFilterAllSectors] = useState(false);
   const [defaultSectorId, setDefaultSectorId] = useState<string | null>(null);
   const [sectors, setSectors] = useState<{ id: string, name: string }[]>([]);
 
   React.useEffect(() => {
     if (isOpen && channel) {
       setAllowAgentNameEdit(channel.allowAgentNameEdit || false);
+      setAllowAgentFilterAllSectors(channel.allowAgentFilterAllSectors || false);
       setDefaultSectorId(channel.defaultSectorId || null);
       fetchWebhook();
       fetchSectors();
     }
-  }, [isOpen, channel?.id, channel?.allowAgentNameEdit, channel?.defaultSectorId]);
+  }, [isOpen, channel?.id, channel?.allowAgentNameEdit, channel?.defaultSectorId, channel?.allowAgentFilterAllSectors]);
 
   const fetchSectors = async () => {
     try {
@@ -144,6 +147,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
       const data = await res.json();
       if (data.success) {
         if (field === 'allowAgentNameEdit') setAllowAgentNameEdit(value);
+        if (field === 'allowAgentFilterAllSectors') setAllowAgentFilterAllSectors(value);
         if (field === 'defaultSectorId') setDefaultSectorId(value ? (value as any) : null);
         onActionSuccess();
       } else {
@@ -364,6 +368,37 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
                 <span className={cn(
                   "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
                   allowAgentNameEdit ? "translate-x-5" : "translate-x-0"
+                )} />
+              </button>
+            </div>
+
+            <div className="h-px bg-slate-100 dark:bg-slate-800/50 my-2" />
+
+            <div className="h-px bg-slate-100 dark:bg-slate-800/50 my-2" />
+
+            {/* Toggle Filtro de Setores */}
+            <div className="flex items-center justify-between group/toggle">
+              <div className="flex items-center gap-3">
+                <div className={cn("p-1.5 rounded-lg transition-colors", allowAgentFilterAllSectors ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-400")}>
+                  <ShieldCheck size={14} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Agentes Filtram Todos Setores</p>
+                  <p className="text-[9px] font-medium text-slate-400">Permite que atendentes vejam conversas de qualquer setor neste canal</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => updateChannelSetting('allowAgentFilterAllSectors', !allowAgentFilterAllSectors)}
+                disabled={updatingField === 'allowAgentFilterAllSectors'}
+                className={cn(
+                  "relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none",
+                  allowAgentFilterAllSectors ? "bg-blue-600" : "bg-slate-200 dark:bg-slate-700",
+                  updatingField === 'allowAgentFilterAllSectors' && "opacity-50 cursor-wait"
+                )}
+              >
+                <span className={cn(
+                  "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                  allowAgentFilterAllSectors ? "translate-x-5" : "translate-x-0"
                 )} />
               </button>
             </div>

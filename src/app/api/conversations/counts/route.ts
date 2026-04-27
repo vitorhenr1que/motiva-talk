@@ -31,13 +31,21 @@ export async function GET(req: Request) {
     }
 
     if (role !== 'ADMIN' && role !== 'SUPERVISOR') {
-      const [{ data: userChannels }, { data: userSectors }] = await Promise.all([
-        supabaseAdmin.from('UserChannel').select('channelId').eq('userId', dbUser?.id),
-        supabaseAdmin.from('UserSector').select('sectorId').eq('userId', dbUser?.id)
-      ]);
+      const { data: userChannels } = await supabaseAdmin
+        .from('UserChannel')
+        .select('channelId, Channel(allowAgentFilterAllSectors)')
+        .eq('userId', dbUser?.id)
       
-      where.allowedChannelIds = userChannels?.map(uc => uc.channelId) || [];
-      where.allowedSectorIds = userSectors?.map(us => us.sectorId) || [];
+      const { data: userSectors } = await supabaseAdmin
+        .from('UserSector')
+        .select('sectorId')
+        .eq('userId', dbUser?.id)
+      
+      where.allowedChannelIds = userChannels?.map((uc: any) => uc.channelId) || []
+      where.channelsWithAllSectorsAccess = userChannels
+        ?.filter((uc: any) => uc.Channel?.allowAgentFilterAllSectors)
+        .map((uc: any) => uc.channelId) || []
+      where.allowedSectorIds = userSectors?.map((us: any) => us.sectorId) || []
       where.currentUserId = dbUser?.id;
     }
 
