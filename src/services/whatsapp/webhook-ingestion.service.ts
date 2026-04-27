@@ -202,7 +202,7 @@ export class WebhookIngestionService {
           contact:Contact(*),
           channel:Channel(*),
           agent:User(*),
-          sector:Sector(*),
+          sector:Sector!Conversation_currentSectorId_fkey(*),
           tags:ConversationTag(*, tag:Tag(*))
         `)
         .eq('contactId', contact.id)
@@ -254,7 +254,7 @@ export class WebhookIngestionService {
             contact:Contact(*),
             channel:Channel(*),
             agent:User(*),
-            sector:Sector(*),
+            sector:Sector!Conversation_currentSectorId_fkey(*),
             tags:ConversationTag(*, tag:Tag(*))
           `)
           .single();

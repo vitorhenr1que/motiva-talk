@@ -23,7 +23,7 @@ export class ConversationRepository {
         updatedAt,
         contact:Contact(id, name, phone, profilePictureUrl),
         channel:Channel(id, name, allowAgentNameEdit),
-        sector:Sector(id, name),
+        sector:Sector!Conversation_currentSectorId_fkey(id, name),
         tags:ConversationTag(tag:Tag(id, name, color, emoji))
       `)
       .limit(limit)
@@ -304,7 +304,7 @@ export class ConversationRepository {
         contact:Contact(*),
         channel:Channel(*),
         agent:User(*),
-        sector:Sector(*),
+        sector:Sector!Conversation_currentSectorId_fkey(*),
         tags:ConversationTag(*, tag:Tag(*))
       `)
       .eq('id', id)
@@ -323,7 +323,7 @@ export class ConversationRepository {
         contact:Contact(*),
         channel:Channel(*),
         agent:User(*),
-        sector:Sector(*)
+        sector:Sector!Conversation_currentSectorId_fkey(*)
       `)
       .single()
 
@@ -341,7 +341,7 @@ export class ConversationRepository {
         contact:Contact(*),
         channel:Channel(*),
         agent:User(*),
-        sector:Sector(*)
+        sector:Sector!Conversation_currentSectorId_fkey(*)
       `)
       .single()
 
@@ -357,7 +357,7 @@ export class ConversationRepository {
         contact:Contact(*),
         channel:Channel(*),
         agent:User(*),
-        sector:Sector(*),
+        sector:Sector!Conversation_currentSectorId_fkey(*),
         tags:ConversationTag(*, tag:Tag(*))
       `)
       .eq('contactId', contactId)
