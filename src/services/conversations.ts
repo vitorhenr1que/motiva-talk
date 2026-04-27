@@ -38,11 +38,12 @@ export class ConversationService {
       updateData.currentSectorId = defaultSectorId;
     }
 
-    await ConversationRepository.update(conversationId, updateData);
+    // 1. Atualiza o status e setor da conversa
+    const updatedConversation = await ConversationRepository.update(conversationId, updateData);
     console.log(`[CONVERSA] Finalização Global: Setor=${finalizedBySectorId || 'NULL'} -> Reset para ${defaultSectorId || 'NULL'}`);
 
     // ENVIAR FEEDBACK (Apenas uma vez, na transição para CLOSED)
-    if (conversation.contactId && conversation.contact?.phone) {
+    if (updatedConversation.contactId && updatedConversation.contact?.phone) {
       try {
         const { FeedbackService } = await import('@/services/feedback.service');
         const { SettingRepository } = await import('@/repositories/settingRepository');
@@ -50,11 +51,11 @@ export class ConversationService {
 
         // 1. Gera o link público com o atendente responsável
         const feedback = await FeedbackService.requestFeedback(
-          conversation.contactId, 
-          conversation.contact.phone, 
+          updatedConversation.contactId, 
+          updatedConversation.contact.phone, 
           conversationId,
-          conversation.assignedTo,
-          conversation.agent?.name
+          updatedConversation.assignedTo,
+          updatedConversation.agent?.name
         );
         
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://motiva-talk.vercel.app';
@@ -69,14 +70,15 @@ export class ConversationService {
         
         await MessageService.createMessage({
           conversationId,
-          channelId: conversation.channelId,
+          channelId: updatedConversation.channelId,
           senderType: 'SYSTEM',
           content: finalMessage,
           type: 'TEXT',
-          isInternal: false
+          isInternal: false,
+          sectorId: finalizedBySectorId // Garante que a mensagem apareça no chat do setor que finalizou
         });
 
-        console.log(`[FEEDBACK] Mensagem automática enviada com sucesso para ${conversation.contact.phone}`);
+        console.log(`[FEEDBACK] Mensagem automática enviada com sucesso para ${updatedConversation.contact.phone}`);
       } catch (e: any) {
         console.warn(`[FEEDBACK] Erro no fluxo de pós-finalização: ${e.message}`);
       }

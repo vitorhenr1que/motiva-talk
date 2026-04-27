@@ -12,10 +12,17 @@ export class MessageRepository {
     /** Upper bound (exclusivo) baseado no leftAt do tenure */
     untilCreatedAt?: string;
   }) {
+    // OTIMIZAÇÃO: SELECT explícito (a tabela Message tem ~30 colunas).
+    // Removidos: scheduledAt, sentAt, isScheduled, cancelOnReply, transferredToChannelId
+    // (usados apenas em fluxos específicos, não no chat principal).
     let query = supabaseAdmin
       .from('Message')
       .select(`
-        *,
+        id, conversationId, channelId, sectorId, senderType, content, type,
+        createdAt, externalMessageId, replyToMessageId,
+        deletedForMe, deletedForEveryone, isInternal, isForwarded, forwardedFromMessageId,
+        mediaUrl, fileName, mimeType, fileSize, thumbnailUrl, duration,
+        metadata, reactions, sendStatus, errorMessage,
         replyToMessage:replyToMessageId (
           id,
           content,

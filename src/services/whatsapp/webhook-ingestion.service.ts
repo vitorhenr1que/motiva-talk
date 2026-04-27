@@ -15,13 +15,16 @@ export class WebhookIngestionService {
       return;
     }
 
-    // --- Identificar ou Criar Canal (antes de qualquer coisa pra ter o ID) ---
-    const { data: channels } = await supabaseAdmin.from('Channel').select('*');
-    const channel = channels?.find(c => 
-      c.id === channelId || 
-      c.id.replace(/-/g, '') === channelId ||
-      c.providerSessionId === channelId
-    );
+    // --- Identificar canal pelo identificador exato (id OU providerSessionId).
+    // ANTES: SELECT * FROM Channel a cada webhook (pega TODOS os canais e filtra em JS).
+    // AGORA: query targeted que retorna no máximo 1 linha.
+    const channelIdNoDashes = channelId.replace(/-/g, '');
+    const { data: channelMatches } = await supabaseAdmin
+      .from('Channel')
+      .select('*')
+      .or(`id.eq.${channelId},id.eq.${channelIdNoDashes},providerSessionId.eq.${channelId}`)
+      .limit(1);
+    const channel = channelMatches?.[0];
 
     if (!channel) {
       console.error(`[INGEST] ERRO: Canal ${channelId} não encontrado no banco.`);

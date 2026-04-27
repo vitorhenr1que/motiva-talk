@@ -96,12 +96,22 @@ export class MessageService {
 
     const isActuallyInternal = isInternal !== undefined ? isInternal : (senderType === 'SYSTEM' || !!metadata?.isInternal);
 
+    // OTIMIZAÇÃO: a conversa pode ser necessária em DOIS lugares — para enviar via Evolution
+    // (envia mídia/texto pro contato) e para resolver o sectorId (caso não venha explícito).
+    // Antes: 2 findById; agora: 1 findById preguiçoso, reaproveitado.
+    let cachedConversation: any = null;
+    const getConversation = async () => {
+      if (cachedConversation) return cachedConversation;
+      const { ConversationRepository } = await import('@/repositories/conversationRepository');
+      cachedConversation = await ConversationRepository.findById(conversationId);
+      return cachedConversation;
+    };
+
     if (!isActuallyInternal && (senderType === 'AGENT' || senderType === 'SYSTEM')) {
       try {
-        const { ConversationRepository } = await import('@/repositories/conversationRepository')
         const { evolutionProvider } = await import('@/services/whatsapp/evolution-provider')
-        
-        const conversation = await ConversationRepository.findById(conversationId)
+
+        const conversation = await getConversation();
         if (!conversation || !conversation.contact || !conversation.channel) {
           throw new AppError('Conversa, contato ou canal não encontrados.', 404, 'NOT_FOUND');
         }
@@ -124,7 +134,7 @@ export class MessageService {
         )
 
         externalMessageId = result?.key?.id || result?.message?.key?.id
-        
+
         if (!externalMessageId) {
            console.error('[MSG_SERVICE] Falha ao obter ID externo da mensagem da Evolution API. Retorno bruto:', result);
            throw new Error('A Evolution API não retornou o ID da mensagem enviada.');
@@ -136,13 +146,11 @@ export class MessageService {
       }
     }
 
-    // Resolve o setor da mensagem: respeita sectorId explícito (ex.: nota interna do setor de origem
-    // na transferência) ou cai no currentSectorId atual da conversa. Visibilidade é estrita pelo
-    // currentSectorId, então toda mensagem nova carrega o setor responsável no momento.
+    // Resolve o setor da mensagem: respeita sectorId explícito ou cai no currentSectorId
+    // atual da conversa (reaproveita a conversa já carregada se houver).
     let finalSectorId = sectorId;
     if (finalSectorId === undefined || finalSectorId === null) {
-       const { ConversationRepository } = await import('@/repositories/conversationRepository');
-       const conv = await ConversationRepository.findById(conversationId);
+       const conv = await getConversation();
        finalSectorId = conv?.currentSectorId || null;
     }
 

@@ -219,60 +219,59 @@ export class ConversationRepository {
   }
 
   static async countByStatus(where: any) {
-    const statuses = ['OPEN', 'IN_PROGRESS', 'CLOSED'];
-    const counts: any = { OPEN: 0, IN_PROGRESS: 0, CLOSED: 0 };
+    // OTIMIZAÇÃO: pré-busca de sub-queries (tagId, search, historical) UMA vez só.
+    // Antes: cada status (3 vezes) refazia o mesmo lookup de tags/contatos → 6+ round-trips.
+    // Agora: 1 lookup compartilhado + 3 contagens em paralelo.
 
-    for (const status of statuses) {
-      let query = supabaseAdmin
+    let tagFilterIds: string[] | null = null;
+    if (where.tagId) {
+      const { data: tagConvs } = await supabaseAdmin
+        .from('ConversationTag')
+        .select('conversationId')
+        .eq('tagId', where.tagId);
+      tagFilterIds = tagConvs?.map(tc => tc.conversationId) || [];
+    }
+
+    let searchFilterIds: string[] | null = null;
+    if (where.search) {
+      const { data: contacts } = await supabaseAdmin
+        .from('Contact')
+        .select('id')
+        .or(`name.ilike.%${where.search}%,phone.ilike.%${where.search}%`);
+      searchFilterIds = contacts?.map(c => c.id) || [];
+    }
+
+    const buildBase = (status: string) => {
+      let q = supabaseAdmin
         .from('Conversation')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('status', status);
 
-      if (where.channelId) query = query.eq('channelId', where.channelId);
-      
-      if (where.tagId) {
-        const { data: tagConvs } = await supabaseAdmin
-          .from('ConversationTag')
-          .select('conversationId')
-          .eq('tagId', where.tagId);
-        const conversationIds = tagConvs?.map(tc => tc.conversationId) || [];
-        query = query.in('id', conversationIds);
-      }
+      if (where.channelId) q = q.eq('channelId', where.channelId);
+      if (tagFilterIds !== null) q = q.in('id', tagFilterIds);
+      if (searchFilterIds !== null) q = q.in('contactId', searchFilterIds);
 
       if (where.sectorId) {
         if (where.sectorId === 'UNASSIGNED') {
-          query = query.is('currentSectorId', null);
+          q = q.is('currentSectorId', null);
         } else if (status === 'CLOSED') {
-          query = query.eq('finalizedBySectorId', where.sectorId);
+          q = q.eq('finalizedBySectorId', where.sectorId);
         } else {
-          query = query.eq('currentSectorId', where.sectorId);
+          q = q.eq('currentSectorId', where.sectorId);
         }
       }
 
       if (where.assignedTo) {
-        if (where.assignedTo === 'UNASSIGNED') {
-          query = query.is('assignedTo', null);
-        } else {
-          query = query.eq('assignedTo', where.assignedTo);
-        }
-      }
-
-      if (where.search) {
-        const { data: contacts } = await supabaseAdmin
-          .from('Contact')
-          .select('id')
-          .or(`name.ilike.%${where.search}%,phone.ilike.%${where.search}%`);
-        
-        const contactIds = contacts?.map(c => c.id) || [];
-        query = query.in('contactId', contactIds);
+        if (where.assignedTo === 'UNASSIGNED') q = q.is('assignedTo', null);
+        else q = q.eq('assignedTo', where.assignedTo);
       }
 
       if (where.allowedChannelIds) {
         if (where.currentUserId) {
           const channelsAllSectors = where.channelsWithAllSectorsAccess || [];
           const channelsRestricted = where.allowedChannelIds.filter((id: string) => !channelsAllSectors.includes(id));
-          const conditions = [];
-          
+          const conditions: string[] = [];
+
           if (channelsAllSectors.length > 0) {
             conditions.push(`and(channelId.in.(${channelsAllSectors.join(',')}),or(assignedTo.eq.${where.currentUserId},assignedTo.is.null))`);
           }
@@ -283,17 +282,25 @@ export class ConversationRepository {
             conditions.push(`and(channelId.in.(${channelsRestricted.join(',')}),or(assignedTo.eq.${where.currentUserId},assignedTo.is.null),${sectorFilter})`);
           }
 
-          if (conditions.length > 0) query = query.or(conditions.join(','));
+          if (conditions.length > 0) q = q.or(conditions.join(','));
         } else {
-          query = query.in('channelId', where.allowedChannelIds);
+          q = q.in('channelId', where.allowedChannelIds);
         }
       }
+      return q;
+    };
 
-      const { count, error } = await query;
-      if (!error) counts[status] = count || 0;
-    }
+    const [openR, ipR, closedR] = await Promise.all([
+      buildBase('OPEN'),
+      buildBase('IN_PROGRESS'),
+      buildBase('CLOSED')
+    ]);
 
-    return counts;
+    return {
+      OPEN: openR.error ? 0 : (openR.count || 0),
+      IN_PROGRESS: ipR.error ? 0 : (ipR.count || 0),
+      CLOSED: closedR.error ? 0 : (closedR.count || 0)
+    };
   }
 
   static async findById(id: string) {
