@@ -25,13 +25,13 @@ export class MessageService {
    * Lista histórico de mensagens paginado
    * Filtra mensagens apagadas (me/todos)
    */
-  static async listByConversation(conversationId: string, limit: number = 20, before?: string, allowedSectorIds?: string[], sectorId?: string) {
+  static async listByConversation(organizationId: string, conversationId: string, limit: number = 20, before?: string, allowedSectorIds?: string[], sectorId?: string) {
     // Quando um setor específico é solicitado (ex: filtro na barra lateral ou visão histórica),
     // restringimos as mensagens para aquele setor. 
     // Caso contrário, usamos a lista de setores permitidos do usuário (RBAC).
     const filterSectorIds = sectorId ? [sectorId] : allowedSectorIds;
 
-    const messages = await MessageRepository.findMany({
+    const messages = await MessageRepository.findMany(organizationId, {
       conversationId,
       limit,
       before,
@@ -60,7 +60,7 @@ export class MessageService {
   /**
    * Registra uma nova mensagem no banco e envia via API se for do atendente
    */
-  static async createMessage(data: CreateMessageData & { replyToMessageId?: string }) {
+  static async createMessage(organizationId: string, data: CreateMessageData & { replyToMessageId?: string }) {
     const { 
       conversationId, 
       channelId, 
@@ -83,7 +83,7 @@ export class MessageService {
     let quoted: { id: string, content: string, fromMe: boolean, type?: string } | undefined = undefined;
 
     if (replyToMessageId) {
-      const originalMsg = await MessageRepository.findById(replyToMessageId);
+      const originalMsg = await MessageRepository.findById(replyToMessageId, organizationId);
       if (originalMsg && originalMsg.externalMessageId) {
         quoted = {
           id: originalMsg.externalMessageId,
@@ -103,7 +103,7 @@ export class MessageService {
     const getConversation = async () => {
       if (cachedConversation) return cachedConversation;
       const { ConversationRepository } = await import('@/repositories/conversationRepository');
-      cachedConversation = await ConversationRepository.findById(conversationId);
+      cachedConversation = await ConversationRepository.findById(conversationId, organizationId);
       return cachedConversation;
     };
 
@@ -114,6 +114,10 @@ export class MessageService {
         const conversation = await getConversation();
         if (!conversation || !conversation.contact || !conversation.channel) {
           throw new AppError('Conversa, contato ou canal não encontrados.', 404, 'NOT_FOUND');
+        }
+
+        if (conversation.channelId !== channelId) {
+          throw new AppError('Canal não pertence à conversa informada.', 400, 'VALIDATION_ERROR');
         }
 
         // Se for mídia, passamos as informações pro provider
@@ -148,13 +152,17 @@ export class MessageService {
 
     // Resolve o setor da mensagem: respeita sectorId explícito ou cai no currentSectorId
     // atual da conversa (reaproveita a conversa já carregada se houver).
-    let finalSectorId = sectorId;
-    if (finalSectorId === undefined || finalSectorId === null) {
-       const conv = await getConversation();
-       finalSectorId = conv?.currentSectorId || null;
+    const conversationForInsert = await getConversation();
+    if (!conversationForInsert || conversationForInsert.channelId !== channelId) {
+      throw new AppError('Conversa ou canal não encontrados.', 404, 'NOT_FOUND');
     }
 
-    const newMessage = await MessageRepository.create({
+    let finalSectorId = sectorId;
+    if (finalSectorId === undefined || finalSectorId === null) {
+       finalSectorId = conversationForInsert.currentSectorId || null;
+    }
+
+    const newMessage = await MessageRepository.create(organizationId, {
       conversationId,
       channelId,
       senderType,
@@ -188,7 +196,7 @@ export class MessageService {
     // Se for mensagem do CLIENTE, cancelar agendamentos que dependem de resposta
     if (senderType === 'USER') {
       try {
-        await this.cancelScheduledByCustomerReply(conversationId);
+        await this.cancelScheduledByCustomerReply(conversationId, organizationId);
       } catch (e) {
         console.error('[MSG_SERVICE] Erro ao processar cancelamento por resposta:', e);
       }
@@ -200,7 +208,7 @@ export class MessageService {
   /**
    * Executa a limpeza física e marcação de remoção local de uma mensagem
    */
-  private static async performLocalRemoval(message: any, mode: 'me' | 'everyone') {
+  private static async performLocalRemoval(message: any, mode: 'me' | 'everyone', organizationId: string) {
     const { id, mediaUrl } = message;
     console.log(`[MSG_SERVICE] Iniciando soft-delete local da mensagem: ${id} Modo: ${mode}`);
 
@@ -239,23 +247,23 @@ export class MessageService {
        // O conteúdo para "mim" será decidido na UI baseada em quem enviou
     }
 
-    return await MessageRepository.update(id, updateData);
+    return await MessageRepository.update(id, organizationId, updateData);
   }
 
   /**
    * Apaga mensagem (Soft-Delete) apenas para este sistema local
    */
-  static async deleteForMe(id: string) {
-    const message = await MessageRepository.findById(id);
+  static async deleteForMe(id: string, organizationId: string) {
+    const message = await MessageRepository.findById(id, organizationId);
     if (!message) throw new Error('Mensagem não encontrada');
-    return await this.performLocalRemoval(message, 'me');
+    return await this.performLocalRemoval(message, 'me', organizationId);
   }
 
   /**
    * Apaga mensagem para todos (Evolution API + Soft-Delete)
    */
-  static async deleteForEveryone(id: string) {
-    const message = await MessageRepository.findById(id);
+  static async deleteForEveryone(id: string, organizationId: string) {
+    const message = await MessageRepository.findById(id, organizationId);
     if (!message) throw new Error('Mensagem não encontrada');
 
     // 1. Apagar no WhatsApp via Evolution API se tiver ID externo
@@ -263,7 +271,7 @@ export class MessageService {
       try {
         const { evolutionProvider } = await import('@/services/whatsapp/evolution-provider');
         const { ConversationRepository } = await import('@/repositories/conversationRepository');
-        const conversation = await ConversationRepository.findById(message.conversationId);
+        const conversation = await ConversationRepository.findById(message.conversationId, organizationId);
         
         if (conversation && conversation.contact && conversation.channel) {
            await evolutionProvider.deleteMessage(
@@ -280,17 +288,17 @@ export class MessageService {
     }
 
     // 2. Soft-delete local
-    return await this.performLocalRemoval(message, 'everyone');
+    return await this.performLocalRemoval(message, 'everyone', organizationId);
   }
 
   /**
    * Envia status de presença (digitando) para o contato
    */
-  static async sendPresence(conversationId: string, presence: 'composing' | 'paused') {
+  static async sendPresence(conversationId: string, presence: 'composing' | 'paused', organizationId: string) {
     const { ConversationRepository } = await import('@/repositories/conversationRepository');
     const { evolutionProvider } = await import('@/services/whatsapp/evolution-provider');
 
-    const conversation = await ConversationRepository.findById(conversationId);
+    const conversation = await ConversationRepository.findById(conversationId, organizationId);
     if (conversation && conversation.contact && conversation.channel) {
       await evolutionProvider.sendPresence(
         conversation.channel,
@@ -303,8 +311,8 @@ export class MessageService {
   /**
    * Atualiza o conteúdo de uma mensagem (Edição)
    */
-  static async updateMessage(id: string, newContent: string) {
-    const message = await MessageRepository.findById(id);
+  static async updateMessage(id: string, newContent: string, organizationId: string) {
+    const message = await MessageRepository.findById(id, organizationId);
     if (!message) throw new AppError('Mensagem não encontrada', 404, 'NOT_FOUND');
 
     // 1. Se for do atendente, tenta editar no WhatsApp via Evolution API
@@ -312,7 +320,7 @@ export class MessageService {
       try {
         const { evolutionProvider } = await import('@/services/whatsapp/evolution-provider');
         const { ConversationRepository } = await import('@/repositories/conversationRepository');
-        const conversation = await ConversationRepository.findById(message.conversationId);
+        const conversation = await ConversationRepository.findById(message.conversationId, organizationId);
         
         if (conversation && conversation.contact && conversation.channel) {
           await evolutionProvider.editMessage(
@@ -330,7 +338,7 @@ export class MessageService {
     }
 
     // 2. Atualizar no banco de dados
-    const updated = await MessageRepository.update(id, { content: newContent });
+    const updated = await MessageRepository.update(id, organizationId, { content: newContent });
 
     // 3. Notificar via Realtime
     const { RealtimeService } = await import('@/services/realtime.service');
@@ -342,10 +350,15 @@ export class MessageService {
   /**
    * Agenda uma nova mensagem
    */
-  static async scheduleMessage(data: any) {
+  static async scheduleMessage(organizationId: string, data: any) {
     const { scheduledAt, ...rest } = data;
+    const { ConversationRepository } = await import('@/repositories/conversationRepository');
+    const conversation = await ConversationRepository.findById(rest.conversationId, organizationId);
+    if (!conversation || conversation.channelId !== rest.channelId) {
+      throw new AppError('Conversa ou canal não encontrados.', 404, 'NOT_FOUND');
+    }
     
-    const message = await MessageRepository.create({
+    const message = await MessageRepository.create(organizationId, {
       ...rest,
       sendStatus: 'scheduled',
       scheduledAt,
@@ -359,14 +372,26 @@ export class MessageService {
    * Processa a fila de mensagens agendadas
    */
   static async processScheduledMessages() {
-    const messages = await MessageRepository.findScheduledReady(10);
+    const { supabaseAdmin } = await import('@/lib/supabase-admin');
+    const { data: organizations, error } = await supabaseAdmin.from('Organization').select('id');
+    if (error) throw error;
+
+    const messagesByOrganization = await Promise.all(
+      (organizations || []).map(async (org) => ({
+        organizationId: org.id,
+        messages: await MessageRepository.findScheduledReady(org.id, 10)
+      }))
+    );
+    const messages = messagesByOrganization.flatMap(({ organizationId, messages }) =>
+      messages.map((message: any) => ({ ...message, organizationId }))
+    );
     if (!messages.length) return { processed: 0 };
 
     console.log(`[SCHEDULED] Processando ${messages.length} mensagens...`);
 
     // Atualiza status para 'sending' imediatamente para evitar processamento duplo
     await Promise.all(messages.map(m => 
-      MessageRepository.update(m.id, { sendStatus: 'sending' })
+      MessageRepository.update(m.id, m.organizationId, { sendStatus: 'sending' })
     ));
 
     const results = [];
@@ -378,7 +403,7 @@ export class MessageService {
       try {
         const { evolutionProvider } = await import('@/services/whatsapp/evolution-provider');
         const { ConversationRepository } = await import('@/repositories/conversationRepository');
-        const conversation = await ConversationRepository.findById(msg.conversationId);
+        const conversation = await ConversationRepository.findById(msg.conversationId, msg.organizationId);
 
         if (!conversation || !conversation.contact || !conversation.channel) {
            throw new Error('Conversa ou canal não encontrado');
@@ -405,7 +430,7 @@ export class MessageService {
         const externalId = response?.key?.id || response?.messageId;
 
         // Sucesso
-        await MessageRepository.update(msg.id, {
+        await MessageRepository.update(msg.id, msg.organizationId, {
           sendStatus: 'sent',
           sentAt: new Date().toISOString(),
           externalMessageId: externalId
@@ -419,7 +444,7 @@ export class MessageService {
       } catch (error: any) {
         console.error(`[SCHEDULED_ERROR] Falha ao enviar mensagem ${msg.id}:`, error.message);
         
-        await MessageRepository.update(msg.id, {
+        await MessageRepository.update(msg.id, msg.organizationId, {
           sendStatus: 'failed',
           errorMessage: error.message
         });
@@ -434,24 +459,24 @@ export class MessageService {
     return { processed: messages.length, results };
   }
 
-  static async getMessageById(id: string) {
-    return await MessageRepository.findById(id)
+  static async getMessageById(id: string, organizationId: string) {
+    return await MessageRepository.findById(id, organizationId)
   }
 
-  static async deleteMessage(id: string) {
-    return await MessageRepository.delete(id)
+  static async deleteMessage(id: string, organizationId: string) {
+    return await MessageRepository.delete(id, organizationId)
   }
 
-  static async getLastMessage(conversationId: string) {
-    return await MessageRepository.findLastByConversation(conversationId)
+  static async getLastMessage(conversationId: string, organizationId: string) {
+    return await MessageRepository.findLastByConversation(conversationId, organizationId)
   }
 
-  static async searchMessages(conversationId: string, query: string, sectorId?: string) {
+  static async searchMessages(conversationId: string, organizationId: string, query: string, sectorId?: string) {
     // Mesma regra de isolamento por tenure usada em listByConversation
     let range: { afterCreatedAt?: string; untilCreatedAt?: string } | undefined;
     if (sectorId) {
       const { ConversationSectorHistoryRepository } = await import('@/repositories/conversationSectorHistoryRepository');
-      const tenure = await ConversationSectorHistoryRepository.findLatestRangeForSector(conversationId, sectorId);
+      const tenure = await ConversationSectorHistoryRepository.findLatestRangeForSector(organizationId, conversationId, sectorId);
       if (!tenure) return [];
       range = {
         afterCreatedAt: tenure.enteredAt,
@@ -459,7 +484,7 @@ export class MessageService {
       };
     }
 
-    const results = await MessageRepository.search(conversationId, query, range)
+    const results = await MessageRepository.search(organizationId, conversationId, query, range)
 
     // Filtrar mensagens apagadas para todos (opcional: o atendente pode querer saber que algo existiu, mas aqui limpamos)
     return results.filter((m: any) => !m.deletedForEveryone).map((m: any) => ({
@@ -475,8 +500,8 @@ export class MessageService {
    * Remove fisicamente todos os arquivos de mídia (media e thumbnail) de uma conversa no storage
    * Retorna a quantidade de arquivos removidos
    */
-  static async deleteAllMediaByConversation(conversationId: string) {
-    const messages = await MessageRepository.findAllByConversation(conversationId);
+  static async deleteAllMediaByConversation(conversationId: string, organizationId: string) {
+    const messages = await MessageRepository.findAllByConversation(conversationId, organizationId);
     
     // Identificar todos os arquivos (Media e Thumbnail)
     const pathsToRemoval: string[] = [];
@@ -528,14 +553,14 @@ export class MessageService {
     return successCount;
   }
 
-  static async cancelScheduledMessage(id: string) {
-    const msg = await MessageRepository.findById(id);
+  static async cancelScheduledMessage(id: string, organizationId: string) {
+    const msg = await MessageRepository.findById(id, organizationId);
     if (!msg) throw new AppError('Mensagem não encontrada', 404);
     if (msg.sendStatus !== 'scheduled') {
       throw new AppError('Apenas mensagens agendadas podem ser canceladas', 400);
     }
 
-    const updated = await MessageRepository.update(id, {
+    const updated = await MessageRepository.update(id, organizationId, {
       sendStatus: 'cancelled'
     });
 
@@ -545,7 +570,7 @@ export class MessageService {
     return updated;
   }
 
-  static async cancelScheduledByCustomerReply(conversationId: string) {
+  static async cancelScheduledByCustomerReply(conversationId: string, organizationId: string) {
     const { supabaseAdmin } = await import('@/lib/supabase-admin');
     
     // Buscar mensagens agendadas desta conversa com cancelOnReply = true
@@ -553,6 +578,7 @@ export class MessageService {
       .from('Message')
       .select('id')
       .eq('conversationId', conversationId)
+      .eq('organizationId', organizationId)
       .eq('sendStatus', 'scheduled')
       .eq('cancelOnReply', true);
 
@@ -561,7 +587,7 @@ export class MessageService {
     console.log(`[MSG_SERVICE] Cancelando ${scheduled.length} mensagens agendadas por resposta do cliente na conv ${conversationId}`);
 
     for (const msg of scheduled) {
-      await this.cancelScheduledMessage(msg.id);
+      await this.cancelScheduledMessage(msg.id, organizationId);
     }
   }
 }

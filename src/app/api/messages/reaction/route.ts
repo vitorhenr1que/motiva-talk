@@ -1,20 +1,27 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { evolutionProvider } from '@/services/whatsapp/evolution-provider';
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant';
+import { handleApiError } from '@/lib/api-errors';
+
+const ROUTE = '/api/messages/reaction';
 
 export async function POST(req: Request) {
   try {
     const { messageId, emoji } = await req.json();
+    const organizationId = await getCurrentOrganizationId();
+    if (!organizationId) throw organizationNotFoundError();
 
     if (!messageId || !emoji) {
       return NextResponse.json({ error: 'Message ID e Emoji são obrigatórios.' }, { status: 400 });
     }
 
     // 1. Busca os dados da mensagem no banco para obter o externalId, canal e contato
-    const { data: message, error: msgError } = await supabase
+    const { data: message, error: msgError } = await supabaseAdmin
       .from('Message')
       .select('*, conversation:Conversation(*, channel:Channel(*), contact:Contact(*))')
       .eq('id', messageId)
+      .eq('organizationId', organizationId)
       .single();
 
     if (msgError || !message) {
@@ -52,14 +59,15 @@ export async function POST(req: Request) {
     const otherReactions = currentReactions.filter((r: any) => r.sender !== 'AGENT');
     const newReactions = [...otherReactions, { emoji, sender: 'AGENT', timestamp: Date.now() }];
 
-    await supabase
+    await supabaseAdmin
       .from('Message')
       .update({ reactions: newReactions })
-      .eq('id', messageId);
+      .eq('id', messageId)
+      .eq('organizationId', organizationId);
 
     return NextResponse.json({ success: true, result });
   } catch (error: any) {
     console.error('[REACTION_API] Erro crítico:', error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return handleApiError(error, req, { route: ROUTE });
   }
 }

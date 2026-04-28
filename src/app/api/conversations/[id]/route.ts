@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ConversationService } from '@/services/conversations'
 import { handleApiError, AppError } from '@/lib/api-errors'
 import { getServerSession } from '@/lib/auth-server'
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,8 @@ export async function GET(
     const { id } = await params
     const user = await getServerSession();
     if (!user) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
 
     if (!id) throw new AppError('ID obrigatório', 400, 'VALIDATION_ERROR');
 
@@ -22,8 +25,8 @@ export async function GET(
     // sem o agente nem campos pesados. Reduz payload em hot path do realtime.
     const slim = req.nextUrl.searchParams.get('slim') === 'true';
     const conversation = slim
-      ? await ConversationService.getByIdSlim(id)
-      : await ConversationService.getById(id);
+      ? await ConversationService.getByIdSlim(id, organizationId)
+      : await ConversationService.getById(id, organizationId);
     if (!conversation) throw new AppError('Conversa não encontrada', 404, 'NOT_FOUND');
 
     return NextResponse.json({ success: true, data: conversation })
@@ -40,6 +43,8 @@ export async function PATCH(
     const { id } = await params
     const user = await getServerSession();
     if (!user) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
 
     if (!id) throw new AppError('ID obrigatório', 400, 'VALIDATION_ERROR');
 
@@ -58,7 +63,7 @@ export async function PATCH(
     
     // Se for atribuição de agente específica (sem alteração de status)
     if (assignedTo && !status) {
-      updated = await ConversationService.assignAgent(id, assignedTo)
+      updated = await ConversationService.assignAgent(id, assignedTo, organizationId)
     } 
     // Atualização genérica de campos (status, pinnedNote, unreadCount, pinnedAt)
     else {
@@ -76,7 +81,7 @@ export async function PATCH(
         throw new AppError('Nenhum campo válido para atualização (status, pinnedNote, unreadCount, pinnedAt, currentSectorId, assignedTo)', 400, 'VALIDATION_ERROR');
       }
 
-      updated = await ConversationService.updateConversation(id, updateData);
+      updated = await ConversationService.updateConversation(id, organizationId, updateData);
     }
 
     return NextResponse.json({ success: true, data: updated })
@@ -93,6 +98,8 @@ export async function DELETE(
     const { id } = await params
     const userSession = await getServerSession();
     if (!userSession) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
 
     if (!id) throw new AppError('ID obrigatório', 400, 'VALIDATION_ERROR');
 
@@ -100,8 +107,8 @@ export async function DELETE(
     const { SettingRepository } = await import('@/repositories/settingRepository');
     const { getUserRole } = await import('@/lib/auth-server');
     
-    const settings = await SettingRepository.getChatSettings();
-    const userRole = await getUserRole(userSession.email!);
+    const settings = await SettingRepository.getChatSettings(organizationId);
+    const userRole = await getUserRole(userSession.email!, organizationId);
 
     // Se NÃO for admin ou supervisor, verifica a flag global
     if (userRole !== 'ADMIN' && userRole !== 'SUPERVISOR') {
@@ -112,7 +119,7 @@ export async function DELETE(
 
     console.log('[API] DELETE ' + ROUTE + ':', { id, user: userSession.email, role: userRole });
 
-    await ConversationService.deleteConversation(id);
+    await ConversationService.deleteConversation(id, organizationId);
 
     return NextResponse.json({ success: true, message: 'Conversa excluída com sucesso' });
   } catch (error) {

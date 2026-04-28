@@ -39,16 +39,14 @@ export class WebhookService {
 
     console.log(`[WEBHOOK] Connection Update: Channel[${event.channelId}] Raw[${rawStatus}] -> Int[${internalStatus}]`);
     
-    // Find channel by ID or providerSessionId (handles UUID dash differences)
+    const channelIdNoDashes = event.channelId.replace(/-/g, '');
     const { data: channels } = await supabaseAdmin
       .from('Channel')
-      .select('id, providerSessionId')
+      .select('id, providerSessionId, organizationId')
+      .or(`id.eq.${event.channelId},id.eq.${channelIdNoDashes},providerSessionId.eq.${event.channelId}`)
+      .limit(1)
 
-    const channel = channels?.find(c => 
-      c.id === event.channelId || 
-      c.id.replace(/-/g, '') === event.channelId ||
-      c.providerSessionId === event.channelId
-    );
+    const channel = channels?.[0];
 
     if (channel) {
       console.log(`[WEBHOOK] Aplicando status ${internalStatus} ao canal ${channel.id}`);
@@ -56,6 +54,7 @@ export class WebhookService {
         .from('Channel')
         .update({ connectionStatus: internalStatus })
         .eq('id', channel.id)
+        .eq('organizationId', channel.organizationId)
       
       if (error) console.error(`[WEBHOOK] Erro ao persistir no banco: ${error.message}`);
     } else {
@@ -77,12 +76,23 @@ export class WebhookService {
       console.log(`[WEBHOOK_DEBUG] Quoted Message external ID detectado: ${quotedId}`);
       console.log(`[WEBHOOK_DEBUG] Valor de stanzaId (quotedId): ${quotedId}`);
       
-      // 2. Buscar no banco a mensagem original pelo externalMessageId
-      const { data: originalMsg } = await supabaseAdmin
-        .from('Message')
-        .select('id')
-        .eq('externalMessageId', quotedId)
-        .maybeSingle();
+      const channelIdNoDashes = event.channelId.replace(/-/g, '');
+      const { data: channelMatches } = await supabaseAdmin
+        .from('Channel')
+        .select('id, organizationId')
+        .or(`id.eq.${event.channelId},id.eq.${channelIdNoDashes},providerSessionId.eq.${event.channelId}`)
+        .limit(1);
+      const channel = channelMatches?.[0];
+
+      // 2. Buscar no banco a mensagem original pelo externalMessageId no tenant do canal.
+      const { data: originalMsg } = channel
+        ? await supabaseAdmin
+          .from('Message')
+          .select('id')
+          .eq('externalMessageId', quotedId)
+          .eq('organizationId', channel.organizationId)
+          .maybeSingle()
+        : { data: null };
       
       if (originalMsg) {
         // Encontrou! Guardamos no metadata para o ingestMessage usar

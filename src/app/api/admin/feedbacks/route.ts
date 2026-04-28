@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FeedbackService } from '@/services/feedback.service';
 import { getServerSession, getUserRole } from '@/lib/auth-server';
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant';
+import { handleApiError } from '@/lib/api-errors';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,8 +12,10 @@ export async function GET(req: NextRequest) {
     if (!user) {
         return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+    const organizationId = await getCurrentOrganizationId();
+    if (!organizationId) throw organizationNotFoundError();
     
-    const role = await getUserRole(user.email!);
+    const role = await getUserRole(user.email!, organizationId);
     if (role !== 'ADMIN' && role !== 'SUPERVISOR') {
         return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
@@ -26,8 +30,8 @@ export async function GET(req: NextRequest) {
     const filters = { startDate, endDate, minScore, maxScore, agentId };
     
     const [list, summary] = await Promise.all([
-      FeedbackService.listFeedbacks(filters),
-      FeedbackService.getFeedbackSummary(filters)
+      FeedbackService.listFeedbacks(organizationId, filters),
+      FeedbackService.getFeedbackSummary(organizationId, filters)
     ]);
 
     return NextResponse.json({ 
@@ -39,9 +43,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (error: any) {
     console.error('[ADMIN_FEEDBACK_API_ERROR]', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: error.message || 'Erro interno do servidor' 
-    }, { status: 500 });
+    return handleApiError(error, req, { route: '/api/admin/feedbacks' });
   }
 }

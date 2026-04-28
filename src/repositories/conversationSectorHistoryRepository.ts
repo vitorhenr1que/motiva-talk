@@ -15,6 +15,7 @@ export class ConversationSectorHistoryRepository {
    */
   static async insert(data: {
     conversationId: string;
+    organizationId: string;
     sectorId: string | null;
     enteredAt?: string;
     transferredById?: string | null;
@@ -22,6 +23,7 @@ export class ConversationSectorHistoryRepository {
     const row = {
       id: generateId(),
       conversationId: data.conversationId,
+      organizationId: data.organizationId,
       sectorId: data.sectorId,
       enteredAt: data.enteredAt || new Date().toISOString(),
       leftAt: null,
@@ -40,12 +42,13 @@ export class ConversationSectorHistoryRepository {
    * Marca o tenure ativo da conversa como encerrado.
    * Retorna a linha atualizada (ou null se não havia tenure ativo).
    */
-  static async closeActive(conversationId: string, leftAt?: string) {
+  static async closeActive(conversationId: string, organizationId: string, leftAt?: string) {
     const ts = leftAt || new Date().toISOString();
     const { data, error } = await supabaseAdmin
       .from('ConversationSectorHistory')
       .update({ leftAt: ts })
       .eq('conversationId', conversationId)
+      .eq('organizationId', organizationId)
       .is('leftAt', null)
       .select()
       .maybeSingle();
@@ -60,12 +63,14 @@ export class ConversationSectorHistoryRepository {
    * - Retorna null se aquele setor nunca cuidou da conversa.
    */
   static async findLatestRangeForSector(
+    organizationId: string,
     conversationId: string,
     sectorId: string
   ): Promise<SectorTenureRange | null> {
     const { data, error } = await supabaseAdmin
       .from('ConversationSectorHistory')
       .select('enteredAt, leftAt, sectorId')
+      .eq('organizationId', organizationId)
       .eq('conversationId', conversationId)
       .eq('sectorId', sectorId)
       .order('enteredAt', { ascending: false })
@@ -78,11 +83,12 @@ export class ConversationSectorHistoryRepository {
   /**
    * Lista todos os tenures de uma conversa, em ordem cronológica.
    */
-  static async listForConversation(conversationId: string) {
+  static async listForConversation(conversationId: string, organizationId: string) {
     const { data, error } = await supabaseAdmin
       .from('ConversationSectorHistory')
       .select('*')
       .eq('conversationId', conversationId)
+      .eq('organizationId', organizationId)
       .order('enteredAt', { ascending: true });
     if (error) throw error;
     return data;
@@ -91,11 +97,12 @@ export class ConversationSectorHistoryRepository {
   /**
    * Retorna o tenure ativo (leftAt NULL) da conversa, ou null.
    */
-  static async findActive(conversationId: string) {
+  static async findActive(conversationId: string, organizationId: string) {
     const { data, error } = await supabaseAdmin
       .from('ConversationSectorHistory')
       .select('*')
       .eq('conversationId', conversationId)
+      .eq('organizationId', organizationId)
       .is('leftAt', null)
       .maybeSingle();
     if (error) throw error;

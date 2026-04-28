@@ -2,13 +2,26 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateId } from '@/lib/utils'
 
 export class FunnelRepository {
+  private static async ensureConversationInOrganization(conversationId: string, organizationId: string) {
+    const { data, error } = await supabaseAdmin
+      .from('Conversation')
+      .select('id')
+      .eq('id', conversationId)
+      .eq('organizationId', organizationId)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!data) throw new Error('Conversa não encontrada')
+  }
+
   /**
    * Lista todas as etapas do funil ordenadas
    */
-  static async listStages() {
+  static async listStages(organizationId: string) {
     const { data, error } = await supabaseAdmin
       .from('FunnelStage')
       .select('*')
+      .eq('organizationId', organizationId)
       .order('order', { ascending: true })
     
     if (error) throw error
@@ -18,10 +31,10 @@ export class FunnelRepository {
   /**
    * Cria uma nova etapa no funil
    */
-  static async createStage(data: any) {
+  static async createStage(organizationId: string, data: any) {
     const { data: stage, error } = await supabaseAdmin
       .from('FunnelStage')
-      .insert([{ id: generateId(), ...data }])
+      .insert([{ id: generateId(), ...data, organizationId }])
       .select()
       .single()
     
@@ -32,11 +45,12 @@ export class FunnelRepository {
   /**
    * Atualiza uma etapa existente
    */
-  static async updateStage(id: string, data: any) {
+  static async updateStage(id: string, organizationId: string, data: any) {
     const { data: stage, error } = await supabaseAdmin
       .from('FunnelStage')
       .update(data)
       .eq('id', id)
+      .eq('organizationId', organizationId)
       .select()
       .single()
     
@@ -47,11 +61,12 @@ export class FunnelRepository {
   /**
    * Remove uma etapa do funil
    */
-  static async deleteStage(id: string) {
+  static async deleteStage(id: string, organizationId: string) {
     const { error } = await supabaseAdmin
       .from('FunnelStage')
       .delete()
       .eq('id', id)
+      .eq('organizationId', organizationId)
     
     if (error) throw error
     return { success: true }
@@ -60,11 +75,14 @@ export class FunnelRepository {
   /**
    * Busca o estado do funil para uma conversa específica
    */
-  static async getConversationFunnel(conversationId: string) {
+  static async getConversationFunnel(conversationId: string, organizationId: string) {
+    await this.ensureConversationInOrganization(conversationId, organizationId)
+
     const { data, error } = await supabaseAdmin
       .from('ConversationFunnel')
       .select('*, stage:FunnelStage(*)')
       .eq('conversationId', conversationId)
+      .eq('organizationId', organizationId)
     
     if (error) throw error
     return data
@@ -75,12 +93,15 @@ export class FunnelRepository {
    * Regra: Se for tipo 'STEP', remove etapas 'STEP' anteriores. 
    * Se for 'SELECT', apenas insere/atualiza.
    */
-  static async setConversationStage(conversationId: string, stageId: string, value: string | null, rank: number | null = null) {
+  static async setConversationStage(organizationId: string, conversationId: string, stageId: string, value: string | null, rank: number | null = null) {
+    await this.ensureConversationInOrganization(conversationId, organizationId)
+
     // 1. Verificar tipo da etapa
     const { data: stage } = await supabaseAdmin
       .from('FunnelStage')
       .select('type')
       .eq('id', stageId)
+      .eq('organizationId', organizationId)
       .single()
 
     if (!stage) throw new Error('Etapa não encontrada')
@@ -90,6 +111,7 @@ export class FunnelRepository {
       const { data: otherSteps } = await supabaseAdmin
         .from('FunnelStage')
         .select('id')
+        .eq('organizationId', organizationId)
         .eq('type', 'STEP')
 
       const stepIds = otherSteps?.map(s => s.id) || []
@@ -98,6 +120,7 @@ export class FunnelRepository {
         .from('ConversationFunnel')
         .delete()
         .eq('conversationId', conversationId)
+        .eq('organizationId', organizationId)
         .in('stageId', stepIds)
     }
 
@@ -107,6 +130,7 @@ export class FunnelRepository {
        const { data: maxRankData } = await supabaseAdmin
           .from('ConversationFunnel')
           .select('rank')
+          .eq('organizationId', organizationId)
           .eq('stageId', stageId)
           .order('rank', { ascending: false })
           .limit(1)
@@ -121,6 +145,7 @@ export class FunnelRepository {
       .upsert({
         id: generateId(),
         conversationId,
+        organizationId,
         stageId,
         value,
         rank: calculatedRank,
@@ -136,12 +161,15 @@ export class FunnelRepository {
   /**
    * Remove uma etapa específica de uma conversa (desmarcar)
    */
-  static async removeConversationStage(conversationId: string, stageId: string) {
+  static async removeConversationStage(conversationId: string, stageId: string, organizationId: string) {
+    await this.ensureConversationInOrganization(conversationId, organizationId)
+
     const { error } = await supabaseAdmin
       .from('ConversationFunnel')
       .delete()
       .eq('conversationId', conversationId)
       .eq('stageId', stageId)
+      .eq('organizationId', organizationId)
     
     if (error) throw error
     return { success: true }
@@ -150,7 +178,7 @@ export class FunnelRepository {
   /**
    * Busca dados formatados para o Kanban
    */
-  static async getKanbanData(startDate?: string, endDate?: string) {
+  static async getKanbanData(organizationId: string, startDate?: string, endDate?: string) {
     let query = supabaseAdmin
       .from('ConversationFunnel')
       .select(`
@@ -169,6 +197,7 @@ export class FunnelRepository {
           tags:ConversationTag(*, tag:Tag(*))
         )
       `)
+      .eq('organizationId', organizationId)
       .order('rank', { ascending: true })
       .order('completedAt', { ascending: false })
 

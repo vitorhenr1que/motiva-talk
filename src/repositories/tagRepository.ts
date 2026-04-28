@@ -2,28 +2,34 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateId } from '@/lib/utils'
 
 export class TagRepository {
-  static async findMany() {
-    const { data, error } = await supabaseAdmin.from('Tag').select('*').order('name', { ascending: true })
+  static async findMany(organizationId: string) {
+    const { data, error } = await supabaseAdmin
+      .from('Tag')
+      .select('*')
+      .eq('organizationId', organizationId)
+      .order('name', { ascending: true })
     if (error) throw error
     return data
   }
 
-  static async findByName(name: string) {
+  static async findByName(name: string, organizationId: string) {
     const { data: list, error } = await supabaseAdmin
       .from('Tag')
       .select('*')
       .eq('name', name)
+      .eq('organizationId', organizationId)
       .limit(1);
     
     if (error) throw error;
     return list?.[0] || null;
   }
 
-  static async findOrCreate(name: string, color?: string, emoji?: string) {
+  static async findOrCreate(name: string, organizationId: string, color?: string, emoji?: string) {
     const { data: existingList, error: searchError } = await supabaseAdmin
       .from('Tag')
       .select('*')
       .eq('name', name)
+      .eq('organizationId', organizationId)
       .limit(1);
     
     if (searchError) {
@@ -39,6 +45,7 @@ export class TagRepository {
       .insert([{
         id: generateId(),
         name,
+        organizationId,
         color: color || '#3b82f6',
         emoji: emoji || '🏷️'
       }])
@@ -49,10 +56,10 @@ export class TagRepository {
     return newTag
   }
 
-  static async addToConversation(conversationId: string, tagId: string) {
+  static async addToConversation(conversationId: string, tagId: string, organizationId: string) {
     const { data, error } = await supabaseAdmin
       .from('ConversationTag')
-      .upsert({ conversationId, tagId }, { onConflict: 'conversationId,tagId' })
+      .upsert({ conversationId, tagId, organizationId }, { onConflict: 'conversationId,tagId' })
       .select()
       .single()
 
@@ -60,31 +67,34 @@ export class TagRepository {
     return data
   }
 
-  static async removeFromConversation(conversationId: string, tagId: string) {
+  static async removeFromConversation(conversationId: string, tagId: string, organizationId: string) {
     const { error } = await supabaseAdmin
       .from('ConversationTag')
       .delete()
       .match({ conversationId, tagId })
+      .eq('organizationId', organizationId)
 
     if (error) throw error
     return { success: true }
   }
 
-  static async listByConversation(conversationId: string) {
+  static async listByConversation(conversationId: string, organizationId: string) {
     const { data, error } = await supabaseAdmin
       .from('ConversationTag')
       .select('*, tag:Tag(*)')
       .eq('conversationId', conversationId)
+      .eq('organizationId', organizationId)
 
     if (error) throw error
     return data
   }
 
-  static async update(id: string, data: any) {
+  static async update(id: string, organizationId: string, data: any) {
     const { data: updatedTag, error } = await supabaseAdmin
       .from('Tag')
       .update(data)
       .eq('id', id)
+      .eq('organizationId', organizationId)
       .select()
       .single()
 
@@ -92,13 +102,14 @@ export class TagRepository {
     return updatedTag
   }
 
-  static async delete(id: string) {
+  static async delete(id: string, organizationId: string) {
     try {
       // 1. Identify the tag by ID to get its name (to handle any duplicates with same name)
       const { data: tagInfo, error: fetchError } = await supabaseAdmin
         .from('Tag')
         .select('name')
         .eq('id', id)
+        .eq('organizationId', organizationId)
         .maybeSingle();
 
       const tagName = tagInfo?.name;
@@ -108,7 +119,8 @@ export class TagRepository {
         const { data: duplicateTags } = await supabaseAdmin
           .from('Tag')
           .select('id')
-          .eq('name', tagName);
+          .eq('name', tagName)
+          .eq('organizationId', organizationId);
         
         const tagIds = duplicateTags?.map(t => t.id) || [id];
 
@@ -116,6 +128,7 @@ export class TagRepository {
         const { error: bridgeError } = await supabaseAdmin
           .from('ConversationTag')
           .delete()
+          .eq('organizationId', organizationId)
           .in('tagId', tagIds);
 
         if (bridgeError) {
@@ -127,7 +140,8 @@ export class TagRepository {
         const { error: tagError } = await supabaseAdmin
           .from('Tag')
           .delete()
-          .eq('name', tagName);
+          .eq('name', tagName)
+          .eq('organizationId', organizationId);
 
         if (tagError) {
           console.error('[DATABASE] Error deleting tags by name:', tagName, tagError);
@@ -135,8 +149,8 @@ export class TagRepository {
         }
       } else {
         // Fallback: delete only the specific ID if name lookup fails
-        await supabaseAdmin.from('ConversationTag').delete().eq('tagId', id);
-        await supabaseAdmin.from('Tag').delete().eq('id', id);
+        await supabaseAdmin.from('ConversationTag').delete().eq('tagId', id).eq('organizationId', organizationId);
+        await supabaseAdmin.from('Tag').delete().eq('id', id).eq('organizationId', organizationId);
       }
 
       return { success: true };

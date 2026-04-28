@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ForwardService } from '@/services/forward.service';
 import { handleApiError, validateBody, AppError } from '@/lib/api-errors';
 import { getServerSession } from '@/lib/auth-server';
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,8 @@ export async function POST(req: Request) {
   try {
     const user = await getServerSession();
     if (!user) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
+    const organizationId = await getCurrentOrganizationId();
+    if (!organizationId) throw organizationNotFoundError();
 
     const body = await req.json();
     console.log(`[API] ${req.method} ${ROUTE}:`, {
@@ -30,6 +33,7 @@ export async function POST(req: Request) {
       messageIds: body.messageIds,
       targetContactIds: body.targetContactIds,
       channelId,
+      organizationId,
     });
 
     return NextResponse.json({ success: true, data: result }, { status: 202 });

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ChannelConnectionService } from '@/services/channels/channel-connection.service';
 import { handleApiError } from '@/lib/api-errors';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,13 +17,15 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    const organizationId = await getCurrentOrganizationId();
+    if (!organizationId) throw organizationNotFoundError();
     console.log(`[API] ${req.method} ${ROUTE}:`, { id });
     
     if (!id) {
       return NextResponse.json({ success: false, message: 'ID do canal é obrigatório' }, { status: 400 });
     }
 
-    await ChannelConnectionService.deleteChannel(id);
+    await ChannelConnectionService.deleteChannel(id, organizationId);
     
     return NextResponse.json({
       success: true,
@@ -42,6 +45,8 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
+    const organizationId = await getCurrentOrganizationId();
+    if (!organizationId) throw organizationNotFoundError();
     const body = await req.json();
 
     if (!id) {
@@ -53,10 +58,24 @@ export async function PATCH(
     if (body.defaultSectorId !== undefined) updateData.defaultSectorId = body.defaultSectorId;
     if (body.allowAgentFilterAllSectors !== undefined) updateData.allowAgentFilterAllSectors = body.allowAgentFilterAllSectors;
 
+    if (updateData.defaultSectorId) {
+      const { data: sector } = await supabaseAdmin
+        .from('Sector')
+        .select('id')
+        .eq('id', updateData.defaultSectorId)
+        .eq('organizationId', organizationId)
+        .maybeSingle();
+
+      if (!sector) {
+        return NextResponse.json({ success: false, message: 'Setor padrão não encontrado' }, { status: 404 });
+      }
+    }
+
     const { data, error } = await supabaseAdmin
       .from('Channel')
       .update(updateData)
       .eq('id', id)
+      .eq('organizationId', organizationId)
       .select()
       .single();
 

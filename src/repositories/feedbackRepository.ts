@@ -16,10 +16,10 @@ export interface FeedbackData {
 }
 
 export class FeedbackRepository {
-  static async create(data: FeedbackData) {
+  static async create(organizationId: string, data: FeedbackData) {
     const { data: feedback, error } = await supabaseAdmin
       .from('Feedback')
-      .insert([data])
+      .insert([{ ...data, organizationId }])
       .select()
       .single()
 
@@ -43,11 +43,12 @@ export class FeedbackRepository {
     return feedback
   }
 
-  static async findLastByContact(contactId: string) {
+  static async findLastByContact(contactId: string, organizationId: string) {
     const { data: feedback, error } = await supabaseAdmin
       .from('Feedback')
       .select('*')
       .eq('contactId', contactId)
+      .eq('organizationId', organizationId)
       .order('createdAt', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -56,11 +57,12 @@ export class FeedbackRepository {
     return feedback
   }
 
-  static async update(id: string, data: Partial<FeedbackData>) {
+  static async update(id: string, organizationId: string, data: Partial<FeedbackData>) {
     const { data: updated, error } = await supabaseAdmin
       .from('Feedback')
       .update(data)
       .eq('id', id)
+      .eq('organizationId', organizationId)
       .select()
       .single()
 
@@ -68,12 +70,13 @@ export class FeedbackRepository {
     return updated
   }
 
-  static async findLastSubmittedByContact(contactId: string, contactPhone?: string) {
+  static async findLastSubmittedByContact(contactId: string, organizationId: string, contactPhone?: string) {
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     
     let query = supabaseAdmin
       .from('Feedback')
       .select('*')
+      .eq('organizationId', organizationId)
       .eq('status', 'SUBMITTED')
       .gte('submittedAt', yesterday);
 
@@ -93,6 +96,7 @@ export class FeedbackRepository {
   }
 
   static async findAll(filters: { 
+    organizationId: string,
     startDate?: string, 
     endDate?: string, 
     minScore?: number, 
@@ -106,6 +110,7 @@ export class FeedbackRepository {
         contact:Contact(id, name, phone),
         conversation:Conversation(id, status, agent:User(id, name))
       `)
+      .eq('organizationId', filters.organizationId)
       .eq('status', 'SUBMITTED')
       .order('submittedAt', { ascending: false });
 
@@ -130,10 +135,11 @@ export class FeedbackRepository {
     return data;
   }
 
-  static async getSummary(filters: { startDate?: string, endDate?: string, agentId?: string | null }) {
+  static async getSummary(filters: { organizationId: string, startDate?: string, endDate?: string, agentId?: string | null }) {
     let query = supabaseAdmin
       .from('Feedback')
       .select('score')
+      .eq('organizationId', filters.organizationId)
       .eq('status', 'SUBMITTED');
 
     if (filters.startDate) {
@@ -168,11 +174,12 @@ export class FeedbackRepository {
     };
   }
 
-  static async nullifyConversation(conversationId: string) {
+  static async nullifyConversation(conversationId: string, organizationId: string) {
     const { error } = await supabaseAdmin
       .from('Feedback')
       .update({ conversationId: null })
-      .eq('conversationId', conversationId);
+      .eq('conversationId', conversationId)
+      .eq('organizationId', organizationId);
     
     if (error) {
       console.error('[FEEDBACK_REPO] Erro ao desvincular feedbacks:', error);

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { getServerSession, getUserRole } from '@/lib/auth-server';
 import { AppError, handleApiError } from '@/lib/api-errors';
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant';
 
 const ROUTE = '/api/sectors';
 
@@ -9,14 +10,17 @@ export async function GET(req: Request) {
   try {
     const user = await getServerSession();
     if (!user) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
+    const organizationId = await getCurrentOrganizationId();
+    if (!organizationId) throw organizationNotFoundError();
 
-    const role = await getUserRole(user.email!);
+    const role = await getUserRole(user.email!, organizationId);
     const { searchParams } = new URL(req.url);
     const onlyMine = searchParams.get('mine') === 'true';
     
     let query = supabaseAdmin
       .from('Sector')
       .select('*, users:UserSector(userId, user:User(id, name, email))')
+      .eq('organizationId', organizationId)
       .order('createdAt', { ascending: true });
 
     // Se for AGENTE e estiver pedindo "mine", ou se for ADMIN mas quiser filtrar os dele
@@ -24,7 +28,8 @@ export async function GET(req: Request) {
       const { data: userSectors } = await supabaseAdmin
         .from('UserSector')
         .select('sectorId')
-        .eq('userId', user.id);
+        .eq('userId', user.id)
+        .eq('organizationId', organizationId);
       
       const allowedIds = userSectors?.map(us => us.sectorId) || [];
       
@@ -49,8 +54,10 @@ export async function POST(req: Request) {
   try {
     const user = await getServerSession();
     if (!user) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
+    const organizationId = await getCurrentOrganizationId();
+    if (!organizationId) throw organizationNotFoundError();
 
-    const role = await getUserRole(user.email!);
+    const role = await getUserRole(user.email!, organizationId);
     if (role !== 'ADMIN') {
       throw new AppError('Apenas administradores podem criar setores', 403, 'FORBIDDEN');
     }
@@ -64,7 +71,7 @@ export async function POST(req: Request) {
     // 1. Create Sector
     const { data: sector, error: sectorError } = await supabaseAdmin
       .from('Sector')
-      .insert([{ name }])
+      .insert([{ name, organizationId }])
       .select()
       .single();
 
@@ -75,10 +82,19 @@ export async function POST(req: Request) {
       const validUserIds = userIds.filter((uid: any) => uid && uid !== 'undefined');
       
       if (validUserIds.length > 0) {
-        const userSectors = validUserIds.map((userId: string) => ({
-          userId,
-          sectorId: sector.id
+        const { data: orgUsers } = await supabaseAdmin
+          .from('User')
+          .select('id')
+          .eq('organizationId', organizationId)
+          .in('id', validUserIds);
+
+        const userSectors = (orgUsers || []).map((user) => ({
+          userId: user.id,
+          sectorId: sector.id,
+          organizationId
         }));
+
+        if (userSectors.length === 0) return NextResponse.json({ success: true, data: sector }, { status: 201 });
 
         const { error: usersError } = await supabaseAdmin
           .from('UserSector')

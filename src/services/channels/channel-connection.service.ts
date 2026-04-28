@@ -8,13 +8,14 @@ export class ChannelConnectionService {
    * High-level orchestration for connecting a channel.
    * Logic: Only creates instance if providerSessionId is missing.
    */
-  static async connectChannel(channelId: string) {
+  static async connectChannel(channelId: string, organizationId: string) {
     console.log(`[SERVICE] connectChannel iniciado para canal ID: ${channelId}`);
     
     const { data: channel, error: fetchError } = await supabaseAdmin
       .from('Channel')
       .select('*')
       .eq('id', channelId)
+      .eq('organizationId', organizationId)
       .single()
 
     if (fetchError || !channel) {
@@ -34,6 +35,7 @@ export class ChannelConnectionService {
           .from('Channel')
           .update({ providerSessionId: instanceName })
           .eq('id', channelId)
+          .eq('organizationId', organizationId)
         
         channel.providerSessionId = instanceName;
       } else {
@@ -53,6 +55,7 @@ export class ChannelConnectionService {
           isActive: true
         })
         .eq('id', channelId)
+        .eq('organizationId', organizationId)
         .select()
         .single()
 
@@ -69,11 +72,12 @@ export class ChannelConnectionService {
   /**
    * Fetches the QR code.
    */
-  static async getChannelQrCode(channelId: string) {
+  static async getChannelQrCode(channelId: string, organizationId: string) {
     const { data: channel, error: fetchError } = await supabaseAdmin
       .from('Channel')
       .select('*')
       .eq('id', channelId)
+      .eq('organizationId', organizationId)
       .single()
 
     if (fetchError || !channel) throw new Error('Canal não encontrado');
@@ -89,6 +93,7 @@ export class ChannelConnectionService {
           .from('Channel')
           .update({ connectionStatus: 'DISCONNECTED' })
           .eq('id', channelId)
+          .eq('organizationId', organizationId)
       }
 
       // Se não tiver providerSessionId, cria agora (Primeira conexão através do modal de QR Code)
@@ -100,6 +105,7 @@ export class ChannelConnectionService {
           .from('Channel')
           .update({ providerSessionId })
           .eq('id', channelId)
+          .eq('organizationId', organizationId)
       } else {
         console.log(`[SERVICE] Usando instância existente para QR Code: ${channel.providerSessionId}`);
       }
@@ -116,11 +122,12 @@ export class ChannelConnectionService {
   /**
    * Syncs status between Provider and DB.
    */
-  static async getChannelStatus(channelId: string) {
+  static async getChannelStatus(channelId: string, organizationId: string) {
     const { data: channel, error: fetchError } = await supabaseAdmin
       .from('Channel')
       .select('*')
       .eq('id', channelId)
+      .eq('organizationId', organizationId)
       .single()
 
     if (fetchError || !channel) throw new Error('Canal não encontrado');
@@ -134,6 +141,7 @@ export class ChannelConnectionService {
           .from('Channel')
           .update({ connectionStatus: statusResult.status })
           .eq('id', channelId)
+          .eq('organizationId', organizationId)
       }
 
       return statusResult;
@@ -146,11 +154,12 @@ export class ChannelConnectionService {
   /**
    * Disconnects the session.
    */
-  static async disconnectChannel(channelId: string) {
+  static async disconnectChannel(channelId: string, organizationId: string) {
     const { data: channel, error: fetchError } = await supabaseAdmin
       .from('Channel')
       .select('*')
       .eq('id', channelId)
+      .eq('organizationId', organizationId)
       .single()
 
     if (fetchError || !channel) throw new Error('Canal não encontrado');
@@ -162,6 +171,7 @@ export class ChannelConnectionService {
         .from('Channel')
         .update({ connectionStatus: 'DISCONNECTED' })
         .eq('id', channelId)
+        .eq('organizationId', organizationId)
       
       console.log(`[SERVICE] Canal ${channelId} desconectado.`);
     } catch (error: any) {
@@ -173,13 +183,14 @@ export class ChannelConnectionService {
   /**
    * Resets the channel by deleting the instance and creating a new one.
    */
-  static async resetChannel(channelId: string) {
+  static async resetChannel(channelId: string, organizationId: string) {
     console.log(`[SERVICE] Iniciando RESET de canal: ${channelId}`);
     
     const { data: channel, error: fetchError } = await supabaseAdmin
       .from('Channel')
       .select('*')
       .eq('id', channelId)
+      .eq('organizationId', organizationId)
       .single()
 
     if (fetchError || !channel) throw new Error('Canal não encontrado');
@@ -200,9 +211,10 @@ export class ChannelConnectionService {
           connectionStatus: 'PENDING'
         })
         .eq('id', channelId)
+        .eq('organizationId', organizationId)
 
       console.log(`[SERVICE] [RESET] 3. Recriando instância base...`);
-      const updatedChannel = await this.connectChannel(channelId);
+      const updatedChannel = await this.connectChannel(channelId, organizationId);
 
       return updatedChannel;
     } catch (error: any) {
@@ -214,12 +226,13 @@ export class ChannelConnectionService {
   /**
    * Full removal.
    */
-  static async deleteChannel(channelId: string) {
+  static async deleteChannel(channelId: string, organizationId: string) {
     console.log(`[SERVICE] Full Delete para: ${channelId}`);
     const { data: channel, error: fetchError } = await supabaseAdmin
       .from('Channel')
       .select('*')
       .eq('id', channelId)
+      .eq('organizationId', organizationId)
       .single()
 
     if (fetchError || !channel) throw new Error('Canal não encontrado');
@@ -241,7 +254,8 @@ export class ChannelConnectionService {
       const { data: mediaMessages, error: mediaError } = await supabaseAdmin
         .from('Message')
         .select('mediaUrl, thumbnailUrl')
-        .eq('channelId', channelId);
+        .eq('channelId', channelId)
+        .eq('organizationId', organizationId);
 
       if (mediaError) {
         console.error(`[SERVICE] Falha ao buscar mediaUrl/thumbnailUrl das mensagens:`, mediaError);
@@ -306,7 +320,8 @@ export class ChannelConnectionService {
     const { data: conversations } = await supabaseAdmin
       .from('Conversation')
       .select('id, contactId')
-      .eq('channelId', channelId);
+      .eq('channelId', channelId)
+      .eq('organizationId', organizationId);
 
     const conversationIds = conversations?.map(c => c.id) || [];
     // Filtrar contactIds nulos e remover duplicatas
@@ -320,23 +335,23 @@ export class ChannelConnectionService {
       const BATCH_SIZE = 500;
       for (let i = 0; i < conversationIds.length; i += BATCH_SIZE) {
         const batch = conversationIds.slice(i, i + BATCH_SIZE);
-        await supabaseAdmin.from('InternalNote').delete().in('conversationId', batch);
-        await supabaseAdmin.from('ConversationTag').delete().in('conversationId', batch);
-        await supabaseAdmin.from('ConversationFunnel').delete().in('conversationId', batch);
-        await supabaseAdmin.from('Feedback').delete().in('conversationId', batch);
+        await supabaseAdmin.from('InternalNote').delete().eq('organizationId', organizationId).in('conversationId', batch);
+        await supabaseAdmin.from('ConversationTag').delete().eq('organizationId', organizationId).in('conversationId', batch);
+        await supabaseAdmin.from('ConversationFunnel').delete().eq('organizationId', organizationId).in('conversationId', batch);
+        await supabaseAdmin.from('Feedback').delete().eq('organizationId', organizationId).in('conversationId', batch);
       }
     }
 
     // c. Excluir Mensagens e as próprias Conversas do canal
     console.log(`[SERVICE] Excluindo Mensagens e Conversas...`);
-    await supabaseAdmin.from('Message').delete().eq('channelId', channelId);
-    await supabaseAdmin.from('Conversation').delete().eq('channelId', channelId);
+    await supabaseAdmin.from('Message').delete().eq('channelId', channelId).eq('organizationId', organizationId);
+    await supabaseAdmin.from('Conversation').delete().eq('channelId', channelId).eq('organizationId', organizationId);
 
     // d. Excluir Links Globais e Auxiliares do Canal (Permissões de User, IA, Quick Reply)
     console.log(`[SERVICE] Excluindo vínculos de Usuários, Respostas Rápidas e Sugestões vinculadas ao Canal...`);
-    await supabaseAdmin.from('UserChannel').delete().eq('channelId', channelId);
-    await supabaseAdmin.from('KeywordSuggestion').delete().eq('channelId', channelId);
-    await supabaseAdmin.from('QuickReply').delete().eq('channelId', channelId);
+    await supabaseAdmin.from('UserChannel').delete().eq('channelId', channelId).eq('organizationId', organizationId);
+    await supabaseAdmin.from('KeywordSuggestion').delete().eq('channelId', channelId).eq('organizationId', organizationId);
+    await supabaseAdmin.from('QuickReply').delete().eq('channelId', channelId).eq('organizationId', organizationId);
 
     // e. Validação Fina de Contatos Órfãos (Regra: Excluir se for unicamente deste canal)
     console.log(`[SERVICE] Verificando ${contactIds.length} contatos para possível exclusão...`);
@@ -348,11 +363,12 @@ export class ChannelConnectionService {
         const { count, error } = await supabaseAdmin
           .from('Conversation')
           .select('id', { count: 'exact', head: true })
-          .eq('contactId', contactId);
+          .eq('contactId', contactId)
+          .eq('organizationId', organizationId);
         
         // Após deletarmos as conversas deste canal: se o count é 0, significa exclusividade prévia. Se há outras conversas, ele atende a outros canais.
         if (!error && count === 0) {
-          await supabaseAdmin.from('Contact').delete().eq('id', contactId);
+          await supabaseAdmin.from('Contact').delete().eq('id', contactId).eq('organizationId', organizationId);
           deletedContacts++;
         } else {
           preservedContacts++;
@@ -363,7 +379,7 @@ export class ChannelConnectionService {
 
     // 4. Exclusão do Canal Principal (Ponto de Não Retorno final)
     console.log(`[SERVICE] Excluindo registro principal do Canal...`);
-    const { error: deleteError } = await supabaseAdmin.from('Channel').delete().eq('id', channelId)
+    const { error: deleteError } = await supabaseAdmin.from('Channel').delete().eq('id', channelId).eq('organizationId', organizationId)
     
     if (deleteError) {
        console.error(`[SERVICE] Erro fatal ao apagar a instância "Channel" no banco de dados:`, deleteError);
@@ -377,11 +393,12 @@ export class ChannelConnectionService {
   /**
    * Obter configuração de webhook diretamente da Evolution API
    */
-  static async getWebhookConfig(channelId: string) {
+  static async getWebhookConfig(channelId: string, organizationId: string) {
     const { data: channel } = await supabaseAdmin
       .from('Channel')
       .select('*')
       .eq('id', channelId)
+      .eq('organizationId', organizationId)
       .single()
 
     if (!channel) throw new Error('Canal não encontrado');
@@ -400,11 +417,12 @@ export class ChannelConnectionService {
   /**
    * Atualizar configuração de webhook na Evolution API
    */
-  static async setWebhookConfig(channelId: string, config: any) {
+  static async setWebhookConfig(channelId: string, organizationId: string, config: any) {
     const { data: channel } = await supabaseAdmin
       .from('Channel')
       .select('*')
       .eq('id', channelId)
+      .eq('organizationId', organizationId)
       .single()
 
     if (!channel) throw new Error('Canal não encontrado');

@@ -1,6 +1,42 @@
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
+export type AppUserRole = 'ADMIN' | 'SUPERVISOR' | 'AGENT' | 'OWNER'
+
+export interface OrganizationContext {
+  id: string
+  name: string
+  slug: string
+  ownerId: string | null
+  plan: string | null
+  createdAt: string | null
+}
+
+export interface UserWithOrganization {
+  id: string
+  name: string
+  email: string
+  role: AppUserRole
+  organizationId: string | null
+  organization: OrganizationContext | null
+}
+
+const USER_WITH_ORG_SELECT = `
+  id,
+  name,
+  email,
+  role,
+  organizationId,
+  organization:Organization (
+    id,
+    name,
+    slug,
+    ownerId,
+    plan,
+    createdAt
+  )
+`
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
@@ -23,13 +59,33 @@ export async function getServerSession() {
   return user
 }
 
-export async function getUserRole(email: string) {
+export async function getUserRole(email: string, organizationId?: string) {
   const { supabaseAdmin } = await import('@/lib/supabase-admin')
-  const { data: user } = await supabaseAdmin
+  let query = supabaseAdmin
     .from('User')
     .select('role')
     .eq('email', email)
-    .single()
+
+  if (organizationId) query = query.eq('organizationId', organizationId)
+
+  const { data: user } = await query.single()
   
   return user?.role || 'AGENT'
+}
+
+export async function getUserWithOrg(email: string): Promise<UserWithOrganization | null> {
+  const { supabaseAdmin } = await import('@/lib/supabase-admin')
+  const { data: user } = await supabaseAdmin
+    .from('User')
+    .select(USER_WITH_ORG_SELECT)
+    .eq('email', email)
+    .maybeSingle()
+
+  return (user as UserWithOrganization | null) ?? null
+}
+
+export async function getOrganizationId(email: string): Promise<string | null> {
+  const user = await getUserWithOrg(email)
+
+  return user?.organizationId ?? null
 }

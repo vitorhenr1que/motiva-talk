@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { getServerSession, getUserRole } from '@/lib/auth-server';
 import { AppError, handleApiError } from '@/lib/api-errors';
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant';
 
 const ROUTE = '/api/sectors/[id]';
 
@@ -9,8 +10,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   try {
     const user = await getServerSession();
     if (!user) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
+    const organizationId = await getCurrentOrganizationId();
+    if (!organizationId) throw organizationNotFoundError();
 
-    const role = await getUserRole(user.email!);
+    const role = await getUserRole(user.email!, organizationId);
     if (role !== 'ADMIN') {
       throw new AppError('Apenas administradores podem editar setores', 403, 'FORBIDDEN');
     }
@@ -27,6 +30,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       .from('Sector')
       .update({ name, updatedAt: new Date().toISOString() })
       .eq('id', id)
+      .eq('organizationId', organizationId)
       .select()
       .single();
 
@@ -35,18 +39,27 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     // 2. Update Users
     if (userIds && Array.isArray(userIds)) {
       // Remover todos os usuários atuais
-      await supabaseAdmin.from('UserSector').delete().eq('sectorId', id);
+      await supabaseAdmin.from('UserSector').delete().eq('sectorId', id).eq('organizationId', organizationId);
 
       // Adicionar os novos
       const validUserIds = userIds.filter((uid: any) => uid && uid !== 'undefined');
       
       if (validUserIds.length > 0) {
-        const userSectors = validUserIds.map((userId: string) => ({
-          userId,
-          sectorId: id
+        const { data: orgUsers } = await supabaseAdmin
+          .from('User')
+          .select('id')
+          .eq('organizationId', organizationId)
+          .in('id', validUserIds);
+
+        const userSectors = (orgUsers || []).map((user) => ({
+          userId: user.id,
+          sectorId: id,
+          organizationId
         }));
 
-        await supabaseAdmin.from('UserSector').insert(userSectors);
+        if (userSectors.length > 0) {
+          await supabaseAdmin.from('UserSector').insert(userSectors);
+        }
       }
     }
 
@@ -60,15 +73,17 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   try {
     const user = await getServerSession();
     if (!user) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
+    const organizationId = await getCurrentOrganizationId();
+    if (!organizationId) throw organizationNotFoundError();
 
-    const role = await getUserRole(user.email!);
+    const role = await getUserRole(user.email!, organizationId);
     if (role !== 'ADMIN') {
       throw new AppError('Apenas administradores podem remover setores', 403, 'FORBIDDEN');
     }
 
     const { id } = await params;
 
-    const { error } = await supabaseAdmin.from('Sector').delete().eq('id', id);
+    const { error } = await supabaseAdmin.from('Sector').delete().eq('id', id).eq('organizationId', organizationId);
 
     if (error) throw error;
 

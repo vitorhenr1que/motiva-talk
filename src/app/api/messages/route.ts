@@ -4,6 +4,7 @@ import { handleApiError, validateBody, AppError } from '@/lib/api-errors'
 import { getServerSession, getUserRole } from '@/lib/auth-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { UserRepository } from '@/repositories/userRepository'
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic';
 
@@ -13,9 +14,11 @@ export async function GET(req: Request) {
   try {
     const user = await getServerSession()
     if (!user) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
     
-    const role = await getUserRole(user.email!)
-    const dbUser = await UserRepository.findMany({ email: user.email! }).then(users => users?.[0])
+    const role = await getUserRole(user.email!, organizationId)
+    const dbUser = await UserRepository.findMany(organizationId, { email: user.email! }).then(users => users?.[0])
 
     const { searchParams } = new URL(req.url)
     const conversationId = searchParams.get('conversationId')
@@ -31,6 +34,7 @@ export async function GET(req: Request) {
       .from('Conversation')
       .select('channelId, currentSectorId, assignedTo')
       .eq('id', conversationId)
+      .eq('organizationId', organizationId)
       .single();
 
     if (!conversation) throw new AppError('Conversa não encontrada', 404);
@@ -41,6 +45,7 @@ export async function GET(req: Request) {
       .select('channelId, Channel(allowAgentFilterAllSectors)')
       .eq('userId', dbUser?.id)
       .eq('channelId', conversation.channelId)
+      .eq('organizationId', organizationId)
       .maybeSingle();
 
     if (role !== 'ADMIN' && role !== 'SUPERVISOR' && !userChannel) {
@@ -55,7 +60,8 @@ export async function GET(req: Request) {
       const { data: userSectors } = await supabaseAdmin
         .from('UserSector')
         .select('sectorId')
-        .eq('userId', dbUser.id);
+        .eq('userId', dbUser.id)
+        .eq('organizationId', organizationId);
       
       const mySectors = userSectors?.map(us => us.sectorId) || [];
 
@@ -75,7 +81,7 @@ export async function GET(req: Request) {
        allowedSectorIds = [sectorId];
     }
 
-    const result = await MessageService.listByConversation(conversationId, limit, before, allowedSectorIds, sectorId)
+    const result = await MessageService.listByConversation(organizationId, conversationId, limit, before, allowedSectorIds, sectorId)
     
     // Logs temporários para validação de paginação
     console.log(`[PAGINATION_DEBUG] Conv: ${conversationId} | Limit: ${limit} | Cursor: ${before || 'NONE'}`);
@@ -96,6 +102,8 @@ export async function POST(req: Request) {
   try {
     const body = await req.json()
     console.log(`[API] ${req.method} ${ROUTE}:`, body);
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
 
     validateBody(body, ['conversationId', 'channelId', 'senderType', 'content'])
     const { 
@@ -115,7 +123,7 @@ export async function POST(req: Request) {
       sectorId
     } = body
 
-    const message = await MessageService.createMessage({
+    const message = await MessageService.createMessage(organizationId, {
       conversationId,
       channelId,
       senderType,

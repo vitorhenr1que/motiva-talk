@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { SuggestionService } from '@/services/suggestions'
 import { handleApiError, validateBody } from '@/lib/api-errors'
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic';
 
@@ -9,13 +10,15 @@ const ROUTE = '/api/suggestions-config';
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
     const keyword = searchParams.get('keyword') || undefined
     const category = searchParams.get('category') || undefined
     const channelId = searchParams.get('channelId') || undefined
     const isActiveStr = searchParams.get('isActive')
     const isActive = isActiveStr === 'true' ? true : (isActiveStr === 'false' ? false : undefined)
 
-    const suggestions = await SuggestionService.listAll({
+    const suggestions = await SuggestionService.listAll(organizationId, {
       keyword,
       category,
       channelId,
@@ -31,12 +34,14 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
     console.log(`[API] ${req.method} ${ROUTE}:`, body);
 
     validateBody(body, ['keyword', 'triggers', 'response', 'category'])
     const { keyword, triggers, response, category, channelId, isActive } = body
 
-    const suggestion = await SuggestionService.createSuggestion({
+    const suggestion = await SuggestionService.createSuggestion(organizationId, {
       keyword,
       triggers,
       response,

@@ -16,7 +16,7 @@ export class ReportsRepository {
    * Busca métricas agregadas baseadas nos filtros fornecidos.
    * Garante que cada lead apareça apenas uma vez e atenda a TODOS os filtros.
    */
-  static async getMetrics(filters: ReportsFilter) {
+  static async getMetrics(organizationId: string, filters: ReportsFilter) {
     // 1. Buscar dados brutos do Funil
     // NOTA: Buscamos todas as etapas concluídas no período para capturar leads ativos
     let query = supabaseAdmin
@@ -35,6 +35,7 @@ export class ReportsRepository {
           tags:ConversationTag(tagId, tag:Tag(*))
         )
       `)
+      .eq('organizationId', organizationId)
       .order('completedAt', { ascending: false });
 
     if (filters.startDate) {

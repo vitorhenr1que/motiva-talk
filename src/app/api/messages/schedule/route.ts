@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server' 
 import { MessageService } from '@/services/messages'
 import { handleApiError, AppError } from '@/lib/api-errors'
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
 
 const ROUTE = 'POST /api/messages/schedule'
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
     console.log(`[API] ${ROUTE}:`, { 
       conversationId: body.conversationId, 
       scheduledAt: body.scheduledAt 
@@ -15,7 +18,7 @@ export async function POST(req: NextRequest) {
     if (!body.conversationId) throw new AppError('conversationId é obrigatório', 400);
     if (!body.scheduledAt) throw new AppError('scheduledAt é obrigatório', 400);
 
-    const message = await MessageService.scheduleMessage(body);
+    const message = await MessageService.scheduleMessage(organizationId, body);
     
     return NextResponse.json({ success: true, data: message })
   } catch (error) {

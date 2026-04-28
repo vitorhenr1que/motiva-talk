@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { MessageService } from '@/services/messages';
 import { MessageRepository } from '@/repositories/messageRepository';
-import { AppError } from '@/lib/api-errors';
+import { handleApiError } from '@/lib/api-errors';
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant';
+
+const ROUTE = '/api/messages/forward';
 
 export async function POST(req: NextRequest) {
   try {
     const { messageIds, targetConversationIds } = await req.json();
+    const organizationId = await getCurrentOrganizationId();
+    if (!organizationId) throw organizationNotFoundError();
 
     if (!messageIds || !Array.isArray(messageIds) || messageIds.length === 0) {
       return NextResponse.json({ success: false, error: 'Lista de mensagens inválida.' }, { status: 400 });
@@ -17,7 +22,7 @@ export async function POST(req: NextRequest) {
 
     // 1. Buscar todas as mensagens originais de uma vez para evitar queries repetitivas
     const originalMessages = await Promise.all(
-      messageIds.map(id => MessageRepository.findById(id))
+      messageIds.map(id => MessageRepository.findById(id, organizationId))
     );
     const validOriginalMessages = originalMessages.filter(m => !!m);
 
@@ -53,7 +58,7 @@ export async function POST(req: NextRequest) {
             forwardedFromMessageId: originalMessage.id
           };
 
-          const newMessage = await MessageService.createMessage(forwardData);
+          const newMessage = await MessageService.createMessage(organizationId, forwardData);
           sentInThisConversation.push(newMessage);
         } catch (err) {
           console.error(`[API_FORWARD] Erro ao encaminhar para conv ${conversationId}:`, err);
@@ -68,9 +73,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, count: totalResults.length });
   } catch (error: any) {
     console.error('[API_FORWARD] Erro geral:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: error.message || 'Erro interno ao encaminhar mensagens.' 
-    }, { status: 500 });
+    return handleApiError(error, req, { route: ROUTE });
   }
 }

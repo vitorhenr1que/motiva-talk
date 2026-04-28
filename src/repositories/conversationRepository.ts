@@ -2,7 +2,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateId } from '@/lib/utils'
 
 export class ConversationRepository {
-  static async findMany(where: any) {
+  static async findMany(organizationId: string, where: any) {
     const limit = where.limit || 15
 
     let query = supabaseAdmin
@@ -26,6 +26,7 @@ export class ConversationRepository {
         sector:Sector!Conversation_currentSectorId_fkey(id, name),
         tags:ConversationTag(tag:Tag(id, name, color, emoji))
       `)
+      .eq('organizationId', organizationId)
       .limit(limit)
 
     // Cursor Pagination Logic
@@ -120,6 +121,7 @@ export class ConversationRepository {
         const { data: pastRows } = await supabaseAdmin
           .from('ConversationSectorHistory')
           .select('conversationId')
+          .eq('organizationId', organizationId)
           .eq('sectorId', where.sectorId)
           .not('leftAt', 'is', null);
         const pastIds = Array.from(new Set((pastRows || []).map((r: any) => r.conversationId)));
@@ -145,6 +147,7 @@ export class ConversationRepository {
       const { data: tagConvs } = await supabaseAdmin
         .from('ConversationTag')
         .select('conversationId')
+        .eq('organizationId', organizationId)
         .eq('tagId', where.tagId);
       
       const conversationIds = tagConvs?.map(tc => tc.conversationId) || [];
@@ -156,6 +159,7 @@ export class ConversationRepository {
       const { data: contacts } = await supabaseAdmin
         .from('Contact')
         .select('id')
+        .eq('organizationId', organizationId)
         .or(`name.ilike.%${where.search}%,phone.ilike.%${where.search}%`);
       
       const contactIds = contacts?.map(c => c.id) || [];
@@ -176,23 +180,41 @@ export class ConversationRepository {
    * Implementação via RPC com EXISTS correlacionado (Fase 4) — evita transportar
    * o array completo de IDs do ConversationSectorHistory para o cliente.
    */
-  static async countHistorical(where: any): Promise<number> {
+  static async countHistorical(organizationId: string, where: any): Promise<number> {
     if (!where.sectorId || where.sectorId === 'UNASSIGNED') return 0;
 
-    const { data, error } = await supabaseAdmin.rpc('count_historical_for_sector', {
-      p_sector_id: where.sectorId,
-      p_channel_id: where.channelId ?? null,
-      p_allowed_channel_ids: where.allowedChannelIds ?? null,
-      p_channels_all_sectors: where.channelsWithAllSectorsAccess ?? null,
-      p_allowed_sector_ids: where.allowedSectorIds ?? null,
-      p_current_user_id: where.currentUserId ?? null,
-    });
+    const { data: pastRows, error: pastError } = await supabaseAdmin
+      .from('ConversationSectorHistory')
+      .select('conversationId')
+      .eq('organizationId', organizationId)
+      .eq('sectorId', where.sectorId)
+      .not('leftAt', 'is', null);
 
-    if (error) {
-      console.error('[CONVERSA] countHistorical RPC falhou:', error);
+    if (pastError) {
+      console.error('[CONVERSA] countHistorical lookup falhou:', pastError);
       return 0;
     }
-    return typeof data === 'number' ? data : Number(data) || 0;
+    const pastIds = Array.from(new Set((pastRows || []).map((r: any) => r.conversationId)));
+    if (pastIds.length === 0) return 0;
+
+    let q = supabaseAdmin
+      .from('Conversation')
+      .select('id', { count: 'exact', head: true })
+      .eq('organizationId', organizationId)
+      .in('id', pastIds)
+      .neq('currentSectorId', where.sectorId);
+
+    if (where.channelId) q = q.eq('channelId', where.channelId);
+    if (where.allowedChannelIds && where.allowedChannelIds.length > 0) {
+      q = q.in('channelId', where.allowedChannelIds);
+    }
+
+    const { count, error } = await q;
+    if (error) {
+      console.error('[CONVERSA] countHistorical count falhou:', error);
+      return 0;
+    }
+    return count || 0;
   }
 
   /**
@@ -207,7 +229,7 @@ export class ConversationRepository {
    * materializada é por currentSectorId. O original usa finalizedBySectorId nesse
    * status, então a contagem CLOSED é refeita via SELECT count direto.
    */
-  static async countFromMaterialized(where: any): Promise<{ OPEN: number; IN_PROGRESS: number; CLOSED: number } | null> {
+  static async countFromMaterialized(organizationId: string, where: any): Promise<{ OPEN: number; IN_PROGRESS: number; CLOSED: number } | null> {
     if (where.tagId || where.search || where.assignedTo) return null;
     if (where.currentUserId) return null;
 
@@ -217,7 +239,8 @@ export class ConversationRepository {
 
     let q = supabaseAdmin
       .from('ConversationCount')
-      .select('channelId, sectorId, status, count');
+      .select('channelId, sectorId, status, count')
+      .eq('organizationId', organizationId);
 
     if (where.channelId) q = q.eq('channelId', where.channelId);
     if (where.allowedChannelIds && where.allowedChannelIds.length > 0) {
@@ -247,6 +270,7 @@ export class ConversationRepository {
       let cq = supabaseAdmin
         .from('Conversation')
         .select('id', { count: 'exact', head: true })
+        .eq('organizationId', organizationId)
         .eq('status', 'CLOSED')
         .eq('finalizedBySectorId', where.sectorId);
       if (where.channelId) cq = cq.eq('channelId', where.channelId);
@@ -264,7 +288,7 @@ export class ConversationRepository {
     return counts;
   }
 
-  static async countByStatus(where: any) {
+  static async countByStatus(organizationId: string, where: any) {
     // OTIMIZAÇÃO: pré-busca de sub-queries (tagId, search, historical) UMA vez só.
     // Antes: cada status (3 vezes) refazia o mesmo lookup de tags/contatos → 6+ round-trips.
     // Agora: 1 lookup compartilhado + 3 contagens em paralelo.
@@ -274,6 +298,7 @@ export class ConversationRepository {
       const { data: tagConvs } = await supabaseAdmin
         .from('ConversationTag')
         .select('conversationId')
+        .eq('organizationId', organizationId)
         .eq('tagId', where.tagId);
       tagFilterIds = tagConvs?.map(tc => tc.conversationId) || [];
     }
@@ -283,6 +308,7 @@ export class ConversationRepository {
       const { data: contacts } = await supabaseAdmin
         .from('Contact')
         .select('id')
+        .eq('organizationId', organizationId)
         .or(`name.ilike.%${where.search}%,phone.ilike.%${where.search}%`);
       searchFilterIds = contacts?.map(c => c.id) || [];
     }
@@ -291,6 +317,7 @@ export class ConversationRepository {
       let q = supabaseAdmin
         .from('Conversation')
         .select('id', { count: 'exact', head: true })
+        .eq('organizationId', organizationId)
         .eq('status', status);
 
       if (where.channelId) q = q.eq('channelId', where.channelId);
@@ -349,7 +376,7 @@ export class ConversationRepository {
     };
   }
 
-  static async findById(id: string) {
+  static async findById(id: string, organizationId: string) {
     const { data, error } = await supabaseAdmin
       .from('Conversation')
       .select(`
@@ -361,6 +388,7 @@ export class ConversationRepository {
         tags:ConversationTag(*, tag:Tag(*))
       `)
       .eq('id', id)
+      .eq('organizationId', organizationId)
       .single()
 
     if (error) throw error
@@ -372,7 +400,7 @@ export class ConversationRepository {
    * aparece via realtime e o cliente precisa popular contato/canal/setor/tags.
    * Não traz colunas raramente lidas pela sidebar (ex.: pinnedNote completo, internalNotes).
    */
-  static async findByIdSlim(id: string) {
+  static async findByIdSlim(id: string, organizationId: string) {
     const { data, error } = await supabaseAdmin
       .from('Conversation')
       .select(`
@@ -385,16 +413,17 @@ export class ConversationRepository {
         tags:ConversationTag(tag:Tag(id, name, color, emoji))
       `)
       .eq('id', id)
+      .eq('organizationId', organizationId)
       .single()
 
     if (error) throw error
     return data
   }
 
-  static async create(data: any) {
+  static async create(organizationId: string, data: any) {
     const { data: newConversation, error } = await supabaseAdmin
       .from('Conversation')
-      .insert([{ id: generateId(), ...data }])
+      .insert([{ id: generateId(), ...data, organizationId }])
       .select(`
         *,
         contact:Contact(*),
@@ -408,11 +437,12 @@ export class ConversationRepository {
     return newConversation
   }
 
-  static async update(id: string, data: any) {
+  static async update(id: string, organizationId: string, data: any) {
     const { data: updatedConversation, error } = await supabaseAdmin
       .from('Conversation')
       .update(data)
       .eq('id', id)
+      .eq('organizationId', organizationId)
       .select(`
         *,
         contact:Contact(*),
@@ -426,7 +456,7 @@ export class ConversationRepository {
     return updatedConversation
   }
 
-  static async findActive(contactId: string, channelId: string) {
+  static async findActive(contactId: string, channelId: string, organizationId: string) {
     const { data: conversation, error } = await supabaseAdmin
       .from('Conversation')
       .select(`
@@ -437,6 +467,7 @@ export class ConversationRepository {
         sector:Sector!Conversation_currentSectorId_fkey(*),
         tags:ConversationTag(*, tag:Tag(*))
       `)
+      .eq('organizationId', organizationId)
       .eq('contactId', contactId)
       .eq('channelId', channelId)
       .in('status', ['OPEN', 'IN_PROGRESS'])
@@ -448,18 +479,19 @@ export class ConversationRepository {
     return conversation
   }
 
-  static async delete(id: string) {
+  static async delete(id: string, organizationId: string) {
     // 1. Limpeza manual de tabelas relacionadas para evitar erros de FK se o CASCADE não estiver ativo
-    await supabaseAdmin.from('Message').delete().eq('conversationId', id)
-    await supabaseAdmin.from('ConversationTag').delete().eq('conversationId', id)
-    await supabaseAdmin.from('ConversationFunnel').delete().eq('conversationId', id)
-    await supabaseAdmin.from('InternalNote').delete().eq('conversationId', id)
+    await supabaseAdmin.from('Message').delete().eq('conversationId', id).eq('organizationId', organizationId)
+    await supabaseAdmin.from('ConversationTag').delete().eq('conversationId', id).eq('organizationId', organizationId)
+    await supabaseAdmin.from('ConversationFunnel').delete().eq('conversationId', id).eq('organizationId', organizationId)
+    await supabaseAdmin.from('InternalNote').delete().eq('conversationId', id).eq('organizationId', organizationId)
 
     // 2. Exclusão da conversa
     const { error } = await supabaseAdmin
       .from('Conversation')
       .delete()
       .eq('id', id)
+      .eq('organizationId', organizationId)
 
     if (error) throw error
     return true

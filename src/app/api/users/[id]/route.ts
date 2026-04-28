@@ -3,6 +3,7 @@ import { getServerSession, getUserRole } from '@/lib/auth-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { UserRepository } from '@/repositories/userRepository'
 import { handleApiError, AppError } from '@/lib/api-errors'
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic';
 
@@ -20,12 +21,19 @@ export async function GET(
   try {
     const userSession = await getServerSession()
     if (!userSession) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
 
     const currentUserEmail = userSession.email!;
     const { id: targetUserId } = await params;
 
     // 1. Buscar informações do requisitante
-    const { data: currentUser } = await supabaseAdmin.from('User').select('id, role').eq('email', currentUserEmail).single();
+    const { data: currentUser } = await supabaseAdmin
+      .from('User')
+      .select('id, role')
+      .eq('email', currentUserEmail)
+      .eq('organizationId', organizationId)
+      .single();
     
     const isSelf = currentUser?.id === targetUserId;
     const isAdmin = currentUser?.role === 'ADMIN';
@@ -35,7 +43,7 @@ export async function GET(
     }
 
     // 2. Buscar o usuário alvo
-    const user = await UserRepository.findById(targetUserId);
+    const user = await UserRepository.findById(targetUserId, organizationId);
     if (!user) throw new AppError('Usuário não encontrado', 404, 'NOT_FOUND');
 
     return NextResponse.json({ success: true, data: user });
@@ -51,12 +59,19 @@ export async function PATCH(
   try {
     const userSession = await getServerSession()
     if (!userSession) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
 
     const currentUserEmail = userSession.email!;
     const { id: targetUserId } = await params;
     
     // 1. Buscar informações de quem está fazendo a requisição
-    const { data: currentUser } = await supabaseAdmin.from('User').select('id, role').eq('email', currentUserEmail).single();
+    const { data: currentUser } = await supabaseAdmin
+      .from('User')
+      .select('id, role')
+      .eq('email', currentUserEmail)
+      .eq('organizationId', organizationId)
+      .single();
     const currentRole = currentUser?.role || 'AGENT';
     const isSelfUpdate = currentUser?.id === targetUserId;
 
@@ -73,7 +88,12 @@ export async function PATCH(
       if (email || password || role) throw new AppError('Acesso negado: Apenas administradores podem alterar e-mail, senha ou cargo', 403, 'FORBIDDEN');
       
       // c) Verificar se a edição de nome está liberada globalmente
-      const { data: settings } = await supabaseAdmin.from('ChatSetting').select('allowAgentNameEdit').single();
+      const { data: settings } = await supabaseAdmin
+        .from('ChatSetting')
+        .select('allowAgentNameEdit')
+        .eq('organizationId', organizationId)
+        .limit(1)
+        .maybeSingle();
       const canEditName = settings?.allowAgentNameEdit ?? false;
       
       if (!canEditName) throw new AppError('Edição de nome desativada pelo administrador', 403, 'FORBIDDEN');
@@ -106,7 +126,7 @@ export async function PATCH(
         if (channelIds !== undefined) updateDbData.channelIds = channelIds;
     }
 
-    const updated = await UserRepository.update(targetUserId, updateDbData)
+    const updated = await UserRepository.update(targetUserId, organizationId, updateDbData)
     
     return NextResponse.json({ success: true, data: updated })
   } catch (error) {
@@ -121,8 +141,10 @@ export async function DELETE(
   try {
     const userSession = await getServerSession()
     if (!userSession) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
 
-    const role = await getUserRole(userSession.email!)
+    const role = await getUserRole(userSession.email!, organizationId)
     if (role !== 'ADMIN') throw new AppError('Acesso negado', 403, 'FORBIDDEN');
 
     const { id } = await params
@@ -135,7 +157,7 @@ export async function DELETE(
     }
 
     // Deletar do Banco
-    await UserRepository.delete(id)
+    await UserRepository.delete(id, organizationId)
 
     return NextResponse.json({ success: true, message: 'Usuário excluído com sucesso' })
   } catch (error: any) {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { handleApiError } from '@/lib/api-errors'
 import { getServerSession, getUserRole } from '@/lib/auth-server'
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic';
 
@@ -15,9 +16,22 @@ export async function PUT(
   try {
     const userSession = await getServerSession()
     if (!userSession) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
 
-    const role = await getUserRole(userSession.email!)
+    const role = await getUserRole(userSession.email!, organizationId)
     const userId = userSession.id
+
+    const { data: channel } = await supabaseAdmin
+      .from('Channel')
+      .select('id')
+      .eq('id', channelId)
+      .eq('organizationId', organizationId)
+      .maybeSingle()
+
+    if (!channel) {
+      return NextResponse.json({ error: 'Canal não encontrado' }, { status: 404 })
+    }
 
     // Validar se usuário tem permissão no canal
     if (role !== 'ADMIN') {
@@ -26,6 +40,7 @@ export async function PUT(
         .select('channelId')
         .eq('userId', userId)
         .eq('channelId', channelId)
+        .eq('organizationId', organizationId)
         .maybeSingle()
       
       if (!permission) {
@@ -41,6 +56,7 @@ export async function PUT(
     const { data, error } = await supabaseAdmin
       .from('auto_reply_settings')
       .upsert({
+        organizationId,
         channelId,
         enabled,
         message,

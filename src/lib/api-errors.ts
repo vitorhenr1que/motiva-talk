@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+export const ORGANIZATION_NOT_FOUND_MESSAGE = 'Organização não encontrada para este usuário.';
+
 export interface ApiErrorResponse {
   success: false;
   message: string;

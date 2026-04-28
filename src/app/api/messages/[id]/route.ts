@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { MessageService } from '@/services/messages'
 import { deleteFile } from '@/lib/supabase-utils'
 import { handleApiError, AppError } from '@/lib/api-errors'
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic';
 
@@ -13,12 +14,14 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
     console.log(`[API] ${req.method} ${ROUTE}:`, { id });
 
     if (!id) throw new AppError('ID da mensagem obrigatório', 400, 'VALIDATION_ERROR');
 
     // 1. Buscar a mensagem antes de deletar para pegar a URL do arquivo no Storage
-    const message = await MessageService.getMessageById(id)
+    const message = await MessageService.getMessageById(id, organizationId)
     
     if (message && message.type !== 'TEXT') {
       try {
@@ -31,7 +34,7 @@ export async function DELETE(
     }
 
     // 3. Deletar do banco de dados
-    await MessageService.deleteMessage(id)
+    await MessageService.deleteMessage(id, organizationId)
     
     return NextResponse.json({ success: true, message: 'Mensagem excluída com sucesso' })
   } catch (error) {
@@ -45,13 +48,15 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
     const { content } = await req.json()
     console.log(`[API] ${req.method} ${ROUTE}:`, { id, contentLength: content?.length });
 
     if (!id) throw new AppError('ID da mensagem obrigatório', 400, 'VALIDATION_ERROR');
     if (!content) throw new AppError('Conteúdo obrigatório', 400, 'VALIDATION_ERROR');
 
-    const updated = await MessageService.updateMessage(id, content)
+    const updated = await MessageService.updateMessage(id, content, organizationId)
     
     return NextResponse.json({ success: true, data: updated })
   } catch (error) {

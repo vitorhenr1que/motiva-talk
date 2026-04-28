@@ -2,7 +2,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateId } from '@/lib/utils'
 
 export class MessageRepository {
-  static async findMany(where: {
+  static async findMany(organizationId: string, where: {
     conversationId?: string;
     before?: string;
     limit?: number;
@@ -32,6 +32,7 @@ export class MessageRepository {
         ),
         sector:Sector(id, name)
       `)
+      .eq('organizationId', organizationId)
 
     if (where.conversationId) query = query.eq('conversationId', where.conversationId);
 
@@ -60,26 +61,32 @@ export class MessageRepository {
     return data;
   }
 
-  static async findAllByConversation(conversationId: string) {
+  static async findAllByConversation(conversationId: string, organizationId: string) {
     const { data, error } = await supabaseAdmin
       .from('Message')
       .select('*')
-      .eq('conversationId', conversationId);
+      .eq('conversationId', conversationId)
+      .eq('organizationId', organizationId);
     
     if (error) throw error;
     return data;
   }
 
-  static async findById(id: string) {
-    const { data, error } = await supabaseAdmin.from('Message').select('*').eq('id', id).single()
+  static async findById(id: string, organizationId: string) {
+    const { data, error } = await supabaseAdmin
+      .from('Message')
+      .select('*')
+      .eq('id', id)
+      .eq('organizationId', organizationId)
+      .single()
     if (error) throw error
     return data
   }
 
-  static async create(data: any) {
+  static async create(organizationId: string, data: any) {
     const { data: newMessage, error } = await supabaseAdmin
       .from('Message')
-      .insert([{ id: generateId(), ...data }])
+      .insert([{ id: generateId(), ...data, organizationId }])
       .select('*, replyToMessage:replyToMessageId(*)')
       .single()
     if (error) throw error
@@ -89,11 +96,12 @@ export class MessageRepository {
   /**
    * Atualiza uma mensagem pelo ID
    */
-  static async update(id: string, data: any) {
+  static async update(id: string, organizationId: string, data: any) {
     const { data: updated, error } = await supabaseAdmin
       .from('Message')
       .update(data)
       .eq('id', id)
+      .eq('organizationId', organizationId)
       .select()
       .single()
     
@@ -101,17 +109,22 @@ export class MessageRepository {
     return updated
   }
 
-  static async delete(id: string) {
-    const { error } = await supabaseAdmin.from('Message').delete().eq('id', id)
+  static async delete(id: string, organizationId: string) {
+    const { error } = await supabaseAdmin
+      .from('Message')
+      .delete()
+      .eq('id', id)
+      .eq('organizationId', organizationId)
     if (error) throw error
     return { success: true }
   }
 
-  static async findLastByConversation(conversationId: string) {
+  static async findLastByConversation(conversationId: string, organizationId: string) {
     const { data, error } = await supabaseAdmin
       .from('Message')
       .select('*')
       .eq('conversationId', conversationId)
+      .eq('organizationId', organizationId)
       .order('createdAt', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -121,6 +134,7 @@ export class MessageRepository {
   }
 
   static async search(
+    organizationId: string,
     conversationId: string,
     queryText: string,
     range?: { afterCreatedAt?: string; untilCreatedAt?: string }
@@ -128,6 +142,7 @@ export class MessageRepository {
     let query = supabaseAdmin
       .from('Message')
       .select('id, content, createdAt, senderType, conversationId, deletedForEveryone')
+      .eq('organizationId', organizationId)
       .eq('conversationId', conversationId)
       .ilike('content', `%${queryText}%`);
 
@@ -145,10 +160,11 @@ export class MessageRepository {
   /**
    * Busca mensagens agendadas que já deveriam ter sido enviadas
    */
-  static async findScheduledReady(limit: number = 10) {
+  static async findScheduledReady(organizationId: string, limit: number = 10) {
     const { data, error } = await supabaseAdmin
       .from('Message')
       .select('*')
+      .eq('organizationId', organizationId)
       .eq('sendStatus', 'scheduled')
       .lte('scheduledAt', new Date().toISOString())
       .order('scheduledAt', { ascending: true })

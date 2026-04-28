@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { MessageService } from '@/services/messages'
 import { handleApiError, AppError } from '@/lib/api-errors'
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
 
 const ROUTE = '/api/messages/search'
 
@@ -9,6 +10,8 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
     const conversationId = searchParams.get('conversationId')
     const query = searchParams.get('query')
     const sectorId = searchParams.get('sectorId') || undefined
@@ -24,7 +27,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: true, data: [] })
     }
 
-    const results = await MessageService.searchMessages(conversationId, query.trim(), sectorId)
+    const results = await MessageService.searchMessages(conversationId, organizationId, query.trim(), sectorId)
     
     console.log(`[SEARCH_DEBUG] Resultados encontrados: ${results.length}`)
 

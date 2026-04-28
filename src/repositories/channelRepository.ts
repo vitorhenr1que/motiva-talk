@@ -2,8 +2,8 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateId } from '@/lib/utils'
 
 export class ChannelRepository {
-  static async findMany(where?: any) {
-    let query = supabaseAdmin.from('Channel').select('*')
+  static async findMany(organizationId: string, where?: any) {
+    let query = supabaseAdmin.from('Channel').select('*').eq('organizationId', organizationId)
     if (where) {
       if (where.isActive !== undefined) query = query.eq('isActive', where.isActive)
       if (where.providerSessionId) query = query.eq('providerSessionId', where.providerSessionId)
@@ -13,37 +13,51 @@ export class ChannelRepository {
     return data
   }
 
-  static async findByUserId(userId: string) {
+  static async findByUserId(userId: string, organizationId: string) {
     const { data, error } = await supabaseAdmin
       .from('UserChannel')
       .select('channel:Channel(*)')
       .eq('userId', userId)
+      .eq('organizationId', organizationId)
     
     if (error) throw error
     
     // Supondo que a estrutura retornada pelo select dependa de como o Supabase lida com joins.
     // O retorno será algo como [{ channel: { id, name... } }, { channel: ... }]
-    return (data || []).map((item: any) => item.channel).filter((ch: any) => ch !== null && ch.isActive);
+    return (data || [])
+      .map((item: any) => item.channel)
+      .filter((ch: any) => ch !== null && ch.isActive && ch.organizationId === organizationId);
   }
 
-  static async findById(id: string) {
-    const { data, error } = await supabaseAdmin.from('Channel').select('*').eq('id', id).single()
+  static async findById(id: string, organizationId: string) {
+    const { data, error } = await supabaseAdmin
+      .from('Channel')
+      .select('*')
+      .eq('id', id)
+      .eq('organizationId', organizationId)
+      .single()
     if (error) throw error
     return data
   }
 
-  static async create(data: any) {
+  static async create(organizationId: string, data: any) {
     const { data: newChannel, error } = await supabaseAdmin
       .from('Channel')
-      .insert([{ id: generateId(), ...data }])
+      .insert([{ id: generateId(), ...data, organizationId }])
       .select()
       .single()
     if (error) throw error
     return newChannel
   }
 
-  static async update(id: string, data: any) {
-    const { data: updatedChannel, error } = await supabaseAdmin.from('Channel').update(data).eq('id', id).select().single()
+  static async update(id: string, organizationId: string, data: any) {
+    const { data: updatedChannel, error } = await supabaseAdmin
+      .from('Channel')
+      .update(data)
+      .eq('id', id)
+      .eq('organizationId', organizationId)
+      .select()
+      .single()
     if (error) throw error
     return updatedChannel
   }

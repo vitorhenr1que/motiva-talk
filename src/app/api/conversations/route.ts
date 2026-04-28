@@ -4,6 +4,7 @@ import { UserRepository } from '@/repositories/userRepository'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { handleApiError, validateBody, AppError } from '@/lib/api-errors'
 import { getServerSession, getUserRole } from '@/lib/auth-server'
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic';
 
@@ -13,8 +14,10 @@ export async function GET(req: Request) {
   try {
     const user = await getServerSession()
     if (!user) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
     
-    const role = await getUserRole(user.email!)
+    const role = await getUserRole(user.email!, organizationId)
     const { searchParams } = new URL(req.url)
     const channelId = searchParams.get('channelId') || undefined
     const status = (searchParams.get('status') as string) || undefined
@@ -25,7 +28,7 @@ export async function GET(req: Request) {
     const cursorPinnedAt = searchParams.get('cursorPinnedAt') || undefined
     const limit = parseInt(searchParams.get('limit') || '15')
 
-    const dbUser = await UserRepository.findMany({ email: user.email! }).then(users => users?.[0])
+    const dbUser = await UserRepository.findMany(organizationId, { email: user.email! }).then(users => users?.[0])
 
     let where: any = {
       channelId: channelId || undefined,
@@ -56,6 +59,7 @@ export async function GET(req: Request) {
       .from('UserSector')
       .select('sectorId')
       .eq('userId', dbUser?.id)
+      .eq('organizationId', organizationId)
     const allowedSectorIds = userSectors?.map((us: any) => us.sectorId) || []
 
     // Lógica de Filtro por Role (Segurança)
@@ -64,6 +68,7 @@ export async function GET(req: Request) {
         .from('UserChannel')
         .select('channelId, Channel(allowAgentFilterAllSectors)')
         .eq('userId', dbUser?.id)
+        .eq('organizationId', organizationId)
       
       const allowedChannelIds = userChannels?.map((uc: any) => uc.channelId) || []
       const channelsWithAllSectorsAccess = userChannels
@@ -77,7 +82,7 @@ export async function GET(req: Request) {
       where.currentUserId = dbUser?.id;
     }
 
-    const conversations = await ConversationService.listByFilter(where)
+    const conversations = await ConversationService.listByFilter(organizationId, where)
     return NextResponse.json({ success: true, data: conversations })
   } catch (error) {
     return handleApiError(error, req, { route: ROUTE })
@@ -88,10 +93,12 @@ export async function POST(req: Request) {
   try {
     const body = await req.json()
     console.log(`[API] ${req.method} ${ROUTE}:`, body);
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
     
     validateBody(body, ['contactId', 'channelId'])
 
-    const conversation = await ConversationService.startConversation(body.contactId, body.channelId)
+    const conversation = await ConversationService.startConversation(body.contactId, body.channelId, organizationId)
     return NextResponse.json({ success: true, data: conversation }, { status: 201 })
   } catch (error) {
     return handleApiError(error, req, { route: ROUTE })

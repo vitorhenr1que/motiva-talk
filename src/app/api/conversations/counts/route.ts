@@ -4,6 +4,7 @@ import { UserRepository } from '@/repositories/userRepository'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { handleApiError, AppError } from '@/lib/api-errors'
 import { getServerSession, getUserRole } from '@/lib/auth-server'
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic';
 
@@ -11,8 +12,10 @@ export async function GET(req: Request) {
   try {
     const user = await getServerSession()
     if (!user) throw new AppError('Não autorizado', 401, 'AUTH_ERROR');
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
     
-    const role = await getUserRole(user.email!)
+    const role = await getUserRole(user.email!, organizationId)
     const { searchParams } = new URL(req.url)
     const channelId = searchParams.get('channelId') || undefined
     const tagId = searchParams.get('tagId') || undefined
@@ -20,7 +23,7 @@ export async function GET(req: Request) {
     const assignedTo = searchParams.get('assignedTo') || undefined
     const search = searchParams.get('search') || undefined
 
-    const dbUser = await UserRepository.findMany({ email: user.email! }).then(users => users?.[0])
+    const dbUser = await UserRepository.findMany(organizationId, { email: user.email! }).then(users => users?.[0])
 
     let where: any = {
       channelId,
@@ -35,11 +38,13 @@ export async function GET(req: Request) {
         .from('UserChannel')
         .select('channelId, Channel(allowAgentFilterAllSectors)')
         .eq('userId', dbUser?.id)
+        .eq('organizationId', organizationId)
       
       const { data: userSectors } = await supabaseAdmin
         .from('UserSector')
         .select('sectorId')
         .eq('userId', dbUser?.id)
+        .eq('organizationId', organizationId)
       
       where.allowedChannelIds = userChannels?.map((uc: any) => uc.channelId) || []
       where.channelsWithAllSectorsAccess = userChannels
@@ -51,10 +56,10 @@ export async function GET(req: Request) {
 
     // Fase 1: tenta a materializada primeiro; se filtros não suportados (tagId/search/
     // assignedTo/agent mode), cai no countByStatus original.
-    const materialized = await ConversationRepository.countFromMaterialized(where)
+    const materialized = await ConversationRepository.countFromMaterialized(organizationId, where)
     const [counts, historical] = await Promise.all([
-      materialized ?? ConversationRepository.countByStatus(where),
-      ConversationRepository.countHistorical(where)
+      materialized ?? ConversationRepository.countByStatus(organizationId, where),
+      ConversationRepository.countHistorical(organizationId, where)
     ]);
     return NextResponse.json({ success: true, data: { ...counts, HISTORICAL: historical } })
   } catch (error) {

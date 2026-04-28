@@ -2,8 +2,12 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateId } from '@/lib/utils'
 
 export class ContactRepository {
-  static async findMany(where?: { OR: any[] } | any) {
-    let query = supabaseAdmin.from('Contact').select('*').order('name', { ascending: true })
+  static async findMany(organizationId: string, where?: { OR: any[] } | any) {
+    let query = supabaseAdmin
+      .from('Contact')
+      .select('*')
+      .eq('organizationId', organizationId)
+      .order('name', { ascending: true })
     
     // Suporte básico para o filtro OR usado no service (name or phone)
     if (where?.OR) {
@@ -24,38 +28,54 @@ export class ContactRepository {
     return data
   }
 
-  static async findById(id: string) {
-    const { data, error } = await supabaseAdmin.from('Contact').select('*').eq('id', id).single()
+  static async findById(id: string, organizationId: string) {
+    const { data, error } = await supabaseAdmin
+      .from('Contact')
+      .select('*')
+      .eq('id', id)
+      .eq('organizationId', organizationId)
+      .single()
     if (error) throw error
     return data
   }
 
-  static async findByPhone(phone: string) {
-    const { data, error } = await supabaseAdmin.from('Contact').select('*').eq('phone', phone).maybeSingle()
+  static async findByPhone(phone: string, organizationId: string) {
+    const { data, error } = await supabaseAdmin
+      .from('Contact')
+      .select('*')
+      .eq('phone', phone)
+      .eq('organizationId', organizationId)
+      .maybeSingle()
     if (error) throw error
     return data
   }
 
-  static async create(data: any) {
+  static async create(organizationId: string, data: any) {
     const { data: newContact, error } = await supabaseAdmin
       .from('Contact')
-      .insert([{ id: generateId(), ...data }])
+      .insert([{ id: generateId(), ...data, organizationId }])
       .select()
       .single()
     if (error) throw error
     return newContact
   }
 
-  static async update(id: string, data: any) {
-    const { data: updatedContact, error } = await supabaseAdmin.from('Contact').update(data).eq('id', id).select().single()
+  static async update(id: string, organizationId: string, data: any) {
+    const { data: updatedContact, error } = await supabaseAdmin
+      .from('Contact')
+      .update(data)
+      .eq('id', id)
+      .eq('organizationId', organizationId)
+      .select()
+      .single()
     if (error) throw error
     return updatedContact
   }
 
-  static async findOrCreateByPhone(phone: string, name: string) {
-    const existing = await this.findByPhone(phone)
+  static async findOrCreateByPhone(phone: string, name: string, organizationId: string) {
+    const existing = await this.findByPhone(phone, organizationId)
     if (existing) return existing
 
-    return this.create({ phone, name })
+    return this.create(organizationId, { phone, name })
   }
 }

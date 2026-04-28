@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { SuggestionService } from '@/services/suggestions'
 import { handleApiError, validateBody } from '@/lib/api-errors'
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic';
 
@@ -9,13 +10,15 @@ const ROUTE = '/api/suggestions';
 export async function POST(req: Request) {
   try {
     const body = await req.json()
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
     console.log(`[API] ${req.method} ${ROUTE}:`, body);
 
     validateBody(body, ['content'])
     const { content, channelId } = body
     console.log(`[AI_SUGGESTIONS] Content: "${content}", Channel: ${channelId}`);
 
-    const suggestions = await SuggestionService.findSuggestions(content, channelId)
+    const suggestions = await SuggestionService.findSuggestions(organizationId, content, channelId)
     console.log(`[AI_SUGGESTIONS] Found: ${suggestions.length} matches`);
     
     return NextResponse.json({ success: true, data: suggestions })

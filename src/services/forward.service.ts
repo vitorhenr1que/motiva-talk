@@ -12,12 +12,14 @@ interface ForwardBatchInput {
   messageIds: string[];
   targetContactIds: string[];
   channelId: string;
+  organizationId: string;
 }
 
 interface ForwardedRow {
   id: string;
   conversationId: string;
   channelId: string;
+  organizationId: string;
   type: MessageType;
   content: string;
   mediaUrl: string | null;
@@ -49,20 +51,20 @@ export class ForwardService {
    * Returns as soon as the DB rows exist so realtime can paint the chat.
    */
   static async forwardBatch(input: ForwardBatchInput) {
-    const { messageIds, targetContactIds, channelId } = input;
+    const { messageIds, targetContactIds, channelId, organizationId } = input;
 
     if (!messageIds?.length) throw new AppError('messageIds é obrigatório', 400, 'VALIDATION_ERROR');
     if (!targetContactIds?.length) throw new AppError('targetContactIds é obrigatório', 400, 'VALIDATION_ERROR');
     if (!channelId) throw new AppError('channelId é obrigatório', 400, 'VALIDATION_ERROR');
 
-    const originals = await this.loadOriginals(messageIds);
+    const originals = await this.loadOriginals(messageIds, organizationId);
     if (!originals.length) throw new AppError('Nenhuma mensagem válida encontrada', 404, 'NOT_FOUND');
 
-    const channel = await this.loadChannel(channelId);
+    const channel = await this.loadChannel(channelId, organizationId);
 
-    const conversationByContact = await this.resolveConversations(targetContactIds, channelId);
+    const conversationByContact = await this.resolveConversations(targetContactIds, channelId, organizationId);
 
-    const rows = this.buildForwardedRows(originals, conversationByContact, channelId);
+    const rows = this.buildForwardedRows(originals, conversationByContact, channelId, organizationId);
 
     if (rows.length === 0) {
       return { enqueued: 0, conversationIds: [] };
@@ -80,10 +82,11 @@ export class ForwardService {
     };
   }
 
-  private static async loadOriginals(messageIds: string[]) {
+  private static async loadOriginals(messageIds: string[], organizationId: string) {
     const { data, error } = await supabaseAdmin
       .from('Message')
       .select('id, type, content, mediaUrl, fileName, mimeType, fileSize, duration, thumbnailUrl, metadata')
+      .eq('organizationId', organizationId)
       .in('id', messageIds);
 
     if (error) throw error;
@@ -92,11 +95,12 @@ export class ForwardService {
     return messageIds.map((id) => byId.get(id)).filter(Boolean);
   }
 
-  private static async loadChannel(channelId: string): Promise<Channel> {
+  private static async loadChannel(channelId: string, organizationId: string): Promise<Channel> {
     const { data, error } = await supabaseAdmin
       .from('Channel')
       .select('*')
       .eq('id', channelId)
+      .eq('organizationId', organizationId)
       .single();
     if (error || !data) throw new AppError('Canal não encontrado', 404, 'NOT_FOUND');
     return data as Channel;
@@ -108,13 +112,15 @@ export class ForwardService {
    */
   private static async resolveConversations(
     contactIds: string[],
-    channelId: string
+    channelId: string,
+    organizationId: string
   ): Promise<Map<string, { id: string; phone: string }>> {
     const uniqueContactIds = Array.from(new Set(contactIds));
 
     const { data: contacts, error: cErr } = await supabaseAdmin
       .from('Contact')
       .select('id, phone')
+      .eq('organizationId', organizationId)
       .in('id', uniqueContactIds);
     if (cErr) throw cErr;
 
@@ -129,13 +135,13 @@ export class ForwardService {
         continue;
       }
 
-      const existing = await ConversationRepository.findActive(contactId, channelId);
+      const existing = await ConversationRepository.findActive(contactId, channelId, organizationId);
       if (existing) {
         result.set(contactId, { id: existing.id, phone });
         continue;
       }
 
-      const created = await ConversationRepository.create({
+      const created = await ConversationRepository.create(organizationId, {
         contactId,
         channelId,
         status: 'OPEN',
@@ -153,7 +159,8 @@ export class ForwardService {
   private static buildForwardedRows(
     originals: any[],
     convByContact: Map<string, { id: string; phone: string }>,
-    channelId: string
+    channelId: string,
+    organizationId: string
   ): ForwardedRow[] {
     const rows: ForwardedRow[] = [];
 
@@ -163,6 +170,7 @@ export class ForwardService {
           id: generateId(),
           conversationId,
           channelId,
+          organizationId,
           type: orig.type,
           content: orig.content || '',
           mediaUrl: orig.mediaUrl || null,
@@ -185,6 +193,7 @@ export class ForwardService {
       id: r.id,
       conversationId: r.conversationId,
       channelId: r.channelId,
+      organizationId: r.organizationId,
       senderType: 'AGENT',
       type: r.type,
       content: r.content,
@@ -251,7 +260,7 @@ export class ForwardService {
   ) {
     const phone = phoneByConv.get(row.conversationId);
     if (!phone) {
-      await this.markFailed(row.id, 'Telefone do destinatário não encontrado');
+      await this.markFailed(row.id, row.organizationId, 'Telefone do destinatário não encontrado');
       return;
     }
 
@@ -280,7 +289,7 @@ export class ForwardService {
         result?.data?.key?.id ||
         (typeof result === 'string' ? result : null);
 
-      await MessageRepository.update(row.id, {
+        await MessageRepository.update(row.id, row.organizationId, {
         sendStatus: 'sent',
         errorMessage: null,
         externalMessageId: externalMessageId || 'sent_via_evolution',
@@ -290,16 +299,16 @@ export class ForwardService {
       console.error(`[FORWARD] Falha ao enviar ${row.id} (${row.type}):`, msg);
       
       // Se falhou, atualizamos no banco para o usuário ver o erro em vez de carregar para sempre
-      await MessageRepository.update(row.id, {
+      await MessageRepository.update(row.id, row.organizationId, {
         sendStatus: 'failed',
         errorMessage: msg
       });
     }
   }
 
-  private static async markFailed(id: string, errorMessage: string) {
+  private static async markFailed(id: string, organizationId: string, errorMessage: string) {
     try {
-      await MessageRepository.update(id, {
+      await MessageRepository.update(id, organizationId, {
         sendStatus: 'failed',
         errorMessage: errorMessage.substring(0, 500),
       });

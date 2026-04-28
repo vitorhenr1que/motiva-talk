@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { handleApiError } from '@/lib/api-errors'
 import { getServerSession, getUserRole } from '@/lib/auth-server'
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic';
 
@@ -11,8 +12,10 @@ export async function GET(req: Request) {
   try {
     const userSession = await getServerSession()
     if (!userSession) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
 
-    const role = await getUserRole(userSession.email!)
+    const role = await getUserRole(userSession.email!, organizationId)
     const userId = userSession.id
 
     let channelQuery = supabaseAdmin.from('Channel').select(`
@@ -20,7 +23,7 @@ export async function GET(req: Request) {
       name,
       phoneNumber,
       isActive
-    `)
+    `).eq('organizationId', organizationId)
 
     if (role !== 'ADMIN') {
       // Filtrar canais que o usuário tem acesso
@@ -28,6 +31,7 @@ export async function GET(req: Request) {
         .from('UserChannel')
         .select('channelId')
         .eq('userId', userId)
+        .eq('organizationId', organizationId)
       
       const allowedChannelIds = userChannels?.map(uc => uc.channelId) || []
       channelQuery = channelQuery.in('id', allowedChannelIds)
@@ -40,6 +44,7 @@ export async function GET(req: Request) {
     const { data: allSettings, error: settingsError } = await supabaseAdmin
       .from('auto_reply_settings')
       .select('*')
+      .eq('organizationId', organizationId)
     
     if (settingsError) throw settingsError
 

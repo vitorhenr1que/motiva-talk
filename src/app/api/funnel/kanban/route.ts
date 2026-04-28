@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server'
 import { FunnelRepository } from '@/repositories/funnelRepository'
 import { handleApiError } from '@/lib/api-errors'
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
 
 const ROUTE = '/api/funnel/kanban';
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
     
@@ -14,7 +17,7 @@ export async function GET(req: Request) {
     const start = startDate ? new Date(`${startDate}T00:00:00.000Z`).toISOString() : undefined;
     const end = endDate ? new Date(`${endDate}T23:59:59.999Z`).toISOString() : undefined;
 
-    const kanbanData = await FunnelRepository.getKanbanData(start, end)
+    const kanbanData = await FunnelRepository.getKanbanData(organizationId, start, end)
     
     return NextResponse.json({ 
       success: true, 

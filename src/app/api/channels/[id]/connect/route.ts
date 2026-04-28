@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ChannelConnectionService } from '@/services/channels/channel-connection.service';
 import { handleApiError } from '@/lib/api-errors';
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,13 +13,15 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+    const organizationId = await getCurrentOrganizationId();
+    if (!organizationId) throw organizationNotFoundError();
     console.log(`[API] ${req.method} ${ROUTE}:`, { id });
     
     if (!id) {
       return NextResponse.json({ success: false, message: 'ID do canal é obrigatório' }, { status: 400 });
     }
 
-    const updatedChannel = await ChannelConnectionService.connectChannel(id);
+    const updatedChannel = await ChannelConnectionService.connectChannel(id, organizationId);
     
     return NextResponse.json({
       success: true,

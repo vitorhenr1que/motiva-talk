@@ -30,6 +30,7 @@ export class WebhookIngestionService {
       console.error(`[INGEST] ERRO: Canal ${channelId} não encontrado no banco.`);
       return;
     }
+    const organizationId = channel.organizationId as string;
 
     let finalMediaUrl = event.mediaUrl;
     let finalMimeType = event.mimeType || 'application/octet-stream';
@@ -124,7 +125,7 @@ export class WebhookIngestionService {
         }
 
         const fileName = `${genId()}.${extension}`;
-        const filePath = `received/${channel.id}/${fileName}`;
+        const filePath = `received/${organizationId}/${channel.id}/${fileName}`;
         
         console.log(`[INGEST] Enviando para Supabase: ${filePath} | Mime: ${finalMimeType}`);
 
@@ -166,6 +167,7 @@ export class WebhookIngestionService {
     try {
       const { ContactRepository } = await import('@/repositories/contactRepository');
       const { ConversationRepository } = await import('@/repositories/conversationRepository');
+      const { SettingRepository } = await import('@/repositories/settingRepository');
       const { generateId } = await import('@/lib/utils');
 
       console.log(`[INGEST] 1. Canal validado e pronto: ${channel.name} (${channel.id})`);
@@ -182,6 +184,7 @@ export class WebhookIngestionService {
           .from('Message')
           .select('id')
           .eq('externalMessageId', externalId)
+          .eq('organizationId', organizationId)
           .maybeSingle()
         
         if (existing) {
@@ -193,7 +196,8 @@ export class WebhookIngestionService {
       // 4. Identificar ou Criar Contato
       const contact = await ContactRepository.findOrCreateByPhone(
         senderPhone, 
-        senderName || senderPhone
+        senderName || senderPhone,
+        organizationId
       );
       console.log(`[INGEST] 2. Contato encontrado/criado: ${contact.name} (${contact.id})`);
 
@@ -208,6 +212,7 @@ export class WebhookIngestionService {
           sector:Sector!Conversation_currentSectorId_fkey(*),
           tags:ConversationTag(*, tag:Tag(*))
         `)
+        .eq('organizationId', organizationId)
         .eq('contactId', contact.id)
         .eq('channelId', channel.id)
         .order('lastMessageAt', { ascending: false })
@@ -217,10 +222,10 @@ export class WebhookIngestionService {
 
       if (!conversation) {
         console.log(`[INGEST] Criando nova conversa para o contato...`);
-        const { data: globalSettings } = await supabaseAdmin.from('ChatSetting').select('defaultTriageSectorId').single();
+        const globalSettings = await SettingRepository.findByOrganization(organizationId);
         const initialSectorId: string | null = channel.defaultSectorId || globalSettings?.defaultTriageSectorId || null;
         
-        conversation = await ConversationRepository.create({
+        conversation = await ConversationRepository.create(organizationId, {
           contactId: contact.id,
           channelId: channel.id,
           currentSectorId: initialSectorId,
@@ -231,6 +236,7 @@ export class WebhookIngestionService {
         const { ConversationSectorHistoryRepository } = await import('@/repositories/conversationSectorHistoryRepository');
         await ConversationSectorHistoryRepository.insert({
           conversationId: conversation.id,
+          organizationId,
           sectorId: initialSectorId,
           enteredAt: conversation.createdAt
         });
@@ -239,7 +245,7 @@ export class WebhookIngestionService {
       } else if (conversation.status === 'CLOSED') {
         console.log(`[INGEST] Reabrindo conversa finalizada ${conversation.id} e movendo para triagem...`);
         
-        const { data: globalSettings } = await supabaseAdmin.from('ChatSetting').select('defaultTriageSectorId').single();
+        const globalSettings = await SettingRepository.findByOrganization(organizationId);
         const triageSectorId = channel.defaultSectorId || globalSettings?.defaultTriageSectorId || null;
         
         const { data: reopened } = await supabaseAdmin
@@ -252,6 +258,7 @@ export class WebhookIngestionService {
             unreadCount: 1 
           })
           .eq('id', conversation.id)
+          .eq('organizationId', organizationId)
           .select(`
             *,
             contact:Contact(*),
@@ -267,6 +274,7 @@ export class WebhookIngestionService {
         const { ConversationSectorHistoryRepository } = await import('@/repositories/conversationSectorHistoryRepository');
         await ConversationSectorHistoryRepository.insert({
           conversationId: conversation.id,
+          organizationId,
           sectorId: triageSectorId,
           enteredAt: new Date().toISOString()
         });
@@ -274,16 +282,17 @@ export class WebhookIngestionService {
         console.log(`[INGEST] 3. Conversa ativa encontrada: ${conversation.id}`);
         
         if (!conversation.currentSectorId) {
-          const { data: globalSettings } = await supabaseAdmin.from('ChatSetting').select('defaultTriageSectorId').single();
+          const globalSettings = await SettingRepository.findByOrganization(organizationId);
           const initialSectorId = channel.defaultSectorId || globalSettings?.defaultTriageSectorId || null;
           
           if (initialSectorId) {
             console.log(`[INGEST] Movendo conversa existente ${conversation.id} para triagem: ${initialSectorId}`);
-            await ConversationRepository.update(conversation.id, { currentSectorId: initialSectorId });
+            await ConversationRepository.update(conversation.id, organizationId, { currentSectorId: initialSectorId });
             
             const { ConversationSectorHistoryRepository } = await import('@/repositories/conversationSectorHistoryRepository');
             await ConversationSectorHistoryRepository.insert({
               conversationId: conversation.id,
+              organizationId,
               sectorId: initialSectorId,
               enteredAt: new Date().toISOString()
             });
@@ -303,6 +312,7 @@ export class WebhookIngestionService {
             .from('Message')
             .select('id, reactions')
             .eq('externalMessageId', targetExternalId)
+            .eq('organizationId', organizationId)
             .maybeSingle();
 
           if (targetMsg) {
@@ -313,7 +323,8 @@ export class WebhookIngestionService {
             await supabaseAdmin
               .from('Message')
               .update({ reactions: newReactions })
-              .eq('id', targetMsg.id);
+              .eq('id', targetMsg.id)
+              .eq('organizationId', organizationId);
             
             console.log(`[INGEST] Reação persistida na mensagem ${targetMsg.id}`);
             return { conversation }; // Retorna cedo, pois não queremos criar uma nova mensagem
@@ -339,6 +350,7 @@ export class WebhookIngestionService {
         .from('Message')
         .insert([{
           id: generateId(),
+          organizationId,
           conversationId: conversation.id,
           channelId: channel.id,
           sectorId: conversation.currentSectorId || null,
@@ -376,12 +388,12 @@ export class WebhookIngestionService {
         console.log(`[INGEST] Novo unreadCount: ${updateData.unreadCount}`);
       }
       
-      await ConversationRepository.update(conversation.id, updateData);
+      await ConversationRepository.update(conversation.id, organizationId, updateData);
       
       // Cancelar agendamentos se o cliente responder
       if (senderType === 'USER') {
         const { MessageService } = await import('@/services/messages');
-        await MessageService.cancelScheduledByCustomerReply(conversation.id);
+        await MessageService.cancelScheduledByCustomerReply(conversation.id, organizationId);
       }
 
       // 8. Notificação em Tempo Real
@@ -411,12 +423,14 @@ export class WebhookIngestionService {
    */
   private static async handleAutoReply(channel: any, contact: any, conversation: any) {
     try {
+      const organizationId = channel.organizationId as string;
       console.log(`[AUTO-REPLY] Verificando configuração para canal ${channel.id}...`);
       
       // 1. Buscar configuração em auto_reply_settings
       const { data: settings } = await supabaseAdmin
         .from('auto_reply_settings')
         .select('*')
+        .eq('organizationId', organizationId)
         .eq('channelId', channel.id)
         .maybeSingle();
 
@@ -429,6 +443,7 @@ export class WebhookIngestionService {
       const { data: lastReply } = await supabaseAdmin
         .from('contact_auto_replies')
         .select('*')
+        .eq('organizationId', organizationId)
         .eq('contactId', contact.id)
         .eq('channelId', channel.id)
         .maybeSingle();
@@ -470,6 +485,7 @@ export class WebhookIngestionService {
         .from('Message')
         .insert([{
           id: generateId(),
+          organizationId,
           conversationId: conversation.id,
           channelId: channel.id,
           senderType: 'SYSTEM',
@@ -489,11 +505,13 @@ export class WebhookIngestionService {
         await supabaseAdmin
           .from('contact_auto_replies')
           .update({ lastAutoReplyAt: now.toISOString(), updatedAt: now.toISOString() })
-          .eq('id', lastReply.id);
+          .eq('id', lastReply.id)
+          .eq('organizationId', organizationId);
       } else {
         await supabaseAdmin
           .from('contact_auto_replies')
           .insert([{
+            organizationId,
             contactId: contact.id,
             channelId: channel.id,
             lastAutoReplyAt: now.toISOString()
@@ -501,7 +519,7 @@ export class WebhookIngestionService {
       }
 
       // 6. Atualizar conversa (lastMessageAt para subir no topo)
-      await ConversationRepository.update(conversation.id, {
+      await ConversationRepository.update(conversation.id, organizationId, {
         lastMessageAt: now.toISOString(),
         lastMessagePreview: settings.message.substring(0, 100)
       });

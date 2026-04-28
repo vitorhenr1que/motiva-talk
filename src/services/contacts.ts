@@ -1,12 +1,12 @@
 import { ContactRepository } from '@/repositories/contactRepository'
 
 export class ContactService {
-  static async listAll() {
-    return await ContactRepository.findMany()
+  static async listAll(organizationId: string) {
+    return await ContactRepository.findMany(organizationId)
   }
 
-  static async search(query: string) {
-    return await ContactRepository.findMany({
+  static async search(organizationId: string, query: string) {
+    return await ContactRepository.findMany(organizationId, {
       OR: [
         { name: { contains: query, mode: 'insensitive' } },
         { phone: { contains: query } }
@@ -14,19 +14,19 @@ export class ContactService {
     })
   }
 
-  static async getOrCreateContact(data: { name: string; phone: string }) {
-    const existing = await ContactRepository.findByPhone(data.phone)
+  static async getOrCreateContact(organizationId: string, data: { name: string; phone: string }) {
+    const existing = await ContactRepository.findByPhone(data.phone, organizationId)
     if (existing) return existing
     
-    return await ContactRepository.create(data)
+    return await ContactRepository.create(organizationId, data)
   }
 
   /**
    * Obtém a foto de perfil do contato, buscando na Evolution API apenas se o cache estiver expirado (> 24h)
    */
-  static async getAndUpdateProfilePicture(contactId: string, channelId: string) {
+  static async getAndUpdateProfilePicture(contactId: string, channelId: string, organizationId: string) {
     try {
-      const contact = await ContactRepository.findById(contactId);
+      const contact = await ContactRepository.findById(contactId, organizationId);
       if (!contact) return null;
 
       // Lógica de Cache: Se já buscou há menos de 24 horas, retorna a existente
@@ -41,14 +41,14 @@ export class ContactService {
       // Se expirou ou não tem, busca na Evolution API
       const { evolutionProvider } = await import('@/services/whatsapp/evolution-provider');
       const { ChannelRepository } = await import('@/repositories/channelRepository');
-      const channel = await ChannelRepository.findById(channelId);
+      const channel = await ChannelRepository.findById(channelId, organizationId);
       
       if (!channel) return contact.profilePictureUrl;
 
       const newUrl = await evolutionProvider.fetchProfilePictureUrl(channel, contact.phone);
 
       // Sempre atualiza o timestamp da tentativa, mesmo se for null
-      await ContactRepository.update(contactId, {
+      await ContactRepository.update(contactId, organizationId, {
         profilePictureUrl: newUrl || contact.profilePictureUrl,
         lastProfilePictureFetchAt: now.toISOString()
       });

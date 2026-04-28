@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { TagService } from '@/services/tags'
 import { handleApiError, AppError } from '@/lib/api-errors'
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +14,8 @@ export async function POST(
   try {
     const { id } = await params
     const body = await req.json()
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
     console.log(`[API] ${req.method} ${ROUTE}:`, { id, body });
 
     const { tags, newTagMeta } = body
@@ -24,10 +27,10 @@ export async function POST(
     // Se houver metadados de uma nova tag, criamos ela primeiro no banco
     if (newTagMeta) {
       const { TagRepository } = await import('@/repositories/tagRepository')
-      await TagRepository.findOrCreate(newTagMeta.name, newTagMeta.color, newTagMeta.emoji)
+      await TagRepository.findOrCreate(newTagMeta.name, organizationId, newTagMeta.color, newTagMeta.emoji)
     }
 
-    await TagService.syncConversationTags(id, tags)
+    await TagService.syncConversationTags(id, tags, organizationId)
     return NextResponse.json({ success: true })
   } catch (error) {
     return handleApiError(error, req, { route: ROUTE })

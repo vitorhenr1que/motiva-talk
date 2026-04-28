@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { MessageRepository } from '@/repositories/messageRepository'
 import { handleApiError, AppError } from '@/lib/api-errors'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
 
 const ROUTE = 'GET /api/messages/scheduled'
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
     const conversationId = searchParams.get('conversationId')
 
     if (!conversationId) throw new AppError('conversationId é obrigatório', 400);
@@ -16,6 +18,7 @@ export async function GET(req: NextRequest) {
       .from('Message')
       .select('*')
       .eq('conversationId', conversationId)
+      .eq('organizationId', organizationId)
       .eq('sendStatus', 'scheduled')
       .order('scheduledAt', { ascending: true });
 

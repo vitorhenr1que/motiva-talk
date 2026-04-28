@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ContactRepository } from '@/repositories/contactRepository'
 import { handleApiError, validateBody, AppError } from '@/lib/api-errors'
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
 
 export const dynamic = 'force-dynamic';
 
@@ -9,11 +10,13 @@ const ROUTE = '/api/contacts';
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
     const search = searchParams.get('search')
     
     let query = searchParams.get('query') || '';
 
-    const contacts = await ContactRepository.findMany()
+    const contacts = await ContactRepository.findMany(organizationId)
     
     // Filtro simples no backend (poderia ser via query Supabase mas aqui vamos filtrar o resultado)
     let filtered = contacts || [];
@@ -35,6 +38,8 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     console.log(`[API] ${req.method} ${ROUTE}:`, body);
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
 
     validateBody(body, ['name', 'phone'])
     const { name, phone } = body
@@ -46,7 +51,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Verifica se já existe
-    const existing = await ContactRepository.findByPhone(cleanPhone)
+    const existing = await ContactRepository.findByPhone(cleanPhone, organizationId)
     if (existing) {
       return NextResponse.json({ 
         success: false, 
@@ -55,7 +60,7 @@ export async function POST(req: NextRequest) {
       }, { status: 409 })
     }
 
-    const contact = await ContactRepository.create({
+    const contact = await ContactRepository.create(organizationId, {
       name,
       phone: cleanPhone
     })

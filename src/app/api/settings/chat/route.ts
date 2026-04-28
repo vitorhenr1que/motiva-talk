@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase-admin'
 import { handleApiError } from '@/lib/api-errors'
 import { getServerSession, getUserRole } from '@/lib/auth-server'
+import { SettingRepository } from '@/repositories/settingRepository'
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export const dynamic = 'force-dynamic';
 
@@ -9,35 +11,9 @@ const ROUTE = '/api/settings/chat';
 
 export async function GET(req: Request) {
   try {
-    const { data: settings, error } = await supabaseAdmin
-      .from('ChatSetting')
-      .select('*')
-      .single()
-
-    // Se não existir, retorna default para não quebrar
-    if (error && error.code === 'PGRST116') {
-      return NextResponse.json({ 
-        success: true, 
-        data: { 
-          autoIdentifyAgent: false, 
-          allowAgentNameEdit: false,
-          allowAgentDeleteConversation: false,
-          finishMessage: 'Seu atendimento foi finalizado. Gostaríamos de saber sua opinião sobre o nosso atendimento:',
-          agentMenuVisibility: {
-            conversations: true,
-            funnel: true,
-            reports: false,
-            channels: false,
-            contacts: false,
-            suggestions: true,
-            settings: true
-          },
-          defaultTriageSectorId: null
-        } 
-      })
-    }
-
-    if (error) throw error
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
+    const settings = await SettingRepository.findByOrganization(organizationId)
     
     return NextResponse.json({ 
       success: true, 
@@ -67,8 +43,10 @@ export async function PATCH(req: Request) {
   try {
     const userSession = await getServerSession()
     if (!userSession) throw new Error('Não autorizado')
+    const organizationId = await getCurrentOrganizationId()
+    if (!organizationId) throw organizationNotFoundError()
 
-    const role = await getUserRole(userSession.email!)
+    const role = await getUserRole(userSession.email!, organizationId)
     if (role !== 'ADMIN') throw new Error('Acesso negado')
 
     const body = await req.json()
@@ -76,10 +54,18 @@ export async function PATCH(req: Request) {
 
     const { autoIdentifyAgent, allowAgentNameEdit, allowAgentDeleteConversation, agentMenuVisibility, finishMessage, defaultTriageSectorId } = body
 
-    // Tenta atualizar ou inserir se não existir
-    const { data: existing } = await supabaseAdmin.from('ChatSetting').select('id').single()
+    if (defaultTriageSectorId) {
+      const { data: sector } = await supabaseAdmin
+        .from('Sector')
+        .select('id')
+        .eq('id', defaultTriageSectorId)
+        .eq('organizationId', organizationId)
+        .maybeSingle()
 
-    let result;
+      if (!sector) throw new Error('Setor de triagem padrão não encontrado')
+    }
+
+    const existing = await SettingRepository.findByOrganization(organizationId)
     const payload = { 
       autoIdentifyAgent, 
       allowAgentNameEdit,
@@ -89,23 +75,8 @@ export async function PATCH(req: Request) {
       defaultTriageSectorId
     };
 
-    if (existing) {
-      result = await supabaseAdmin
-        .from('ChatSetting')
-        .update(payload)
-        .eq('id', existing.id)
-        .select()
-        .single()
-    } else {
-      result = await supabaseAdmin
-        .from('ChatSetting')
-        .insert([payload])
-        .select()
-        .single()
-    }
-
-    if (result.error) throw result.error
-    return NextResponse.json({ success: true, data: result.data })
+    const result = await SettingRepository.updateChatSettings(existing.id, organizationId, payload)
+    return NextResponse.json({ success: true, data: result })
   } catch (error) {
     return handleApiError(error, req, { route: ROUTE })
   }

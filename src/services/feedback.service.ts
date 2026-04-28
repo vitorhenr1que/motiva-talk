@@ -6,8 +6,8 @@ export class FeedbackService {
    * Generates a new feedback request for a contact.
    * If there's an active (PENDING) request in the last 24h, returns it.
    */
-  static async requestFeedback(contactId: string, phone: string, conversationId?: string, agentId?: string | null, agentName?: string | null) {
-    const last = await FeedbackRepository.findLastByContact(contactId);
+  static async requestFeedback(organizationId: string, contactId: string, phone: string, conversationId?: string, agentId?: string | null, agentName?: string | null) {
+    const last = await FeedbackRepository.findLastByContact(contactId, organizationId);
     
     if (last) {
       const lastCreatedAt = new Date(last.createdAt).getTime();
@@ -26,7 +26,7 @@ export class FeedbackService {
     // Window of 24h for submission
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-    return await FeedbackRepository.create({
+    return await FeedbackRepository.create(organizationId, {
       contactId,
       contactPhone: phone,
       conversationId,
@@ -88,7 +88,7 @@ export class FeedbackService {
 
     // Checks for duplicate submission or expiration are already done above
 
-    const updated = await FeedbackRepository.update(feedback.id, {
+    const updated = await FeedbackRepository.update(feedback.id, feedback.organizationId, {
       score: data.score,
       comment: data.comment || '',
       categoryOptions: data.categoryOptions || [],
@@ -103,14 +103,14 @@ export class FeedbackService {
   /**
    * Admin: List all submitted feedbacks with optional filters.
    */
-  static async listFeedbacks(filters: any) {
-    return await FeedbackRepository.findAll(filters);
+  static async listFeedbacks(organizationId: string, filters: any) {
+    return await FeedbackRepository.findAll({ ...filters, organizationId });
   }
 
   /**
    * Admin: Get summary statistics for feedbacks.
    */
-  static async getFeedbackSummary(filters: any) {
-    return await FeedbackRepository.getSummary(filters);
+  static async getFeedbackSummary(organizationId: string, filters: any) {
+    return await FeedbackRepository.getSummary({ ...filters, organizationId });
   }
 }

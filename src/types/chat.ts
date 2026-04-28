@@ -1,4 +1,4 @@
-export type UserRole = 'ADMIN' | 'SUPERVISOR' | 'AGENT';
+export type UserRole = 'ADMIN' | 'SUPERVISOR' | 'AGENT' | 'OWNER';
 export type ConversationStatus = 'OPEN' | 'IN_PROGRESS' | 'CLOSED' | 'FOLLOW_UP';
 export type MessageType = 'TEXT' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'DOCUMENT' | 'CONTACT' | 'REACTION' | 'SYSTEM' | 'STICKER' | 'LOCATION';
 export type SenderType = 'USER' | 'AGENT' | 'SYSTEM';
@@ -16,11 +16,13 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
+  organizationId?: string;
   createdAt: string;
 }
 
 export interface Contact {
   id: string;
+  organizationId?: string;
   name: string;
   phone: string;
   profilePictureUrl?: string;
@@ -30,6 +32,7 @@ export interface Contact {
 
 export interface Channel {
   id: string;
+  organizationId?: string;
   name: string;
   phoneNumber: string;
   isActive: boolean;
@@ -43,6 +46,7 @@ export interface Channel {
 
 export interface Sector {
   id: string;
+  organizationId?: string;
   name: string;
   createdAt: string;
   updatedAt: string;
@@ -70,6 +74,7 @@ export interface ConversationTag {
 
 export interface Conversation {
   id: string;
+  organizationId?: string;
   contactId: string;
   channelId: string;
   assignedTo?: string;
@@ -92,6 +97,7 @@ export interface Conversation {
 
 export interface Message {
   id: string;
+  organizationId?: string;
   conversationId: string;
   channelId: string;
   sectorId?: string | null;
@@ -129,6 +135,7 @@ export interface Message {
 
 export interface QuickReply {
   id: string;
+  organizationId?: string;
   title: string;
   content: string;
   category: string;
@@ -138,6 +145,7 @@ export interface QuickReply {
 
 export interface KeywordSuggestion {
   id: string;
+  organizationId?: string;
   keyword: string;
   triggers: string[];
   response: string;
@@ -146,6 +154,7 @@ export interface KeywordSuggestion {
 
 export interface FunnelStage {
   id: string;
+  organizationId?: string;
   name: string;
   type: 'STEP' | 'SELECT';
   order: number;
@@ -154,6 +163,7 @@ export interface FunnelStage {
 
 export interface ConversationFunnel {
   id: string;
+  organizationId?: string;
   conversationId: string;
   stageId: string;
   value?: string;

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ChannelConnectionService } from '@/services/channels/channel-connection.service';
 import { handleApiError, validateBody } from '@/lib/api-errors';
+import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,9 +13,11 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const organizationId = await getCurrentOrganizationId();
+    if (!organizationId) throw organizationNotFoundError();
     if (!id) return NextResponse.json({ success: false, message: 'ID obrigatório' }, { status: 400 });
 
-    const config = await ChannelConnectionService.getWebhookConfig(id);
+    const config = await ChannelConnectionService.getWebhookConfig(id, organizationId);
     return NextResponse.json({ success: true, data: config });
   } catch (error) {
     return handleApiError(error, req, { route: ROUTE });
@@ -27,6 +30,8 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+    const organizationId = await getCurrentOrganizationId();
+    if (!organizationId) throw organizationNotFoundError();
     if (!id) return NextResponse.json({ success: false, message: 'ID obrigatório' }, { status: 400 });
 
     const body = await req.json();
@@ -44,7 +49,7 @@ export async function POST(
     
     console.log(`[API_WEBHOOK_DEBUG] Processed Payload:`, payload);
 
-    const result = await ChannelConnectionService.setWebhookConfig(id, payload);
+    const result = await ChannelConnectionService.setWebhookConfig(id, organizationId, payload);
     console.log(`[API_WEBHOOK_DEBUG] API Response:`, result);
 
     return NextResponse.json({ success: true, data: result });

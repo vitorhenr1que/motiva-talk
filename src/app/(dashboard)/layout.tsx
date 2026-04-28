@@ -1,17 +1,16 @@
 import React from 'react';
-import { getServerSession, getUserRole } from '@/lib/auth-server';
-import { supabaseAdmin } from '@/lib/supabase-admin';
+import { getServerSession, getUserWithOrg } from '@/lib/auth-server';
+import { SettingRepository } from '@/repositories/settingRepository';
 import DashboardClientLayout from '@/components/layout/DashboardClientLayout';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await getServerSession();
-  const role = user ? await getUserRole(user.email!) : 'AGENT';
+  const appUser = user?.email ? await getUserWithOrg(user.email) : null;
+  const role = appUser?.role || 'AGENT';
+  const organizationId = appUser?.organizationId || null;
 
   // Buscar configurações de visibilidade do menu
-  const { data: settings } = await supabaseAdmin
-    .from('ChatSetting')
-    .select('agentMenuVisibility')
-    .single();
+  const settings = organizationId ? await SettingRepository.findByOrganization(organizationId) : null;
 
   const visibility = settings?.agentMenuVisibility || {
     conversations: true,
