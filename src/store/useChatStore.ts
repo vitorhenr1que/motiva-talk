@@ -575,27 +575,26 @@ export const useChatStore = create<ChatState>((set) => ({
     });
 
     if (statusChanged && oldStatus) {
+      // Fase 3: conversa já estava em outra aba — relações já estão no estado local.
+      // Mesclamos o patch do realtime com o registro existente, sem refetch.
       const oldTab = oldStatus === 'OPEN' ? 'unread' : (oldStatus === 'IN_PROGRESS' ? 'in_progress' : 'closed');
       nextTabCounts[oldTab] = Math.max(0, nextTabCounts[oldTab] - 1);
       const newTab = conversation.status === 'OPEN' ? 'unread' : (conversation.status === 'IN_PROGRESS' ? 'in_progress' : 'closed');
       nextTabCounts[newTab] += 1;
 
-      try {
-        const res = await fetch(`/api/conversations/${id}`);
-        const fullConv = await res.json();
-        if (fullConv.success) {
-          const tabToInsert = nextTabData[newTab];
-          tabToInsert.list = [fullConv.data, ...tabToInsert.list.filter(c => c.id !== id)];
-          tabToInsert.list.sort(sortConversations);
-        }
-      } catch (e) { console.error(e); }
+      const mergedConv = { ...(existing || {}), ...conversation };
+      const tabToInsert = nextTabData[newTab];
+      tabToInsert.list = [mergedConv, ...tabToInsert.list.filter(c => c.id !== id)];
+      tabToInsert.list.sort(sortConversations);
     } else if (!found) {
+      // Fase 3: conversa NOVA (nunca vista) — precisamos de contact/channel/sector/tags.
+      // Usa endpoint slim para minimizar payload.
       const newStatus = conversation.status || 'OPEN';
       const newTab = newStatus === 'OPEN' ? 'unread' : (newStatus === 'IN_PROGRESS' ? 'in_progress' : 'closed');
       nextTabCounts[newTab] += 1;
 
       try {
-        const res = await fetch(`/api/conversations/${id}`);
+        const res = await fetch(`/api/conversations/${id}?slim=true`);
         const fullConv = await res.json();
         if (fullConv.success) {
           const tabToInsert = nextTabData[newTab];

@@ -172,50 +172,96 @@ export class ConversationRepository {
    * Conta conversas com tenures PASSADOS no setor selecionado (aba "Histórico"),
    * excluindo as que ainda estão na fila ativa daquele setor.
    * Retorna 0 quando não há sectorId específico ou for UNASSIGNED.
+   *
+   * Implementação via RPC com EXISTS correlacionado (Fase 4) — evita transportar
+   * o array completo de IDs do ConversationSectorHistory para o cliente.
    */
   static async countHistorical(where: any): Promise<number> {
     if (!where.sectorId || where.sectorId === 'UNASSIGNED') return 0;
 
-    const { data: pastRows } = await supabaseAdmin
-      .from('ConversationSectorHistory')
-      .select('conversationId')
-      .eq('sectorId', where.sectorId)
-      .not('leftAt', 'is', null);
-    const pastIds = Array.from(new Set((pastRows || []).map((r: any) => r.conversationId)));
-    if (pastIds.length === 0) return 0;
+    const { data, error } = await supabaseAdmin.rpc('count_historical_for_sector', {
+      p_sector_id: where.sectorId,
+      p_channel_id: where.channelId ?? null,
+      p_allowed_channel_ids: where.allowedChannelIds ?? null,
+      p_channels_all_sectors: where.channelsWithAllSectorsAccess ?? null,
+      p_allowed_sector_ids: where.allowedSectorIds ?? null,
+      p_current_user_id: where.currentUserId ?? null,
+    });
 
-    let query = supabaseAdmin
-      .from('Conversation')
-      .select('*', { count: 'exact', head: true })
-      .in('id', pastIds)
-      .neq('currentSectorId', where.sectorId);
+    if (error) {
+      console.error('[CONVERSA] countHistorical RPC falhou:', error);
+      return 0;
+    }
+    return typeof data === 'number' ? data : Number(data) || 0;
+  }
 
-    if (where.channelId) query = query.eq('channelId', where.channelId);
-    if (where.allowedChannelIds && where.allowedChannelIds.length > 0) {
-      if (where.currentUserId) {
-        const channelsAllSectors = where.channelsWithAllSectorsAccess || [];
-        const channelsRestricted = where.allowedChannelIds.filter((id: string) => !channelsAllSectors.includes(id));
-        const conditions = [];
+  /**
+   * Lê contagens de OPEN/IN_PROGRESS/CLOSED a partir da tabela materializada
+   * "ConversationCount" (Fase 1). Retorna null quando há filtros que a materializada
+   * não consegue cobrir — neste caso o caller deve usar countByStatus como fallback.
+   *
+   * Suportado: channelId, sectorId (incl. UNASSIGNED), allowedChannelIds (modo supervisor).
+   * Fallback: tagId, search, assignedTo, currentUserId (modo agente — assignedTo é dinâmico).
+   *
+   * Caso especial: quando sectorId específico é passado, a contagem CLOSED da
+   * materializada é por currentSectorId. O original usa finalizedBySectorId nesse
+   * status, então a contagem CLOSED é refeita via SELECT count direto.
+   */
+  static async countFromMaterialized(where: any): Promise<{ OPEN: number; IN_PROGRESS: number; CLOSED: number } | null> {
+    if (where.tagId || where.search || where.assignedTo) return null;
+    if (where.currentUserId) return null;
 
-        if (channelsAllSectors.length > 0) {
-          conditions.push(`channelId.in.(${channelsAllSectors.join(',')})`);
-        }
-        if (channelsRestricted.length > 0) {
-          const sectorFilter = where.allowedSectorIds && where.allowedSectorIds.length > 0
-            ? `or(currentSectorId.in.(${where.allowedSectorIds.join(',')}),currentSectorId.is.null)`
-            : 'currentSectorId.is.null';
-          conditions.push(`and(channelId.in.(${channelsRestricted.join(',')}),${sectorFilter})`);
-        }
-        
-        if (conditions.length > 0) query = query.or(conditions.join(','));
-      } else {
-        query = query.in('channelId', where.allowedChannelIds);
-      }
+    if (where.allowedChannelIds && where.allowedChannelIds.length === 0) {
+      return { OPEN: 0, IN_PROGRESS: 0, CLOSED: 0 };
     }
 
-    const { count, error } = await query;
-    if (error) return 0;
-    return count || 0;
+    let q = supabaseAdmin
+      .from('ConversationCount')
+      .select('channelId, sectorId, status, count');
+
+    if (where.channelId) q = q.eq('channelId', where.channelId);
+    if (where.allowedChannelIds && where.allowedChannelIds.length > 0) {
+      q = q.in('channelId', where.allowedChannelIds);
+    }
+    if (where.sectorId === 'UNASSIGNED') {
+      q = q.is('sectorId', null);
+    } else if (where.sectorId) {
+      q = q.eq('sectorId', where.sectorId);
+    }
+
+    const { data, error } = await q;
+    if (error) {
+      console.error('[CONVERSA] countFromMaterialized falhou:', error);
+      return null;
+    }
+
+    const counts = { OPEN: 0, IN_PROGRESS: 0, CLOSED: 0 };
+    for (const row of (data || []) as Array<{ status: string; count: number }>) {
+      if (row.status === 'OPEN') counts.OPEN += row.count;
+      else if (row.status === 'IN_PROGRESS') counts.IN_PROGRESS += row.count;
+      else if (row.status === 'CLOSED') counts.CLOSED += row.count;
+    }
+
+    // CLOSED com sectorId específico precisa usar finalizedBySectorId — sobrescreve.
+    if (where.sectorId && where.sectorId !== 'UNASSIGNED') {
+      let cq = supabaseAdmin
+        .from('Conversation')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'CLOSED')
+        .eq('finalizedBySectorId', where.sectorId);
+      if (where.channelId) cq = cq.eq('channelId', where.channelId);
+      if (where.allowedChannelIds && where.allowedChannelIds.length > 0) {
+        cq = cq.in('channelId', where.allowedChannelIds);
+      }
+      const { count: closedCount, error: cerr } = await cq;
+      if (cerr) {
+        console.error('[CONVERSA] countFromMaterialized CLOSED override falhou:', cerr);
+        return null;
+      }
+      counts.CLOSED = closedCount || 0;
+    }
+
+    return counts;
   }
 
   static async countByStatus(where: any) {
@@ -313,6 +359,30 @@ export class ConversationRepository {
         agent:User(*),
         sector:Sector!Conversation_currentSectorId_fkey(*),
         tags:ConversationTag(*, tag:Tag(*))
+      `)
+      .eq('id', id)
+      .single()
+
+    if (error) throw error
+    return data
+  }
+
+  /**
+   * Versão enxuta de findById (Fase 3) — usada apenas quando uma conversa NOVA
+   * aparece via realtime e o cliente precisa popular contato/canal/setor/tags.
+   * Não traz colunas raramente lidas pela sidebar (ex.: pinnedNote completo, internalNotes).
+   */
+  static async findByIdSlim(id: string) {
+    const { data, error } = await supabaseAdmin
+      .from('Conversation')
+      .select(`
+        id, channelId, contactId, status, currentSectorId,
+        finalizedBySectorId, pinnedAt, lastMessageAt, lastMessagePreview,
+        unreadCount, assignedTo, createdAt, updatedAt, finalizedAt,
+        contact:Contact(id, name, phone, profilePictureUrl),
+        channel:Channel(id, name, allowAgentNameEdit),
+        sector:Sector!Conversation_currentSectorId_fkey(id, name),
+        tags:ConversationTag(tag:Tag(id, name, color, emoji))
       `)
       .eq('id', id)
       .single()

@@ -26,37 +26,61 @@ export const useRealtimeInbox = () => {
   /**
    * SUBSCRIPTION: CONVERSATIONS (Essential for the Sidebar)
    * Listens to the denormalized Conversation table.
-   * This is lightweight as it only fires when a conversation record changes.
+   *
+   * Fase 2: filtro server-side por currentSectorId quando há setor selecionado
+   * (reduz volume de eventos em horário de pico). Ouve também o broadcast
+   * `conversation_left_sector` em `sector:<id>` para retirar conversas que foram
+   * transferidas para outro setor — esses UPDATEs não passariam pelo filtro de
+   * setor server-side.
    */
   useEffect(() => {
     if (!selectedChannelId) return;
 
-    const channel = supabase
-      .channel(`sidebar:${selectedChannelId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'Conversation',
-          filter: `channelId=eq.${selectedChannelId}`
-        },
-        (payload) => {
-          if (payload.eventType === 'DELETE') {
-            const deletedId = (payload.old as any)?.id;
-            if (deletedId) removeConversationLocally(deletedId);
-            return;
-          }
+    // 'UNASSIGNED' (currentSectorId IS NULL) não é compatível com filter eq.null,
+    // então caímos para o filtro por canal nesse caso.
+    const useSectorFilter = !!selectedSectorId && selectedSectorId !== 'UNASSIGNED';
+    const topic = useSectorFilter
+      ? `sector:${selectedSectorId}`
+      : `sidebar:${selectedChannelId}`;
+    const filter = useSectorFilter
+      ? `currentSectorId=eq.${selectedSectorId}`
+      : `channelId=eq.${selectedChannelId}`;
 
-          const conversationData = payload.new as Conversation;
-
-          // O store aplica matchesConversationFilters: se a conversa casa com os filtros
-          // atuais (canal/setor), faz upsert/insert; caso contrário REMOVE da lista.
-          // Isso garante que conversas/mensagens de outro setor nunca apareçam aqui em realtime.
-          upsertConversationLocally(conversationData);
+    const channel = supabase.channel(topic).on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'Conversation',
+        filter
+      },
+      (payload) => {
+        if (payload.eventType === 'DELETE') {
+          const deletedId = (payload.old as any)?.id;
+          if (deletedId) removeConversationLocally(deletedId);
+          return;
         }
-      )
-      .subscribe();
+
+        const conversationData = payload.new as Conversation;
+
+        // matchesConversationFilters no store ainda atua como guard client-side
+        // (cobre, por ex., cross-channel quando filtro server é por setor).
+        upsertConversationLocally(conversationData);
+      }
+    );
+
+    if (useSectorFilter) {
+      channel.on(
+        'broadcast',
+        { event: 'conversation_left_sector' },
+        (payload) => {
+          const cid = (payload.payload as any)?.conversationId;
+          if (cid) removeConversationLocally(cid);
+        }
+      );
+    }
+
+    channel.subscribe();
 
     return () => {
       supabase.removeChannel(channel);

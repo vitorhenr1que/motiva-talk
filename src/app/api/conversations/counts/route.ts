@@ -49,8 +49,11 @@ export async function GET(req: Request) {
       where.currentUserId = dbUser?.id;
     }
 
+    // Fase 1: tenta a materializada primeiro; se filtros não suportados (tagId/search/
+    // assignedTo/agent mode), cai no countByStatus original.
+    const materialized = await ConversationRepository.countFromMaterialized(where)
     const [counts, historical] = await Promise.all([
-      ConversationRepository.countByStatus(where),
+      materialized ?? ConversationRepository.countByStatus(where),
       ConversationRepository.countHistorical(where)
     ]);
     return NextResponse.json({ success: true, data: { ...counts, HISTORICAL: historical } })

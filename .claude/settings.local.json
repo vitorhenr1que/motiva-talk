@@ -8,7 +8,11 @@
       "Bash(npm run *)",
       "Bash(awk '/conversationRepository\\\\.ts/,/^$/')",
       "Bash(git stash *)",
-      "mcp__supabase__get_advisors"
+      "mcp__supabase__get_advisors",
+      "mcp__supabase__list_migrations",
+      "mcp__supabase__list_tables",
+      "Bash(echo \"exit=$?\")",
+      "Bash(echo \"tsc=$?\")"
     ]
   },
   "enabledMcpjsonServers": [

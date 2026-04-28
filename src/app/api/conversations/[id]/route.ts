@@ -18,7 +18,12 @@ export async function GET(
 
     if (!id) throw new AppError('ID obrigatório', 400, 'VALIDATION_ERROR');
 
-    const conversation = await ConversationService.getById(id);
+    // Fase 3: ?slim=true → apenas relações usadas pela sidebar (contato/canal/setor/tags),
+    // sem o agente nem campos pesados. Reduz payload em hot path do realtime.
+    const slim = req.nextUrl.searchParams.get('slim') === 'true';
+    const conversation = slim
+      ? await ConversationService.getByIdSlim(id)
+      : await ConversationService.getById(id);
     if (!conversation) throw new AppError('Conversa não encontrada', 404, 'NOT_FOUND');
 
     return NextResponse.json({ success: true, data: conversation })

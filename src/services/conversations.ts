@@ -134,6 +134,13 @@ export class ConversationService {
   }
 
   /**
+   * Versão slim (Fase 3) — apenas relações da sidebar (contato, canal, setor, tags).
+   */
+  static async getByIdSlim(id: string) {
+    return await ConversationRepository.findByIdSlim(id)
+  }
+
+  /**
    * Cria uma nova conversa (ex: contato enviou mensagem pela primeira vez).
    * Já gera o tenure inicial em ConversationSectorHistory usando o setor padrão do canal.
    */
@@ -366,6 +373,17 @@ export class ConversationService {
     });
 
     console.log(`[CONVERSA] Transferência ${conversation.id}: ${originSectorId || 'NULL'} -> ${params.targetSectorId}`);
+
+    // Fase 2: broadcast best-effort para o setor de origem.
+    // Os clients que estão filtrando por originSectorId via postgres_changes (filtro server-side)
+    // NÃO recebem o UPDATE da conversa (porque o novo currentSectorId não bate). Sem este
+    // broadcast, a conversa fica "presa" na fila local do setor de origem até refresh.
+    if (originSectorId) {
+      await supabaseAdmin.rpc('broadcast_sector_left', {
+        p_origin_sector_id: originSectorId,
+        p_conversation_id: params.conversationId
+      });
+    }
 
     // 6. ÚNICA private note (criada APÓS transferAt → invisível ao setor de origem,
     //    visível apenas ao setor destino, que vê tudo a partir de enteredAt = transferAt).
