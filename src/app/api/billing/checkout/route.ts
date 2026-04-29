@@ -33,11 +33,17 @@ export async function POST(req: Request) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;
     const stripe = getStripeClient();
     await assertStripePriceExists(stripe, priceId, plan.code);
+    if (plan.stripeOveragePriceId) {
+      await assertStripePriceExists(stripe, plan.stripeOveragePriceId, `${plan.code} excedente`);
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer_email: user.email,
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: [
+        { price: priceId, quantity: 1 },
+        ...(plan.stripeOveragePriceId ? [{ price: plan.stripeOveragePriceId }] : []),
+      ],
       success_url: `${baseUrl}/settings/plan?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/settings/plan?checkout=cancel`,
       client_reference_id: user.organizationId!,

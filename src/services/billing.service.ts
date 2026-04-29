@@ -1,4 +1,5 @@
 import { AppError } from '@/lib/api-errors';
+import { getStripeClient } from '@/lib/stripe';
 import { organizationRepository } from '@/repositories/organizationRepository';
 import { BillingRepository, type BillingPlan, type PlanCode } from '@/repositories/billingRepository';
 import type Stripe from 'stripe';
@@ -24,11 +25,19 @@ export interface PlanLimits {
   maxServiceConversationsPerCycle: number | null;
   serviceConversationWindowHours: number;
   serviceConversationQuotaScope: 'billing_cycle' | 'lifetime';
+  serviceConversationOveragePriceCents: number | null;
+  estimatedServiceConversationOverageCents: number;
+  overageServiceConversations: number;
 }
 
 type StripeSubscriptionWithPeriods = Stripe.Subscription & {
   current_period_start?: number | null;
   current_period_end?: number | null;
+};
+
+type StripeSubscriptionSyncContext = {
+  organizationId?: string | null;
+  planCode?: string | null;
 };
 
 const STRIPE_STATUS_TO_INTERNAL: Record<string, string> = {
@@ -91,6 +100,9 @@ export class BillingService {
       maxServiceConversationsPerCycle: plan.maxServiceConversationsPerCycle ?? null,
       serviceConversationWindowHours: plan.serviceConversationWindowHours ?? 24,
       serviceConversationQuotaScope: plan.serviceConversationQuotaScope ?? (plan.code === 'FREE' ? 'lifetime' : 'billing_cycle'),
+      serviceConversationOveragePriceCents: plan.serviceConversationOveragePriceCents ?? null,
+      estimatedServiceConversationOverageCents: 0,
+      overageServiceConversations: 0,
     };
   }
 
@@ -140,16 +152,29 @@ export class BillingService {
         serviceConversationPeriodStart: servicePeriod.start,
         serviceConversationPeriodEnd: servicePeriod.end,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`[BillingService.getMonthlyUsage] Error for org ${organizationId}:`, error);
-      
-      // Se o erro não tiver mensagem, garante que pelo menos tenhamos algo para logar
-      if (error && typeof error === 'object' && !error.message) {
-        error.message = 'Erro ao buscar métricas de uso no banco de dados';
-      }
-      
       throw error;
     }
+  }
+
+  static async getServiceConversationOverageSummary(organizationId: string) {
+    const limits = await this.getPlanLimits(organizationId);
+    const servicePeriod = await this.getServiceConversationPeriod(organizationId, limits.plan.code);
+    const total = await BillingRepository.countServiceConversations(organizationId, servicePeriod.start, servicePeriod.end);
+    const included = limits.serviceConversationQuotaEnabled ? limits.maxServiceConversationsPerCycle : null;
+    const overage = included === null ? 0 : Math.max(0, total - included);
+    const priceCents = limits.serviceConversationOveragePriceCents ?? null;
+
+    return {
+      included,
+      total,
+      overage,
+      priceCents,
+      estimatedCents: priceCents ? overage * priceCents : 0,
+      periodStart: servicePeriod.start,
+      periodEnd: servicePeriod.end,
+    };
   }
 
   static async incrementMessageUsage(organizationId: string) {
@@ -211,9 +236,72 @@ export class BillingService {
       quotaScope: limits.serviceConversationQuotaScope,
       stripeSubscriptionId: servicePeriod.subscription?.stripeSubscriptionId ?? null,
       externalMessageId: externalMessageId ?? null,
+      isOverage: overQuota && limits.plan.code !== 'FREE',
     });
 
+    if (usage.isOverage) {
+      this.recordServiceConversationOverageUsage(usage.id, organizationId).catch((error) => {
+        console.error(`[BILLING] Overage usage record failed usage=${usage.id} org=${organizationId}:`, error);
+      });
+    }
+
     return { usage, created: true, overQuota };
+  }
+
+  static async ensureStripeOverageSubscriptionItem(subscription: Stripe.Subscription, plan: BillingPlan) {
+    if (!plan.stripeOveragePriceId) return null;
+
+    const existingItem = subscription.items.data.find((item: Stripe.SubscriptionItem) => item.price.id === plan.stripeOveragePriceId);
+    if (existingItem) return existingItem.id;
+
+    const stripe = getStripeClient();
+    const item = await stripe.subscriptionItems.create({
+      subscription: subscription.id,
+      price: plan.stripeOveragePriceId,
+      proration_behavior: 'none',
+      metadata: { kind: 'service_conversation_overage', planCode: plan.code },
+    });
+
+    return item.id;
+  }
+
+  static async recordServiceConversationOverageUsage(usageId: string, organizationId: string) {
+    const subscription = await BillingRepository.findActiveSubscription(organizationId);
+    if (!subscription?.stripeSubscriptionId || !subscription.stripeCustomerId || subscription.plan?.code === 'FREE') return;
+    if (!activeBillingStatus(subscription.status)) return;
+
+    const plan = subscription.plan || await this.getCurrentPlan(organizationId);
+    if (!plan.stripeOveragePriceId || !plan.stripeOverageMeterId || !plan.serviceConversationOveragePriceCents) return;
+
+    const stripe = getStripeClient();
+    const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId, {
+      expand: ['items.data.price'],
+    });
+    const overageSubscriptionItemId = await this.ensureStripeOverageSubscriptionItem(stripeSubscription, plan);
+
+    try {
+      const event = await stripe.billing.meterEvents.create({
+        event_name: `motiva_talk_service_conversation_overage_${plan.code.toLowerCase()}`,
+        identifier: usageId,
+        payload: {
+          stripe_customer_id: subscription.stripeCustomerId,
+          value: '1',
+        },
+      });
+
+      await BillingRepository.markServiceConversationUsageStripeRecorded(usageId, organizationId, event.identifier);
+
+      if (overageSubscriptionItemId && overageSubscriptionItemId !== subscription.stripeOverageSubscriptionItemId) {
+        await BillingRepository.updateSubscription(subscription.id, {
+          stripeOveragePriceId: plan.stripeOveragePriceId,
+          stripeOverageSubscriptionItemId: overageSubscriptionItemId,
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro ao registrar uso excedente no Stripe';
+      await BillingRepository.markServiceConversationUsageStripeError(usageId, organizationId, message);
+      throw error;
+    }
   }
 
   static async checkAgentReplyAllowed(organizationId: string): Promise<void> {
@@ -279,14 +367,18 @@ export class BillingService {
     return STRIPE_STATUS_TO_INTERNAL[status] || 'INCOMPLETE';
   }
 
-  static async syncStripeSubscription(stripeSubscription: StripeSubscriptionWithPeriods) {
+  static async syncStripeSubscription(
+    stripeSubscription: StripeSubscriptionWithPeriods,
+    context: StripeSubscriptionSyncContext = {}
+  ) {
     const stripeSubscriptionId = stripeSubscription.id as string;
     const stripeCustomerId = typeof stripeSubscription.customer === 'string'
       ? stripeSubscription.customer
       : stripeSubscription.customer?.id;
-    const stripePriceId = stripeSubscription.items?.data?.[0]?.price?.id as string | undefined;
+    const stripePriceIds = stripeSubscription.items?.data?.map((item) => item.price?.id).filter(Boolean) as string[] | undefined;
+    const stripePriceId = stripePriceIds?.[0];
 
-    if (!stripeSubscriptionId || !stripeCustomerId || !stripePriceId) {
+    if (!stripeSubscriptionId || !stripeCustomerId || !stripePriceIds?.length) {
       throw new AppError('Assinatura Stripe incompleta', 400, 'VALIDATION_ERROR');
     }
 
@@ -295,7 +387,8 @@ export class BillingService {
       ? null
       : await BillingRepository.findSubscriptionByStripeCustomerId(stripeCustomerId);
 
-    const organizationId = stripeSubscription.metadata?.organizationId
+    const organizationId = context.organizationId
+      || stripeSubscription.metadata?.organizationId
       || existingBySubscription?.organizationId
       || existingByCustomer?.organizationId;
 
@@ -303,8 +396,15 @@ export class BillingService {
       throw new AppError('organizationId ausente na assinatura Stripe', 400, 'VALIDATION_ERROR');
     }
 
-    const plan = await BillingRepository.findPlanByStripePriceId(stripePriceId)
-      || await BillingRepository.findPlanByCode((stripeSubscription.metadata?.planCode || 'FREE') as PlanCode);
+    const plans = await BillingRepository.listPlans();
+    const plan = plans.find((p) => p.stripePriceId && stripePriceIds.includes(p.stripePriceId))
+      || await BillingRepository.findPlanByCode((context.planCode || stripeSubscription.metadata?.planCode || 'FREE') as PlanCode);
+    const fixedStripePriceId = plan.stripePriceId && stripePriceIds.includes(plan.stripePriceId)
+      ? plan.stripePriceId
+      : stripePriceId;
+    const overageItem = plan.stripeOveragePriceId
+      ? stripeSubscription.items?.data?.find((item) => item.price?.id === plan.stripeOveragePriceId)
+      : null;
 
     const status = this.normalizeStripeStatus(stripeSubscription.status);
     const currentPeriodStart = stripeSubscription.current_period_start
@@ -327,7 +427,9 @@ export class BillingService {
       status,
       stripeCustomerId,
       stripeSubscriptionId,
-      stripePriceId,
+      stripePriceId: fixedStripePriceId,
+      stripeOveragePriceId: plan.stripeOveragePriceId ?? null,
+      stripeOverageSubscriptionItemId: overageItem?.id ?? null,
       currentPeriodStart,
       currentPeriodEnd,
       cancelAtPeriodEnd: !!stripeSubscription.cancel_at_period_end,

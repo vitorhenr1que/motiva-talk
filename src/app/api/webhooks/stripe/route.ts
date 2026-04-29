@@ -25,7 +25,10 @@ export async function POST(req: Request) {
       const session = event.data.object as Stripe.Checkout.Session;
       if (session.mode === 'subscription' && session.subscription) {
         const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
-        await BillingService.syncStripeSubscription(subscription);
+        await BillingService.syncStripeSubscription(subscription, {
+          organizationId: session.client_reference_id,
+          planCode: typeof session.metadata?.planCode === 'string' ? session.metadata.planCode : null,
+        });
       }
     }
 

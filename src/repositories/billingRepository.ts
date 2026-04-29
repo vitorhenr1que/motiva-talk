@@ -19,6 +19,9 @@ export interface BillingPlan {
   maxServiceConversationsPerCycle?: number | null;
   serviceConversationWindowHours?: number;
   serviceConversationQuotaScope?: 'billing_cycle' | 'lifetime';
+  serviceConversationOveragePriceCents?: number | null;
+  stripeOveragePriceId?: string | null;
+  stripeOverageMeterId?: string | null;
   features?: string[];
   isActive: boolean;
   sortOrder: number;
@@ -32,6 +35,8 @@ export interface BillingSubscription {
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
   stripePriceId?: string | null;
+  stripeOveragePriceId?: string | null;
+  stripeOverageSubscriptionItemId?: string | null;
   currentPeriodStart?: string | null;
   currentPeriodEnd?: string | null;
   cancelAtPeriodEnd: boolean;
@@ -63,6 +68,10 @@ export interface ServiceConversationUsage {
   quotaScope: 'billing_cycle' | 'lifetime';
   stripeSubscriptionId?: string | null;
   externalMessageId?: string | null;
+  isOverage?: boolean;
+  stripeUsageEventId?: string | null;
+  stripeUsageRecordedAt?: string | null;
+  stripeUsageError?: string | null;
 }
 
 const PLAN_SELECT = `
@@ -81,6 +90,9 @@ const PLAN_SELECT = `
   maxServiceConversationsPerCycle:maxserviceconversationspercycle,
   serviceConversationWindowHours:serviceconversationwindowhours,
   serviceConversationQuotaScope:serviceconversationquotascope,
+  serviceConversationOveragePriceCents:serviceconversationoveragepricecents,
+  stripeOveragePriceId:stripeoveragepriceid,
+  stripeOverageMeterId:stripeoveragemeterid,
   features,
   isActive:isactive,
   sortOrder:sortorder
@@ -94,6 +106,8 @@ const SUBSCRIPTION_SELECT = `
   stripeCustomerId:stripecustomerid,
   stripeSubscriptionId:stripesubscriptionid,
   stripePriceId:stripepriceid,
+  stripeOveragePriceId:stripeoveragepriceid,
+  stripeOverageSubscriptionItemId:stripeoveragesubscriptionitemid,
   currentPeriodStart:currentperiodstart,
   currentPeriodEnd:currentperiodend,
   cancelAtPeriodEnd:cancelatperiodend,
@@ -110,6 +124,8 @@ function mapSubscriptionPayload(data: Partial<BillingSubscription> & { organizat
     ...(data.stripeCustomerId !== undefined ? { stripecustomerid: data.stripeCustomerId } : {}),
     ...(data.stripeSubscriptionId !== undefined ? { stripesubscriptionid: data.stripeSubscriptionId } : {}),
     ...(data.stripePriceId !== undefined ? { stripepriceid: data.stripePriceId } : {}),
+    ...(data.stripeOveragePriceId !== undefined ? { stripeoveragepriceid: data.stripeOveragePriceId } : {}),
+    ...(data.stripeOverageSubscriptionItemId !== undefined ? { stripeoveragesubscriptionitemid: data.stripeOverageSubscriptionItemId } : {}),
     ...(data.currentPeriodStart !== undefined ? { currentperiodstart: data.currentPeriodStart } : {}),
     ...(data.currentPeriodEnd !== undefined ? { currentperiodend: data.currentPeriodEnd } : {}),
     ...(data.cancelAtPeriodEnd !== undefined ? { cancelatperiodend: data.cancelAtPeriodEnd } : {}),
@@ -157,6 +173,65 @@ export class BillingRepository {
     const { data, error } = await supabaseAdmin
       .from('Plan')
       .update({ pricecents: priceCents, stripepriceid: stripePriceId, updatedat: new Date().toISOString() })
+      .eq('code', code)
+      .select(PLAN_SELECT)
+      .single();
+
+    if (error) throw error;
+    return data as BillingPlan;
+  }
+
+  static async updatePlanOveragePrice(code: PlanCode, overagePriceCents: number, stripeOveragePriceId: string, stripeOverageMeterId: string) {
+    const { data, error } = await supabaseAdmin
+      .from('Plan')
+      .update({
+        serviceconversationoveragepricecents: overagePriceCents,
+        stripeoveragepriceid: stripeOveragePriceId,
+        stripeoveragemeterid: stripeOverageMeterId,
+        updatedat: new Date().toISOString(),
+      })
+      .eq('code', code)
+      .select(PLAN_SELECT)
+      .single();
+
+    if (error) throw error;
+    return data as BillingPlan;
+  }
+
+  static async updatePlanFeatures(code: PlanCode, features: string[]) {
+    const { data, error } = await supabaseAdmin
+      .from('Plan')
+      .update({ features, updatedat: new Date().toISOString() })
+      .eq('code', code)
+      .select(PLAN_SELECT)
+      .single();
+
+    if (error) throw error;
+    return data as BillingPlan;
+  }
+
+  static async updatePlanLimits(
+    code: PlanCode,
+    limits: { 
+      maxChannels?: number | null; 
+      maxUsers?: number | null; 
+      maxMessagesPerMonth?: number | null;
+      maxServiceConversationsPerCycle?: number | null;
+      serviceConversationWindowHours?: number | null;
+      serviceConversationQuotaScope?: string | null;
+    }
+  ) {
+    const { data, error } = await supabaseAdmin
+      .from('Plan')
+      .update({
+        maxchannels: limits.maxChannels,
+        maxusers: limits.maxUsers,
+        maxmessagespermonth: limits.maxMessagesPerMonth,
+        maxserviceconversationspercycle: limits.maxServiceConversationsPerCycle,
+        serviceconversationwindowhours: limits.serviceConversationWindowHours,
+        serviceconversationquotascope: limits.serviceConversationQuotaScope,
+        updatedat: new Date().toISOString(),
+      })
       .eq('code', code)
       .select(PLAN_SELECT)
       .single();
@@ -341,6 +416,21 @@ export class BillingRepository {
     return count ?? 0;
   }
 
+  static async countOverageServiceConversations(organizationId: string, since?: string | null, until?: string | null) {
+    let query = supabaseAdmin
+      .from('ServiceConversationUsage')
+      .select('*', { count: 'exact', head: true })
+      .eq('organizationId', organizationId)
+      .eq('isOverage', true);
+
+    if (since) query = query.gte('firstUserMessageAt', since);
+    if (until) query = query.lt('firstUserMessageAt', until);
+
+    const { count, error } = await query;
+    if (error) throw error;
+    return count ?? 0;
+  }
+
   static async createServiceConversationUsage(data: Omit<ServiceConversationUsage, 'id'>) {
     const { data: usage, error } = await supabaseAdmin
       .from('ServiceConversationUsage')
@@ -358,6 +448,36 @@ export class BillingRepository {
       .update({ conversationId, updatedAt: new Date().toISOString() })
       .eq('id', id)
       .eq('organizationId', organizationId);
+
+    if (error) throw error;
+  }
+
+  static async markServiceConversationUsageStripeRecorded(id: string, organizationId: string, stripeUsageEventId: string) {
+    const { error } = await supabaseAdmin
+      .from('ServiceConversationUsage')
+      .update({
+        stripeUsageEventId,
+        stripeUsageRecordedAt: new Date().toISOString(),
+        stripeUsageError: null,
+        updatedAt: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('organizationId', organizationId)
+      .is('stripeUsageRecordedAt', null);
+
+    if (error) throw error;
+  }
+
+  static async markServiceConversationUsageStripeError(id: string, organizationId: string, message: string) {
+    const { error } = await supabaseAdmin
+      .from('ServiceConversationUsage')
+      .update({
+        stripeUsageError: message.slice(0, 500),
+        updatedAt: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('organizationId', organizationId)
+      .is('stripeUsageRecordedAt', null);
 
     if (error) throw error;
   }

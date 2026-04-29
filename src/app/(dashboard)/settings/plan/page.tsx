@@ -24,6 +24,15 @@ type BillingStatus = {
     serviceConversationPeriodStart: string | null;
     serviceConversationPeriodEnd: string | null;
   };
+  serviceConversationOverage: {
+    included: number | null;
+    total: number;
+    overage: number;
+    priceCents: number | null;
+    estimatedCents: number;
+    periodStart: string | null;
+    periodEnd: string | null;
+  };
   subscription: BillingSubscription | null;
   plans: BillingPlan[];
 };
@@ -41,6 +50,7 @@ type BillingPlan = {
   serviceConversationQuotaEnabled?: boolean;
   maxServiceConversationsPerCycle?: number | null;
   serviceConversationQuotaScope?: 'billing_cycle' | 'lifetime';
+  serviceConversationOveragePriceCents?: number | null;
 };
 
 type BillingSubscription = {
@@ -55,6 +65,10 @@ function formatLimit(value: number | null) {
 function percent(current: number, max: number | null) {
   if (!max) return 0;
   return Math.min(100, Math.round((current / max) * 100));
+}
+
+function formatCurrency(value: number) {
+  return (value / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 function UsageCard({ icon, label, current, max }: { icon: React.ReactNode; label: string; current: number; max: number | null }) {
@@ -194,6 +208,7 @@ export default function BillingPlanPage() {
     && (billing?.usage.serviceConversations || 0) >= serviceConversationMax;
   const freeReplyBlocked = currentPlan?.code === 'FREE' && serviceConversationLimitReached;
   const paidOverage = currentPlan?.code !== 'FREE' && serviceConversationLimitReached;
+  const overage = billing?.serviceConversationOverage;
   const hasStripeCustomer = !!billing?.subscription?.stripeCustomerId;
   const billingActionLoading = actionLoading === 'portal' || actionLoading === currentPlan?.code || actionLoading === 'STARTER';
 
@@ -247,7 +262,14 @@ export default function BillingPlanPage() {
 
       {paidOverage && (
         <div className="rounded-3xl border border-blue-200 bg-blue-50 p-5 text-sm font-semibold text-blue-800">
-          A franquia de conversas foi ultrapassada. O atendimento continua ativo e o excedente fica registrado para cobrança adicional.
+          A franquia de conversas foi ultrapassada. O atendimento continua ativo e o excedente entra na próxima cobrança.
+          {overage?.priceCents ? (
+            <span className="mt-2 block">
+              {overage.overage.toLocaleString('pt-BR')} excedentes x {formatCurrency(overage.priceCents)} = {formatCurrency(overage.estimatedCents)} estimados neste ciclo.
+            </span>
+          ) : (
+            <span className="mt-2 block">Preço de excedente ainda não configurado para este plano.</span>
+          )}
         </div>
       )}
 
@@ -280,6 +302,28 @@ export default function BillingPlanPage() {
         <UsageCard icon={<Phone size={22} />} label="Canais" current={billing?.usage.channels || 0} max={billing?.limits.maxChannels ?? null} />
         <UsageCard icon={<Users size={22} />} label="Usuários" current={(billing?.usage.users || 0) + (billing?.usage.pendingInvites || 0)} max={billing?.limits.maxUsers ?? null} />
       </div>
+
+      {currentPlan?.code !== 'FREE' && overage && (
+        <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-widest text-slate-400">Excedente estimado</p>
+              <h2 className="mt-2 text-2xl font-black text-slate-900">{formatCurrency(overage.estimatedCents)}</h2>
+              <p className="mt-1 text-sm font-medium text-slate-500">
+                {overage.overage.toLocaleString('pt-BR')} conversas excedentes no ciclo atual.
+              </p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 px-5 py-4 text-sm font-bold text-slate-600">
+              {overage.priceCents
+                ? `${formatCurrency(overage.priceCents)} por conversa excedente`
+                : 'Preço de excedente não configurado'}
+            </div>
+          </div>
+          <p className="mt-4 text-xs font-semibold text-slate-400">
+            Valor estimado. O total final será calculado pelo Stripe no fechamento do ciclo.
+          </p>
+        </section>
+      )}
 
       <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-6 flex items-center justify-between">

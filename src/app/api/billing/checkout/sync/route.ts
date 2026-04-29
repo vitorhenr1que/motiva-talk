@@ -36,7 +36,10 @@ export async function POST(req: Request) {
       ? await stripe.subscriptions.retrieve(session.subscription)
       : session.subscription;
 
-    const synced = await BillingService.syncStripeSubscription(subscription);
+    const synced = await BillingService.syncStripeSubscription(subscription, {
+      organizationId: session.client_reference_id,
+      planCode: typeof session.metadata?.planCode === 'string' ? session.metadata.planCode : null,
+    });
 
     return NextResponse.json({ success: true, data: synced });
   } catch (error) {

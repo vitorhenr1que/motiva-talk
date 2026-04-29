@@ -12,12 +12,13 @@ const ROUTE = '/api/billing/status';
 export async function GET(req: Request) {
   try {
     const organizationId = await requireOrganization();
-    const [plan, limits, usage, subscription, plans] = await Promise.all([
+    const [plan, limits, usage, subscription, plans, serviceConversationOverage] = await Promise.all([
       BillingService.getCurrentPlan(organizationId),
       BillingService.getPlanLimits(organizationId),
       BillingService.getMonthlyUsage(organizationId),
       BillingRepository.findActiveSubscription(organizationId),
       BillingService.listPlans(),
+      BillingService.getServiceConversationOverageSummary(organizationId),
     ]);
 
     return NextResponse.json({
@@ -26,6 +27,7 @@ export async function GET(req: Request) {
         plan,
         limits,
         usage,
+        serviceConversationOverage,
         subscription,
         plans,
       },
