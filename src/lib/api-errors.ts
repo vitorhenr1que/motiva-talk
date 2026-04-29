@@ -17,6 +17,7 @@ export interface ApiErrorResponse {
 export type AppErrorType =
   | 'VALIDATION_ERROR'
   | 'AUTH_ERROR'
+  | 'AUTH_REQUIRED'
   | 'FORBIDDEN'
   | 'NOT_FOUND'
   | 'CONFLICT'
@@ -25,6 +26,7 @@ export type AppErrorType =
   | 'BAD_REQUEST'
   | 'QUOTA_EXCEEDED'
   | 'ORGANIZATION_BLOCKED'
+  | 'ORGANIZATION_NOT_FOUND'
   | 'PLATFORM_ADMIN_REQUIRED';
 
 export class AppError extends Error {
