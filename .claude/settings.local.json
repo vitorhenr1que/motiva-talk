@@ -12,7 +12,13 @@
       "mcp__supabase__list_migrations",
       "mcp__supabase__list_tables",
       "Bash(echo \"exit=$?\")",
-      "Bash(echo \"tsc=$?\")"
+      "Bash(echo \"tsc=$?\")",
+      "Bash(curl -s -o /tmp/webhook_resp.txt -w 'HTTP_STATUS=%{http_code}\\\\n' -X POST https://motiva-talk.vercel.app/api/webhooks/evolution -H 'Content-Type: application/json' -d '{\"event\":\"messages.upsert\",\"instance\":\"instancia-de-teste-inexistente-9999\",\"data\":{}}')",
+      "Read(//tmp/**)",
+      "Bash(npx tsx *)",
+      "Bash(grep -E \"platform-admin|limits.service|app[/\\\\\\\\]\\\\\\(platform\\\\\\)|app[/\\\\\\\\]api[/\\\\\\\\]platform|^\\\\s+[0-9]+:\")",
+      "Bash(awk '/platform|limits\\\\.service|platform-admin/ { p=1; print; next } p && /^D:\\\\\\\\/ { p=0 } p { print }')",
+      "Bash(awk -v RS='' '/platform|limits\\\\.service|platform-admin/' /tmp/lint.log)"
     ]
   },
   "enabledMcpjsonServers": [

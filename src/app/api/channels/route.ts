@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { ChannelService } from '@/services/channels'
+import { LimitsService } from '@/services/limits.service'
 import { handleApiError, validateBody } from '@/lib/api-errors'
 import { getServerSession } from '@/lib/auth-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -51,7 +52,9 @@ export async function POST(req: Request) {
     if (!organizationId) throw organizationNotFoundError()
     
     validateBody(body, ['name', 'phoneNumber'])
-    
+
+    await LimitsService.checkCanCreateChannel(organizationId)
+
     const channel = await ChannelService.registerChannel(organizationId, body)
     return NextResponse.json({ success: true, data: channel }, { status: 201 })
   } catch (error) {

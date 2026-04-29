@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Shield, Bell, User as UserIcon, Key, Globe, Check, Loader2, MessageSquare } from 'lucide-react';
+import { Shield, Bell, User as UserIcon, Key, Globe, Check, Loader2, MessageSquare, Building2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 export default function SettingsPage() {
@@ -118,6 +118,7 @@ export default function SettingsPage() {
 
   const navItems = [
     { label: 'Perfil', icon: <UserIcon size={18} />, href: '/settings' },
+    { label: 'Organização', icon: <Building2 size={18} />, href: '/settings/organization' },
     { label: 'Acessibilidade', icon: <Globe size={18} />, href: '/settings/accessibility' },
     { label: 'Mensagens Automáticas', icon: <MessageSquare size={18} />, href: '/settings/auto-replies' },
     { label: 'Setores', icon: <Shield size={18} />, href: '/settings/sectors' },

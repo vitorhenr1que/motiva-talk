@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { UserRepository } from '@/repositories/userRepository'
 import { handleApiError, validateBody, AppError } from '@/lib/api-errors'
 import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
+import { LimitsService } from '@/services/limits.service'
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +43,8 @@ export async function POST(req: Request) {
     
     validateBody(body, ['name', 'email', 'role', 'password'])
     const { name, email, role, password, channelIds } = body
+
+    await LimitsService.checkCanInviteUser(organizationId)
 
     // 1. Criar no Supabase Auth via Admin SDK
     const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({

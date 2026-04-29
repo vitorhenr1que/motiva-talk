@@ -15,6 +15,7 @@ interface Channel {
 }
 
 export default function ChannelsPage() {
+  const [usage, setUsage] = useState<any>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -30,9 +31,16 @@ export default function ChannelsPage() {
 
   const fetchChannels = useCallback(async () => {
     try {
-      const res = await fetch('/api/channels');
-      const data = await res.json();
-      setChannels(data.data || []);
+      const [chRes, usageRes] = await Promise.all([
+        fetch('/api/channels'),
+        fetch('/api/organizations/usage')
+      ]);
+      
+      const chData = await chRes.json();
+      const usageData = await usageRes.json();
+      
+      setChannels(chData.data || []);
+      setUsage(usageData.data || null);
     } catch (error) {
       console.error('Failed to fetch channels:', error);
     } finally {
@@ -97,6 +105,8 @@ export default function ChannelsPage() {
     }
   };
 
+  const isLimitReached = usage?.maxChannels !== null && usage?.channelCount >= usage?.maxChannels;
+
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-10 animate-in fade-in slide-in-from-top-4 duration-700">
       {/* Header */}
@@ -105,16 +115,29 @@ export default function ChannelsPage() {
           <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight leading-none mb-3">Canais de Atendimento</h1>
           <p className="text-slate-500 dark:text-slate-400 font-medium">Gerencie suas conexões do WhatsApp e outros canais integrados.</p>
         </div>
-        <button 
-          onClick={() => setIsAddModalOpen(true)}
-          className="flex items-center gap-3 rounded-2xl bg-blue-600 px-6 py-4 font-bold text-white shadow-xl shadow-blue-200 dark:shadow-none hover:bg-blue-700 hover:shadow-2xl transition-all hover:scale-105 active:scale-95 group"
-        >
-          <div className="bg-white/20 p-1.5 rounded-lg group-hover:rotate-90 transition-transform duration-500">
-             <Plus size={18} strokeWidth={4} />
-          </div>
-          <span>Registrar Canal</span>
-        </button>
+        <div className="flex flex-col items-end gap-2">
+          <button 
+            onClick={() => !isLimitReached && setIsAddModalOpen(true)}
+            disabled={isLimitReached}
+            className={`flex items-center gap-3 rounded-2xl px-6 py-4 font-bold text-white shadow-xl transition-all hover:scale-105 active:scale-95 group ${
+              isLimitReached 
+              ? 'bg-slate-400 cursor-not-allowed shadow-none' 
+              : 'bg-blue-600 shadow-blue-200 dark:shadow-none hover:bg-blue-700 hover:shadow-2xl'
+            }`}
+          >
+            <div className={`p-1.5 rounded-lg transition-transform duration-500 ${isLimitReached ? 'bg-white/10' : 'bg-white/20 group-hover:rotate-90'}`}>
+               <Plus size={18} strokeWidth={4} />
+            </div>
+            <span>Registrar Canal</span>
+          </button>
+          {isLimitReached && (
+            <span className="text-xs font-bold text-rose-500 bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-100 animate-pulse">
+              Limite de canais atingido ({usage.maxChannels})
+            </span>
+          )}
+        </div>
       </div>
+
 
       {loading ? (
         <div className="flex flex-col items-center justify-center py-32 space-y-4">
@@ -189,13 +212,24 @@ export default function ChannelsPage() {
 
           {/* New Channel Placeholder */}
           <button 
-            onClick={() => setIsAddModalOpen(true)}
-            className="group relative rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 p-8 flex flex-col items-center justify-center text-center transition-all hover:border-blue-400 dark:hover:border-blue-500 hover:bg-white dark:hover:bg-slate-900 group"
+            onClick={() => !isLimitReached && setIsAddModalOpen(true)}
+            disabled={isLimitReached}
+            className={`group relative rounded-3xl border-2 border-dashed p-8 flex flex-col items-center justify-center text-center transition-all ${
+              isLimitReached
+              ? 'border-slate-200 bg-slate-50/30 cursor-not-allowed opacity-60'
+              : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-white dark:hover:bg-slate-900'
+            }`}
           >
-            <div className="rounded-2xl bg-white dark:bg-slate-800 p-4 shadow-sm ring-1 ring-slate-200 dark:ring-slate-700 group-hover:scale-110 group-hover:bg-blue-600 group-hover:text-white transition-all duration-300">
-               <Plus size={32} strokeWidth={2.5} className="text-slate-400 group-hover:text-white transition-colors" />
+            <div className={`rounded-2xl p-4 shadow-sm ring-1 transition-all duration-300 ${
+              isLimitReached
+              ? 'bg-slate-100 text-slate-300 ring-slate-200'
+              : 'bg-white dark:bg-slate-800 ring-slate-200 dark:ring-slate-700 group-hover:scale-110 group-hover:bg-blue-600 group-hover:text-white'
+            }`}>
+               <Plus size={32} strokeWidth={2.5} className={`${isLimitReached ? 'text-slate-300' : 'text-slate-400 group-hover:text-white transition-colors'}`} />
             </div>
-            <p className="mt-4 text-sm font-black text-slate-400 group-hover:text-blue-600 uppercase tracking-widest">Adicionar novo canal</p>
+            <p className={`mt-4 text-sm font-black uppercase tracking-widest ${isLimitReached ? 'text-slate-300' : 'text-slate-400 group-hover:text-blue-600'}`}>
+              {isLimitReached ? 'Limite atingido' : 'Adicionar novo canal'}
+            </p>
           </button>
         </div>
       )}

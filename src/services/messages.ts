@@ -108,6 +108,12 @@ export class MessageService {
     };
 
     if (!isActuallyInternal && (senderType === 'AGENT' || senderType === 'SYSTEM')) {
+      // Enforcement de quota mensal: bloqueia apenas saída. Recebimento via webhook
+      // continua livre (ver webhook-ingestion.service.ts) para não perder mensagens
+      // do cliente.
+      const { LimitsService } = await import('@/services/limits.service');
+      await LimitsService.checkCanSendMessage(organizationId);
+
       try {
         const { evolutionProvider } = await import('@/services/whatsapp/evolution-provider')
 

@@ -10,7 +10,8 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 interface UserOrganizationLookup {
   organizationId: string | null
-  organization: { id: string } | null
+  isPlatformAdmin: boolean | null
+  organization: { id: string; status: string | null } | null
 }
 
 export async function middleware(req: NextRequest) {
@@ -31,6 +32,14 @@ export async function middleware(req: NextRequest) {
     pathname.includes('.')
 
   if (isPublicRoute) {
+    const token = req.cookies.get('sb-access-token')?.value
+    const guestOnlyRoutes = ['/login', '/register']
+    
+    if (token && guestOnlyRoutes.includes(pathname)) {
+      const url = req.nextUrl.clone()
+      url.pathname = '/inbox'
+      return NextResponse.redirect(url)
+    }
     return res
   }
 
@@ -82,11 +91,38 @@ export async function middleware(req: NextRequest) {
 
   const { data: appUser } = await supabaseAdmin
     .from('User')
-    .select('organizationId, organization:Organization(id)')
+    .select('organizationId, isPlatformAdmin, organization:Organization(id, status)')
     .eq('email', user.email)
     .maybeSingle()
 
   const userOrganization = appUser as UserOrganizationLookup | null
+  const isPlatformAdmin = userOrganization?.isPlatformAdmin === true
+  const isPlatformRoute =
+    pathname.startsWith('/platform') || pathname.startsWith('/api/platform')
+
+  // Super admin: passa em qualquer rota, mesmo sem org ativa.
+  if (isPlatformAdmin) {
+    return res
+  }
+
+  // Rotas /platform e /api/platform exigem auth, mas a guarda final é
+  // requirePlatformAdmin() dentro de cada handler. Aqui só checamos auth.
+  if (isPlatformRoute) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Acesso restrito ao painel da plataforma',
+          code: 'PLATFORM_ADMIN_REQUIRED',
+        },
+        { status: 403 }
+      )
+    }
+    const url = req.nextUrl.clone()
+    url.pathname = '/login'
+    url.searchParams.set('error', 'platform_admin_required')
+    return NextResponse.redirect(url)
+  }
 
   if (!userOrganization?.organizationId || !userOrganization.organization) {
     if (pathname.startsWith('/api/')) {
@@ -100,6 +136,27 @@ export async function middleware(req: NextRequest) {
     url.pathname = '/login'
     url.searchParams.set('error', 'organization_not_found')
     return NextResponse.redirect(url)
+  }
+
+  // Bloqueio de organização: status != ACTIVE bloqueia tudo (exceto super admin, já tratado acima).
+  const orgStatus = userOrganization.organization.status ?? 'ACTIVE'
+  if (orgStatus !== 'ACTIVE') {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Organização bloqueada. Entre em contato com o suporte.',
+          code: 'ORGANIZATION_BLOCKED',
+        },
+        { status: 403 }
+      )
+    }
+    const url = req.nextUrl.clone()
+    url.pathname = '/login'
+    url.searchParams.set('error', 'organization_blocked')
+    const response = NextResponse.redirect(url)
+    response.cookies.delete('sb-access-token')
+    return response
   }
 
   return res

@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Lock, Mail, Loader2 } from 'lucide-react';
+import { useEffect } from 'react';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -15,6 +16,16 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const errorParam = searchParams.get('error');
+    if (errorParam === 'organization_blocked') {
+      setError('Sua organização está bloqueada. Entre em contato com o suporte.');
+    } else if (errorParam === 'organization_not_found') {
+      setError('Organização não encontrada.');
+    }
+  }, [searchParams]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,7 +51,8 @@ export default function LoginPage() {
         router.push('/inbox');
         router.refresh();
       } else {
-        throw new Error('Falha ao sincronizar sessão');
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Falha ao sincronizar sessão');
       }
     } catch (err: any) {
       setError(err.message || 'Erro ao realizar login');

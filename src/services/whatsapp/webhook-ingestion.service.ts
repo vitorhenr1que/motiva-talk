@@ -24,6 +24,21 @@ export class WebhookIngestionService {
       return;
     }
 
+    // Mensagens recebidas NUNCA são bloqueadas por quota — perderíamos dados
+    // do cliente. Apenas sinalizamos no log para o Super Admin acompanhar.
+    try {
+      const { LimitsService } = await import('@/services/limits.service');
+      const status = await LimitsService.getMonthlyMessageStatus(organizationId);
+      if (status.overQuota) {
+        console.warn(
+          `[INGEST][OVER_QUOTA] org=${organizationId} channel=${channelId} ` +
+          `monthlyMessages=${status.current}/${status.max} — recebendo mesmo assim.`
+        );
+      }
+    } catch (e: any) {
+      console.error(`[INGEST] erro ao consultar quota org=${organizationId}:`, e?.message || e);
+    }
+
     let finalMediaUrl = event.mediaUrl;
     let finalMimeType = event.mimeType || 'application/octet-stream';
     let localBase64 = event.base64;

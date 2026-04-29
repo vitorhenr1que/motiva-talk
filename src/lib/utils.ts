@@ -37,3 +37,15 @@ export function formatPhone(phone: string): string {
 export function generateId() {
   return crypto.randomUUID().replace(/-/g, '');
 }
+
+export function slugify(text: string) {
+  return text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .normalize('NFD') // separate accent from letter
+    .replace(/[\u0300-\u036f]/g, '') // remove accent
+    .replace(/\s+/g, '-') // replace spaces with -
+    .replace(/[^\w-]+/g, '') // remove all non-word chars
+    .replace(/--+/g, '-'); // replace multiple - with single -
+}

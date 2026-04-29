@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { handleApiError, AppError } from '@/lib/api-errors'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export const dynamic = 'force-dynamic';
 
@@ -14,8 +15,30 @@ export async function POST(req: Request) {
     const { session } = body
     const cookieStore = await cookies()
 
-    if (!session?.access_token) {
-      throw new AppError('Sessão inválida', 400, 'VALIDATION_ERROR');
+    // Verificar se a organização está ativa antes de criar o cookie
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(session.access_token)
+    
+    if (authError || !user) {
+      throw new AppError('Token inválido', 401, 'AUTH_REQUIRED');
+    }
+
+    const { data: appUser } = await supabaseAdmin
+      .from('User')
+      .select('isPlatformAdmin, organization:Organization(status)')
+      .eq('email', user.email)
+      .maybeSingle()
+
+    if (appUser && !appUser.isPlatformAdmin) {
+      const organization = appUser.organization as any;
+      
+      if (!organization) {
+        throw new AppError('Sua conta não está vinculada a nenhuma organização.', 403, 'ORGANIZATION_NOT_FOUND');
+      }
+
+      const orgStatus = organization.status ?? 'ACTIVE'
+      if (orgStatus !== 'ACTIVE') {
+        throw new AppError('Organização bloqueada. Entre em contato com o suporte.', 403, 'ORGANIZATION_BLOCKED');
+      }
     }
 
     // Configurar cookie de acesso

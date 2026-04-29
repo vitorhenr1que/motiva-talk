@@ -1,14 +1,16 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Menu, 
-  HelpCircle, 
-  ChevronLeft, 
+import Link from 'next/link';
+import {
+  Menu,
+  HelpCircle,
+  ChevronLeft,
   ChevronRight,
   LogOut,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  ShieldAlert
 } from 'lucide-react';
 import { SidebarItem } from './SidebarItem';
 import { LogoutButton } from '@/components/auth/LogoutButton';
@@ -18,13 +20,15 @@ interface DashboardClientLayoutProps {
   user: any;
   role: string;
   visibility: any;
+  isPlatformAdmin?: boolean;
 }
 
-export default function DashboardClientLayout({ 
-  children, 
-  user, 
-  role, 
-  visibility 
+export default function DashboardClientLayout({
+  children,
+  user,
+  role,
+  visibility,
+  isPlatformAdmin
 }: DashboardClientLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
@@ -78,6 +82,17 @@ export default function DashboardClientLayout({
         </div>
         
         <nav className="flex-1 space-y-1 p-4 overflow-y-auto overflow-x-hidden">
+          {isPlatformAdmin && (
+            <Link
+              href="/platform"
+              className="mb-2 flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-700 hover:bg-amber-100 transition-colors"
+              title="Painel da Plataforma (Super Admin)"
+            >
+              <ShieldAlert size={20} className="shrink-0 text-amber-600" />
+              {isSidebarOpen && <span className="truncate uppercase tracking-wide text-xs">Plataforma</span>}
+            </Link>
+          )}
+
           {isVisible('conversations') && (
             <SidebarItem 
               href="/inbox" 

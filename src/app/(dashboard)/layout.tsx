@@ -8,6 +8,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const appUser = user?.email ? await getUserWithOrg(user.email) : null;
   const role = appUser?.role || 'AGENT';
   const organizationId = appUser?.organizationId || null;
+  const isPlatformAdmin = appUser?.isPlatformAdmin === true;
 
   // Buscar configurações de visibilidade do menu
   const settings = organizationId ? await SettingRepository.findByOrganization(organizationId) : null;
@@ -23,10 +24,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   };
 
   return (
-    <DashboardClientLayout 
-      user={user} 
-      role={role} 
+    <DashboardClientLayout
+      user={user}
+      role={role}
       visibility={visibility}
+      isPlatformAdmin={isPlatformAdmin}
     >
       {children}
     </DashboardClientLayout>

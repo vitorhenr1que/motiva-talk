@@ -5,6 +5,7 @@ export const ORGANIZATION_NOT_FOUND_MESSAGE = 'Organização não encontrada par
 export interface ApiErrorResponse {
   success: false;
   message: string;
+  code?: AppErrorType;
   error?: string;
   details?: any;
   route: string;
@@ -13,7 +14,7 @@ export interface ApiErrorResponse {
   stack?: string;
 }
 
-export type AppErrorType = 
+export type AppErrorType =
   | 'VALIDATION_ERROR'
   | 'AUTH_ERROR'
   | 'FORBIDDEN'
@@ -21,7 +22,10 @@ export type AppErrorType =
   | 'CONFLICT'
   | 'DATABASE_ERROR'
   | 'INTERNAL_ERROR'
-  | 'BAD_REQUEST';
+  | 'BAD_REQUEST'
+  | 'QUOTA_EXCEEDED'
+  | 'ORGANIZATION_BLOCKED'
+  | 'PLATFORM_ADMIN_REQUIRED';
 
 export class AppError extends Error {
   constructor(
@@ -47,7 +51,8 @@ export function handleApiError(
 
   let statusCode = 500;
   let message = 'Ocorreu um erro interno inesperado';
-  
+  let code: AppErrorType | undefined;
+
   // Extract technical description
   let errorDescription = '';
   if (error instanceof Error) {
@@ -63,7 +68,8 @@ export function handleApiError(
   if (error instanceof AppError) {
     statusCode = error.statusCode;
     message = error.message;
-  } else if (error.code === 'P2002' || error.code === '23505') { 
+    code = error.type;
+  } else if (error.code === 'P2002' || error.code === '23505') {
     // Prisma or Postgres Unique Violation
     statusCode = 409;
     message = 'Já existe um registro com estes dados';
@@ -87,6 +93,7 @@ export function handleApiError(
   const response: ApiErrorResponse = {
     success: false,
     message,
+    code,
     error: isDev ? errorDescription : undefined,
     details: isDev ? details : undefined,
     route,
