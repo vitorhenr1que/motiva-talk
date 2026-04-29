@@ -58,11 +58,17 @@ export function handleApiError(
   // Extract technical description
   let errorDescription = '';
   if (error instanceof Error) {
-    errorDescription = error.message;
+    errorDescription = error.message || error.name;
   } else if (typeof error === 'object' && error !== null) {
-    errorDescription = error.message || error.details || JSON.stringify(error);
+    // Se a mensagem for vazia, tentamos outros campos comuns ou stringify
+    errorDescription = error.message || error.details || error.hint || error.error_description || (Object.keys(error).length > 0 ? JSON.stringify(error) : String(error));
   } else {
     errorDescription = String(error);
+  }
+
+  // Se ainda estiver vazia ou for apenas "{}", damos um fallback
+  if (!errorDescription || errorDescription === '{}') {
+    errorDescription = 'Erro desconhecido (vazio)';
   }
 
   let details = error instanceof AppError ? error.details : (error.details || error.hint || undefined);

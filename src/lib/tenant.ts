@@ -28,7 +28,12 @@ export async function getCurrentOrganizationId(): Promise<string | null> {
 
   if (!user?.organizationId || !user.organization) return null
 
-  return user.organizationId
+  // Permitir acesso se for admin da plataforma ou se a organização estiver ativa
+  if (user.isPlatformAdmin || user.organization.status === 'ACTIVE') {
+    return user.organizationId
+  }
+
+  return null
 }
 
 export async function requireOrganization(): Promise<string> {
@@ -36,6 +41,10 @@ export async function requireOrganization(): Promise<string> {
 
   if (!user?.organizationId || !user.organization) {
     throw organizationNotFoundError()
+  }
+
+  if (!user.isPlatformAdmin && user.organization.status !== 'ACTIVE') {
+    throw new AppError('Organização bloqueada. Entre em contato com o suporte.', 403, 'ORGANIZATION_BLOCKED')
   }
 
   return user.organizationId

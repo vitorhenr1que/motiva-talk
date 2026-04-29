@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
@@ -56,7 +57,7 @@ const USER_WITH_ORG_SELECT = `
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-export async function getServerSession() {
+export const getServerSession = cache(async () => {
   const cookieStore = await cookies()
   const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
@@ -73,9 +74,9 @@ export async function getServerSession() {
   if (error || !user) return null
 
   return user
-}
+})
 
-export async function getUserRole(email: string, organizationId?: string) {
+export const getUserRole = cache(async (email: string, organizationId?: string) => {
   const { supabaseAdmin } = await import('@/lib/supabase-admin')
   let query = supabaseAdmin
     .from('User')
@@ -87,9 +88,9 @@ export async function getUserRole(email: string, organizationId?: string) {
   const { data: user } = await query.single()
   
   return user?.role || 'AGENT'
-}
+})
 
-export async function getUserWithOrg(email: string): Promise<UserWithOrganization | null> {
+export const getUserWithOrg = cache(async (email: string): Promise<UserWithOrganization | null> => {
   const { supabaseAdmin } = await import('@/lib/supabase-admin')
   const { data: user } = await supabaseAdmin
     .from('User')
@@ -98,7 +99,7 @@ export async function getUserWithOrg(email: string): Promise<UserWithOrganizatio
     .maybeSingle()
 
   return (user as UserWithOrganization | null) ?? null
-}
+})
 
 export async function getOrganizationId(email: string): Promise<string | null> {
   const user = await getUserWithOrg(email)

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-import { ORGANIZATION_NOT_FOUND_MESSAGE } from '@/lib/api-errors'
+
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -14,9 +14,28 @@ interface UserOrganizationLookup {
   organization: { id: string; status: string | null } | null
 }
 
-export async function middleware(req: NextRequest) {
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: false
+  }
+})
+
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+})
+
+export default async function proxy(req: NextRequest) {
+  const start = Date.now()
   const res = NextResponse.next()
   const pathname = req.nextUrl.pathname
+  
+  const log = (msg: string) => {
+    const duration = Date.now() - start
+    console.log(`[PROXY] ${pathname} - ${msg} (+${duration}ms)`)
+  }
 
   // Rotas que não precisam de autenticação
   const publicRoutes = ['/login', '/register', '/invite', '/onboarding', '/api/auth/session']
@@ -60,12 +79,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      persistSession: false
-    }
-  })
-
+  log('Authenticating token')
   const { data: { user }, error } = await supabase.auth.getUser(token)
 
   if (error || !user?.email) {
@@ -82,42 +96,33 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  })
+  log('Token authenticated, checking API route')
+  // Para rotas de API, fazemos apenas o check de autenticação básico.
+  // A validação de organização e permissões será feita dentro dos handlers para evitar double-query e timeouts.
+  if (pathname.startsWith('/api/')) {
+    return res
+  }
 
+  log('Fetching user organization profile')
+  // Para páginas, ainda fazemos o check de organização para evitar flashes de conteúdo ou redirecionar cedo.
+  // Mas usamos o ID do usuário se possível (ou e-mail como fallback)
   const { data: appUser } = await supabaseAdmin
     .from('User')
     .select('organizationId, isPlatformAdmin, organization:Organization(id, status)')
     .eq('email', user.email)
     .maybeSingle()
+  
+  log('Profile fetched')
 
   const userOrganization = appUser as UserOrganizationLookup | null
   const isPlatformAdmin = userOrganization?.isPlatformAdmin === true
-  const isPlatformRoute =
-    pathname.startsWith('/platform') || pathname.startsWith('/api/platform')
+  const isPlatformRoute = pathname.startsWith('/platform')
 
-  // Super admin: passa em qualquer rota, mesmo sem org ativa.
   if (isPlatformAdmin) {
     return res
   }
 
-  // Rotas /platform e /api/platform exigem auth, mas a guarda final é
-  // requirePlatformAdmin() dentro de cada handler. Aqui só checamos auth.
   if (isPlatformRoute) {
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'Acesso restrito ao painel da plataforma',
-          code: 'PLATFORM_ADMIN_REQUIRED',
-        },
-        { status: 403 }
-      )
-    }
     const url = req.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('error', 'platform_admin_required')
@@ -125,32 +130,14 @@ export async function middleware(req: NextRequest) {
   }
 
   if (!userOrganization?.organizationId || !userOrganization.organization) {
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json(
-        { success: false, message: ORGANIZATION_NOT_FOUND_MESSAGE, code: 'ORGANIZATION_NOT_FOUND' },
-        { status: 403 }
-      )
-    }
-
     const url = req.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('error', 'organization_not_found')
     return NextResponse.redirect(url)
   }
 
-  // Bloqueio de organização: status != ACTIVE bloqueia tudo (exceto super admin, já tratado acima).
   const orgStatus = userOrganization.organization.status ?? 'ACTIVE'
   if (orgStatus !== 'ACTIVE') {
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'Organização bloqueada. Entre em contato com o suporte.',
-          code: 'ORGANIZATION_BLOCKED',
-        },
-        { status: 403 }
-      )
-    }
     const url = req.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('error', 'organization_blocked')
@@ -164,6 +151,16 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    /*
+     * Match all request paths except for the ones starting with:
+     * - api/webhooks (webhook handlers)
+     * - api/public (public api)
+     * - api/messages/process-scheduled (cron job)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public folder files (images, etc)
+     */
+    '/((?!api/webhooks|api/public|api/messages/process-scheduled|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|feedback/.*).*)',
   ],
 }

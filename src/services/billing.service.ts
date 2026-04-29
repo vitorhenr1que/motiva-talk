@@ -115,30 +115,41 @@ export class BillingService {
   }
 
   static async getMonthlyUsage(organizationId: string): Promise<BillingUsage> {
-    const { periodStart, periodEnd, periodStartIso } = monthRangeUtc();
-    const limits = await this.getPlanLimits(organizationId);
-    const servicePeriod = await this.getServiceConversationPeriod(organizationId, limits.plan.code);
+    try {
+      const { periodStart, periodEnd, periodStartIso } = monthRangeUtc();
+      const limits = await this.getPlanLimits(organizationId);
+      const servicePeriod = await this.getServiceConversationPeriod(organizationId, limits.plan.code);
 
-    const [metric, liveMessages, serviceConversations, channels, users, pendingInvites] = await Promise.all([
-      BillingRepository.getUsageMetric(organizationId, periodStart),
-      BillingRepository.countMessagesSince(organizationId, periodStartIso),
-      BillingRepository.countServiceConversations(organizationId, servicePeriod.start, servicePeriod.end),
-      BillingRepository.countRows('Channel', organizationId),
-      BillingRepository.countRows('User', organizationId),
-      BillingRepository.countPendingInvites(organizationId),
-    ]);
+      const [metric, liveMessages, serviceConversations, channels, users, pendingInvites] = await Promise.all([
+        BillingRepository.getUsageMetric(organizationId, periodStart),
+        BillingRepository.countMessagesSince(organizationId, periodStartIso),
+        BillingRepository.countServiceConversations(organizationId, servicePeriod.start, servicePeriod.end),
+        BillingRepository.countRows('Channel', organizationId),
+        BillingRepository.countRows('User', organizationId),
+        BillingRepository.countPendingInvites(organizationId),
+      ]);
 
-    return {
-      messages: Math.max(metric?.value ?? 0, liveMessages),
-      serviceConversations,
-      channels,
-      users,
-      pendingInvites,
-      periodStart,
-      periodEnd,
-      serviceConversationPeriodStart: servicePeriod.start,
-      serviceConversationPeriodEnd: servicePeriod.end,
-    };
+      return {
+        messages: Math.max(metric?.value ?? 0, liveMessages),
+        serviceConversations: serviceConversations ?? 0,
+        channels: channels ?? 0,
+        users: users ?? 0,
+        pendingInvites: pendingInvites ?? 0,
+        periodStart,
+        periodEnd,
+        serviceConversationPeriodStart: servicePeriod.start,
+        serviceConversationPeriodEnd: servicePeriod.end,
+      };
+    } catch (error: any) {
+      console.error(`[BillingService.getMonthlyUsage] Error for org ${organizationId}:`, error);
+      
+      // Se o erro não tiver mensagem, garante que pelo menos tenhamos algo para logar
+      if (error && typeof error === 'object' && !error.message) {
+        error.message = 'Erro ao buscar métricas de uso no banco de dados';
+      }
+      
+      throw error;
+    }
   }
 
   static async incrementMessageUsage(organizationId: string) {
