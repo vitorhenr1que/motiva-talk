@@ -15,6 +15,9 @@ export interface Organization {
   maxMsgPerMonth?: number | null;
   trialEndsAt?: string | null;
   blockedReason?: string | null;
+  enterprisePriceCents?: number | null;
+  enterpriseStripePriceId?: string | null;
+  enterpriseStripeProductId?: string | null;
 }
 
 export const organizationRepository = {

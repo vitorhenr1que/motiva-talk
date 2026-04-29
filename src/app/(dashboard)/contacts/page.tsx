@@ -142,13 +142,13 @@ export default function ContactsPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3">
-            Meus Alunos
+            Meus Contatos
             <span className="bg-slate-100 text-slate-400 px-3 py-1 rounded-full text-xs align-middle">
               {contacts.length}
             </span>
           </h1>
           <p className="mt-2 text-slate-500 font-medium italic max-w-lg">
-            Selecione um aluno para iniciar um atendimento personalizado via WhatsApp.
+            Selecione um contato para iniciar um atendimento personalizado via WhatsApp.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -161,7 +161,7 @@ export default function ContactsPage() {
             className="flex items-center gap-2 rounded-2xl bg-[#00A884] px-6 py-3 font-bold text-white shadow-lg shadow-emerald-100 hover:bg-[#008f72] transition-all hover:scale-105 active:scale-95"
           >
             <UserPlus size={20} />
-            Novo Aluno
+            Novo Contato
           </button>
         </div>
       </div>
@@ -192,7 +192,7 @@ export default function ContactsPage() {
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50/50 text-[11px] font-black uppercase tracking-[0.2em] text-slate-400 border-b border-slate-100">
-                <th className="px-8 py-5">Perfil do Aluno</th>
+                <th className="px-8 py-5">Perfil do Contato</th>
                 <th className="px-8 py-5">WhatsApp</th>
                 <th className="px-8 py-5">Etiquetas</th>
                 <th className="px-8 py-5 text-right w-40">Ações</th>
@@ -203,7 +203,7 @@ export default function ContactsPage() {
                 <tr>
                   <td colSpan={4} className="px-8 py-20 text-center">
                     <Loader2 className="mx-auto animate-spin text-emerald-500 mb-4" size={32} />
-                    <p className="text-sm font-bold text-slate-400">Carregando base de alunos...</p>
+                    <p className="text-sm font-bold text-slate-400">Carregando base de contatos...</p>
                   </td>
                 </tr>
               ) : contacts.length === 0 ? (
@@ -274,7 +274,7 @@ export default function ContactsPage() {
               <div className="h-12 w-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600"><UserPlus size={24} /></div>
               <button onClick={() => setIsModalOpen(false)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all"><X size={24} /></button>
             </div>
-            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Novo Aluno</h2>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Novo Contato</h2>
             <form onSubmit={handleCreateContact} className="mt-8 space-y-5">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-600 ml-1">Nome</label>

@@ -107,12 +107,14 @@ export class MessageService {
       return cachedConversation;
     };
 
-    if (!isActuallyInternal && (senderType === 'AGENT' || senderType === 'SYSTEM')) {
-      // Enforcement de quota mensal: bloqueia apenas saída. Recebimento via webhook
-      // continua livre (ver webhook-ingestion.service.ts) para não perder mensagens
-      // do cliente.
+    if (!isActuallyInternal && senderType === 'AGENT') {
+      // FREE acima da franquia não responde; planos pagos continuam respondendo e
+      // o excedente fica registrado para billing. Recebimento nunca é bloqueado.
       const { LimitsService } = await import('@/services/limits.service');
       await LimitsService.checkCanSendMessage(organizationId);
+    }
+
+    if (!isActuallyInternal && (senderType === 'AGENT' || senderType === 'SYSTEM')) {
 
       try {
         const { getWhatsAppProvider } = await import('@/services/whatsapp/providers')

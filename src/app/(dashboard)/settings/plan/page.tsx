@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { CreditCard, Loader2, MessageSquare, Phone, Users, ArrowUpRight, ExternalLink } from 'lucide-react';
+import { AlertTriangle, CreditCard, Loader2, MessageSquare, Phone, Users, ArrowUpRight, ExternalLink } from 'lucide-react';
 
 type BillingStatus = {
   plan: BillingPlan;
@@ -9,14 +9,20 @@ type BillingStatus = {
     maxChannels: number | null;
     maxUsers: number | null;
     maxMessagesPerMonth: number | null;
+    serviceConversationQuotaEnabled: boolean;
+    maxServiceConversationsPerCycle: number | null;
+    serviceConversationQuotaScope: 'billing_cycle' | 'lifetime';
   };
   usage: {
     messages: number;
+    serviceConversations: number;
     channels: number;
     users: number;
     pendingInvites: number;
     periodStart: string;
     periodEnd: string;
+    serviceConversationPeriodStart: string | null;
+    serviceConversationPeriodEnd: string | null;
   };
   subscription: BillingSubscription | null;
   plans: BillingPlan[];
@@ -32,10 +38,14 @@ type BillingPlan = {
   maxChannels: number | null;
   maxUsers: number | null;
   maxMessagesPerMonth: number | null;
+  serviceConversationQuotaEnabled?: boolean;
+  maxServiceConversationsPerCycle?: number | null;
+  serviceConversationQuotaScope?: 'billing_cycle' | 'lifetime';
 };
 
 type BillingSubscription = {
   status: string;
+  stripeCustomerId?: string | null;
 };
 
 function formatLimit(value: number | null) {
@@ -113,6 +123,12 @@ export default function BillingPlanPage() {
   };
 
   const openPortal = async () => {
+    if (!billing?.subscription?.stripeCustomerId) {
+      const fallbackPlan = currentPlan?.code && currentPlan.code !== 'FREE' ? currentPlan.code : 'STARTER';
+      await startCheckout(fallbackPlan);
+      return;
+    }
+
     setActionLoading('portal');
     setError('');
     try {
@@ -137,6 +153,15 @@ export default function BillingPlanPage() {
 
   const currentPlan = billing?.plan;
   const paidPlans = (billing?.plans || []).filter((plan) => plan.code !== 'FREE');
+  const serviceConversationMax = billing?.limits.serviceConversationQuotaEnabled
+    ? billing.limits.maxServiceConversationsPerCycle
+    : null;
+  const serviceConversationLimitReached = serviceConversationMax !== null
+    && (billing?.usage.serviceConversations || 0) >= serviceConversationMax;
+  const freeReplyBlocked = currentPlan?.code === 'FREE' && serviceConversationLimitReached;
+  const paidOverage = currentPlan?.code !== 'FREE' && serviceConversationLimitReached;
+  const hasStripeCustomer = !!billing?.subscription?.stripeCustomerId;
+  const billingActionLoading = actionLoading === 'portal' || actionLoading === currentPlan?.code || actionLoading === 'STARTER';
 
   return (
     <div className="mx-auto max-w-6xl space-y-8 p-8 pb-20">
@@ -151,17 +176,44 @@ export default function BillingPlanPage() {
 
         <button
           onClick={openPortal}
-          disabled={actionLoading === 'portal'}
+          disabled={billingActionLoading}
           className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 shadow-sm transition-all hover:border-blue-200 hover:text-blue-600 disabled:opacity-50"
         >
-          {actionLoading === 'portal' ? <Loader2 className="animate-spin" size={18} /> : <ExternalLink size={18} />}
-          Portal de cobrança
+          {billingActionLoading ? <Loader2 className="animate-spin" size={18} /> : <ExternalLink size={18} />}
+          {hasStripeCustomer ? 'Portal de cobrança' : 'Ativar cobrança'}
         </button>
       </header>
 
       {error && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-700">
           {error}
+        </div>
+      )}
+
+      {freeReplyBlocked && (
+        <div className="flex flex-col gap-3 rounded-3xl border border-amber-200 bg-amber-50 p-5 text-amber-900 md:flex-row md:items-center md:justify-between">
+          <div className="flex gap-3">
+            <AlertTriangle className="mt-0.5 shrink-0" size={22} />
+            <div>
+              <p className="text-sm font-black uppercase tracking-widest">Franquia de conversas atingida</p>
+              <p className="mt-1 text-sm font-semibold text-amber-800">
+                As mensagens continuam chegando, mas respostas de agentes ficam bloqueadas no FREE até fazer upgrade.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => startCheckout(currentPlan?.code === 'FREE' ? 'STARTER' : 'PRO')}
+            disabled={!!actionLoading}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-600 px-5 py-3 text-sm font-black text-white shadow-sm transition-all hover:bg-amber-700 disabled:opacity-50"
+          >
+            Fazer upgrade
+          </button>
+        </div>
+      )}
+
+      {paidOverage && (
+        <div className="rounded-3xl border border-blue-200 bg-blue-50 p-5 text-sm font-semibold text-blue-800">
+          A franquia de conversas foi ultrapassada. O atendimento continua ativo e o excedente fica registrado para cobrança adicional.
         </div>
       )}
 
@@ -188,7 +240,8 @@ export default function BillingPlanPage() {
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
+        <UsageCard icon={<MessageSquare size={22} />} label="Conversas" current={billing?.usage.serviceConversations || 0} max={serviceConversationMax ?? null} />
         <UsageCard icon={<MessageSquare size={22} />} label="Mensagens" current={billing?.usage.messages || 0} max={billing?.limits.maxMessagesPerMonth ?? null} />
         <UsageCard icon={<Phone size={22} />} label="Canais" current={billing?.usage.channels || 0} max={billing?.limits.maxChannels ?? null} />
         <UsageCard icon={<Users size={22} />} label="Usuários" current={(billing?.usage.users || 0) + (billing?.usage.pendingInvites || 0)} max={billing?.limits.maxUsers ?? null} />
@@ -208,7 +261,9 @@ export default function BillingPlanPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-black text-slate-900">{plan.name}</h3>
-                  <p className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-400">{formatLimit(plan.maxMessagesPerMonth)} mensagens/mês</p>
+                  <p className="mt-1 text-xs font-bold uppercase tracking-widest text-slate-400">
+                    {formatLimit(plan.maxServiceConversationsPerCycle ?? null)} conversas/ciclo
+                  </p>
                 </div>
                 {currentPlan?.code === plan.code && (
                   <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-blue-600">Atual</span>

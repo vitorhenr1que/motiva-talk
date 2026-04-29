@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { AppError, handleApiError } from '@/lib/api-errors';
+import { handleApiError } from '@/lib/api-errors';
 import { requireOrganization } from '@/lib/tenant';
 import { BillingRepository } from '@/repositories/billingRepository';
 import { BillingService } from '@/services/billing.service';
@@ -31,6 +31,6 @@ export async function GET(req: Request) {
       },
     });
   } catch (error) {
-    return handleApiError(error instanceof Error ? error : new AppError('Erro no billing', 500), req, { route: ROUTE });
+    return handleApiError(error, req, { route: ROUTE });
   }
 }

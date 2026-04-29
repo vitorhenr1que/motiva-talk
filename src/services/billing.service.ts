@@ -5,11 +5,14 @@ import type Stripe from 'stripe';
 
 export interface BillingUsage {
   messages: number;
+  serviceConversations: number;
   channels: number;
   users: number;
   pendingInvites: number;
   periodStart: string;
   periodEnd: string;
+  serviceConversationPeriodStart: string | null;
+  serviceConversationPeriodEnd: string | null;
 }
 
 export interface PlanLimits {
@@ -17,6 +20,10 @@ export interface PlanLimits {
   maxChannels: number | null;
   maxUsers: number | null;
   maxMessagesPerMonth: number | null;
+  serviceConversationQuotaEnabled: boolean;
+  maxServiceConversationsPerCycle: number | null;
+  serviceConversationWindowHours: number;
+  serviceConversationQuotaScope: 'billing_cycle' | 'lifetime';
 }
 
 type StripeSubscriptionWithPeriods = Stripe.Subscription & {
@@ -49,6 +56,10 @@ function activeBillingStatus(status?: string | null) {
   return ['ACTIVE', 'TRIALING', 'PAST_DUE'].includes(status || '');
 }
 
+function addHours(date: Date, hours: number) {
+  return new Date(date.getTime() + hours * 60 * 60 * 1000);
+}
+
 export class BillingService {
   static async listPlans() {
     return BillingRepository.listPlans();
@@ -76,14 +87,42 @@ export class BillingService {
       maxChannels: plan.maxChannels ?? null,
       maxUsers: plan.maxUsers ?? null,
       maxMessagesPerMonth: plan.maxMessagesPerMonth ?? null,
+      serviceConversationQuotaEnabled: plan.serviceConversationQuotaEnabled ?? true,
+      maxServiceConversationsPerCycle: plan.maxServiceConversationsPerCycle ?? null,
+      serviceConversationWindowHours: plan.serviceConversationWindowHours ?? 24,
+      serviceConversationQuotaScope: plan.serviceConversationQuotaScope ?? (plan.code === 'FREE' ? 'lifetime' : 'billing_cycle'),
     };
+  }
+
+  static async getServiceConversationPeriod(organizationId: string, planCode?: PlanCode) {
+    if (planCode === 'FREE') {
+      return { start: null as string | null, end: null as string | null, scope: 'lifetime' as const, subscription: null };
+    }
+
+    const subscription = await BillingRepository.findActiveSubscription(organizationId);
+    if (subscription?.currentPeriodStart && subscription.currentPeriodEnd && activeBillingStatus(subscription.status)) {
+      return {
+        start: subscription.currentPeriodStart,
+        end: subscription.currentPeriodEnd,
+        scope: 'billing_cycle' as const,
+        subscription,
+      };
+    }
+
+    const { periodStartIso } = monthRangeUtc();
+    const fallbackEnd = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 1)).toISOString();
+    return { start: periodStartIso, end: fallbackEnd, scope: 'billing_cycle' as const, subscription };
   }
 
   static async getMonthlyUsage(organizationId: string): Promise<BillingUsage> {
     const { periodStart, periodEnd, periodStartIso } = monthRangeUtc();
-    const [metric, liveMessages, channels, users, pendingInvites] = await Promise.all([
+    const limits = await this.getPlanLimits(organizationId);
+    const servicePeriod = await this.getServiceConversationPeriod(organizationId, limits.plan.code);
+
+    const [metric, liveMessages, serviceConversations, channels, users, pendingInvites] = await Promise.all([
       BillingRepository.getUsageMetric(organizationId, periodStart),
       BillingRepository.countMessagesSince(organizationId, periodStartIso),
+      BillingRepository.countServiceConversations(organizationId, servicePeriod.start, servicePeriod.end),
       BillingRepository.countRows('Channel', organizationId),
       BillingRepository.countRows('User', organizationId),
       BillingRepository.countPendingInvites(organizationId),
@@ -91,11 +130,14 @@ export class BillingService {
 
     return {
       messages: Math.max(metric?.value ?? 0, liveMessages),
+      serviceConversations,
       channels,
       users,
       pendingInvites,
       periodStart,
       periodEnd,
+      serviceConversationPeriodStart: servicePeriod.start,
+      serviceConversationPeriodEnd: servicePeriod.end,
     };
   }
 
@@ -116,6 +158,73 @@ export class BillingService {
         429,
         'QUOTA_EXCEEDED',
         { resource: 'messages', current: usage.messages, max: limits.maxMessagesPerMonth }
+      );
+    }
+  }
+
+  static async openServiceConversationWindow(params: {
+    organizationId: string;
+    contactId: string;
+    channelId: string;
+    firstUserMessageAt: string;
+    externalMessageId?: string | null;
+  }) {
+    const { organizationId, contactId, channelId, firstUserMessageAt, externalMessageId } = params;
+    const existingWindow = await BillingRepository.findActiveServiceConversationWindow(
+      organizationId,
+      contactId,
+      channelId,
+      firstUserMessageAt
+    );
+
+    if (existingWindow) return { usage: existingWindow, created: false };
+
+    const limits = await this.getPlanLimits(organizationId);
+    const servicePeriod = await this.getServiceConversationPeriod(organizationId, limits.plan.code);
+    const current = await BillingRepository.countServiceConversations(organizationId, servicePeriod.start, servicePeriod.end);
+    const overQuota = limits.serviceConversationQuotaEnabled
+      && limits.maxServiceConversationsPerCycle !== null
+      && current >= limits.maxServiceConversationsPerCycle;
+
+    const firstMessageDate = new Date(firstUserMessageAt);
+    const usage = await BillingRepository.createServiceConversationUsage({
+      organizationId,
+      conversationId: null,
+      contactId,
+      channelId,
+      firstUserMessageAt,
+      windowEndsAt: addHours(firstMessageDate, limits.serviceConversationWindowHours).toISOString(),
+      billingPeriodStart: servicePeriod.start,
+      billingPeriodEnd: servicePeriod.end,
+      planCode: limits.plan.code,
+      quotaScope: limits.serviceConversationQuotaScope,
+      stripeSubscriptionId: servicePeriod.subscription?.stripeSubscriptionId ?? null,
+      externalMessageId: externalMessageId ?? null,
+    });
+
+    return { usage, created: true, overQuota };
+  }
+
+  static async checkAgentReplyAllowed(organizationId: string): Promise<void> {
+    const limits = await this.getPlanLimits(organizationId);
+    if (limits.plan.code !== 'FREE') return;
+    if (!limits.serviceConversationQuotaEnabled || limits.maxServiceConversationsPerCycle === null) return;
+
+    const servicePeriod = await this.getServiceConversationPeriod(organizationId, limits.plan.code);
+    const current = await BillingRepository.countServiceConversations(organizationId, servicePeriod.start, servicePeriod.end);
+
+    if (current >= limits.maxServiceConversationsPerCycle) {
+      throw new AppError(
+        `Limite total de conversas do plano FREE atingido (${current}/${limits.maxServiceConversationsPerCycle}). Faça upgrade para responder novas mensagens.`,
+        429,
+        'QUOTA_EXCEEDED',
+        {
+          resource: 'service_conversations',
+          current,
+          max: limits.maxServiceConversationsPerCycle,
+          scope: limits.serviceConversationQuotaScope,
+          upgradeRequired: true,
+        }
       );
     }
   }

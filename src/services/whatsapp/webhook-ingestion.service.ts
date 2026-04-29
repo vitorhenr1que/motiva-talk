@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import type { ServiceConversationUsage } from '@/repositories/billingRepository';
 import { WebhookEvent } from './provider';
 import { evolutionApi } from '@/lib/evolution-api-client';
 import { TenantChannel } from './tenant-resolver';
@@ -212,6 +213,29 @@ export class WebhookIngestionService {
       );
       console.log(`[INGEST] 2. Contato ${contact.name} (${contact.id}) org=${organizationId}`);
 
+      let serviceWindow: { usage: ServiceConversationUsage; created: boolean; overQuota?: boolean } | null = null;
+      if (senderType === 'USER' && dbMessageType !== 'REACTION') {
+        try {
+          const { LimitsService } = await import('@/services/limits.service');
+          serviceWindow = await LimitsService.openServiceConversationWindow({
+            organizationId,
+            contactId: contact.id,
+            channelId,
+            firstUserMessageAt: new Date(event.timestamp).toISOString(),
+            externalMessageId: externalId,
+          });
+
+          if (serviceWindow.created) {
+            console.log(
+              `[INGEST][SERVICE_WINDOW] nova janela org=${organizationId} contact=${contact.id} ` +
+              `windowEndsAt=${serviceWindow.usage.windowEndsAt} overQuota=${serviceWindow.overQuota}`
+            );
+          }
+        } catch (quotaError: unknown) {
+          throw quotaError;
+        }
+      }
+
       const { data: lastConversations } = await supabaseAdmin
         .from('Conversation')
         .select(`
@@ -325,6 +349,15 @@ export class WebhookIngestionService {
             conversation.currentSectorId = initialSectorId;
           }
         }
+      }
+
+      if (serviceWindow?.usage && !serviceWindow.usage.conversationId) {
+        const { BillingRepository } = await import('@/repositories/billingRepository');
+        await BillingRepository.attachServiceConversationUsage(
+          serviceWindow.usage.id,
+          organizationId,
+          conversation.id
+        );
       }
 
       // --- TRATAMENTO ESPECIAL PARA REAÇÕES ---

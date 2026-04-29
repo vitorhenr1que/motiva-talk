@@ -9,6 +9,7 @@ export const LogoutButton = ({ hideLabel }: { hideLabel?: boolean }) => {
 
   const handleLogout = async () => {
     try {
+      sessionStorage.removeItem('motiva_quota_notice_dismissed');
       await fetch('/api/auth/session', { method: 'DELETE' });
       router.push('/login');
       router.refresh();

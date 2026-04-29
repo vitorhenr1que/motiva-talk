@@ -13,9 +13,12 @@ export interface OrganizationUsage {
   userCount: number;
   pendingInvitesCount: number;
   monthlyMessageCount: number;
+  serviceConversationCount: number;
   maxChannels: number | null;
   maxUsers: number | null;
   maxMsgPerMonth: number | null;
+  maxServiceConversationsPerCycle: number | null;
+  serviceConversationQuotaEnabled: boolean;
 }
 
 export class LimitsService {
@@ -61,9 +64,12 @@ export class LimitsService {
       userCount: usage.users,
       pendingInvitesCount: usage.pendingInvites,
       monthlyMessageCount: usage.messages,
+      serviceConversationCount: usage.serviceConversations,
       maxChannels: limits.maxChannels,
       maxUsers: limits.maxUsers,
       maxMsgPerMonth: limits.maxMessagesPerMonth,
+      maxServiceConversationsPerCycle: limits.maxServiceConversationsPerCycle,
+      serviceConversationQuotaEnabled: limits.serviceConversationQuotaEnabled,
     };
   }
 
@@ -83,7 +89,18 @@ export class LimitsService {
 
   static async checkCanSendMessage(organizationId: string): Promise<void> {
     await this.assertOrganizationActive(organizationId);
-    await BillingService.checkMessageLimit(organizationId);
+    await BillingService.checkAgentReplyAllowed(organizationId);
+  }
+
+  static async openServiceConversationWindow(params: {
+    organizationId: string;
+    contactId: string;
+    channelId: string;
+    firstUserMessageAt: string;
+    externalMessageId?: string | null;
+  }) {
+    await this.assertOrganizationActive(params.organizationId);
+    return BillingService.openServiceConversationWindow(params);
   }
 
   /**
@@ -94,6 +111,8 @@ export class LimitsService {
     overQuota: boolean;
     current: number;
     max: number | null;
+    serviceConversations: number;
+    maxServiceConversations: number | null;
   }> {
     const [limits, usage] = await Promise.all([
       BillingService.getPlanLimits(organizationId),
@@ -107,6 +126,8 @@ export class LimitsService {
       overQuota: max !== null && current >= max,
       current,
       max,
+      serviceConversations: usage.serviceConversations,
+      maxServiceConversations: limits.maxServiceConversationsPerCycle,
     };
   }
 }

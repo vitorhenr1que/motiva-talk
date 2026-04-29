@@ -7,6 +7,8 @@ import {
   type OrganizationStatus,
 } from '@/repositories/organizationRepository';
 import { LimitsService } from '@/services/limits.service';
+import { BillingRepository } from '@/repositories/billingRepository';
+import { BillingService } from '@/services/billing.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,16 +62,23 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     if (!org) throw new AppError('Organização não encontrada', 404, 'NOT_FOUND');
 
     const usage = await LimitsService.getOrganizationUsage(id);
+    const [plans, subscription] = await Promise.all([
+      BillingService.listPlans(),
+      BillingRepository.findActiveSubscription(id),
+    ]);
 
     return NextResponse.json({
       success: true,
       data: {
         ...org,
+        plans,
+        subscription,
         usage: {
           channelCount: usage.channelCount,
           userCount: usage.userCount,
           pendingInvitesCount: usage.pendingInvitesCount,
           monthlyMessageCount: usage.monthlyMessageCount,
+          serviceConversationCount: usage.serviceConversationCount,
         },
       },
     });

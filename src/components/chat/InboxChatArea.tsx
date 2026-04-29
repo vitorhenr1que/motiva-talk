@@ -695,7 +695,7 @@ Todos os dados e mensagens serão excluídos.`;
           <MessageCircle size={40} className="text-blue-100" />
         </div>
         <h2 className="text-xl font-bold text-slate-700">Bem-vindo ao Motiva Talk</h2>
-        <p className="mt-2 text-sm max-w-xs text-slate-400 font-medium">Selecione uma conversa na lateral para começar a atender seus alunos e candidatos.</p>
+        <p className="mt-2 text-sm max-w-xs text-slate-400 font-medium">Selecione uma conversa na lateral para começar a atender seus contatos.</p>
       </div>
     );
   }

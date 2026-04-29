@@ -4,6 +4,7 @@ import { AppError, handleApiError } from '@/lib/api-errors';
 import { getStripeClient, getStripePriceIdForPlan } from '@/lib/stripe';
 import { requireAdminOrOwner } from '@/lib/tenant';
 import { BillingRepository, type PlanCode } from '@/repositories/billingRepository';
+import { organizationRepository } from '@/repositories/organizationRepository';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,10 @@ export async function POST(req: Request) {
     }
 
     const plan = await BillingRepository.findPlanByCode(planCode);
-    const priceId = getStripePriceIdForPlan(plan.code, plan.stripePriceId);
+    const org = await organizationRepository.findById(user.organizationId!);
+    const priceId = planCode === 'ENTERPRISE'
+      ? org?.enterpriseStripePriceId || getStripePriceIdForPlan(plan.code, plan.stripePriceId)
+      : getStripePriceIdForPlan(plan.code, plan.stripePriceId);
     if (!priceId) {
       throw new AppError(`Preço Stripe não configurado para o plano ${plan.code}`, 400, 'VALIDATION_ERROR');
     }

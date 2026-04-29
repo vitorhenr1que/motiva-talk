@@ -80,7 +80,7 @@ export default function DashboardRootPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
          {[
            { icon: <Users />, label: 'Contatos Totais', value: stats.totalContacts, color: 'text-blue-600', bg: 'bg-blue-50' },
-           { icon: <Flame />, label: 'Alunos no Funil', value: stats.activeFunnel, color: 'text-orange-600', bg: 'bg-orange-50' },
+           { icon: <Flame />, label: 'Leads no Funil', value: stats.activeFunnel, color: 'text-orange-600', bg: 'bg-orange-50' },
            { icon: <Target />, label: 'Matrículas Realizadas', value: stats.conversions, color: 'text-emerald-600', bg: 'bg-emerald-50' },
          ].map((stat, i) => (
            <div key={i} className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-sm hover:shadow-2xl hover:shadow-slate-100 transition-all group">
@@ -103,7 +103,7 @@ export default function DashboardRootPage() {
          <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-10">
             <div className="max-w-md">
                <h2 className="text-3xl font-black text-white leading-tight uppercase tracking-tight">Fluxo Kanban<br/>(Visualização em Colunas)</h2>
-               <p className="mt-4 text-slate-400 font-medium text-lg">Acompanhe visualmente cada etapa da jornada do aluno em tempo real. Identifique gargalos e acelere as matrículas.</p>
+               <p className="mt-4 text-slate-400 font-medium text-lg">Acompanhe visualmente cada etapa da jornada do contato em tempo real. Identifique gargalos e acelere as matrículas.</p>
             </div>
             
             <Link 
@@ -138,7 +138,7 @@ export default function DashboardRootPage() {
                </div>
                <div>
                   <h4 className="text-lg font-black text-slate-800 uppercase tracking-tight">Contatos</h4>
-                  <p className="text-xs font-bold text-slate-400 tracking-tight">Gerencie sua base de alunos</p>
+                  <p className="text-xs font-bold text-slate-400 tracking-tight">Gerencie sua base de contatos</p>
                </div>
             </div>
             <ChevronRight size={24} className="text-slate-300 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />

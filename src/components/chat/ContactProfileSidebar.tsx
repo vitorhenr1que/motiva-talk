@@ -37,7 +37,7 @@ export const ContactProfileSidebar = () => {
         <div className="h-24 w-24 rounded-[2.5rem] bg-slate-50 flex items-center justify-center text-slate-200 mb-6 shadow-inner">
            <User size={48} strokeWidth={1.5} />
         </div>
-        <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest mb-2">Perfil do Aluno</h3>
+        <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest mb-2">Perfil do Contato</h3>
         <p className="text-xs font-medium text-slate-400 max-w-[200px] leading-relaxed">Selecione uma conversa para gerenciar o CRM e dados deste contato.</p>
       </div>
     );
@@ -176,7 +176,7 @@ export const ContactProfileSidebar = () => {
                    autoFocus
                    value={tempNote}
                    onChange={(e) => setTempNote(e.target.value)}
-                   placeholder="Adicionar observação crítica sobre o aluno..."
+                   placeholder="Adicionar observação crítica sobre o contato..."
                    className="w-full min-h-[100px] p-4 text-xs font-bold text-amber-900 bg-amber-50/50 border border-amber-200 rounded-[1.5rem] shadow-inner outline-none focus:ring-2 focus:ring-amber-500/20 transition-all resize-none placeholder:text-amber-300"
                  />
                  <div className="flex justify-end gap-2 pr-1">

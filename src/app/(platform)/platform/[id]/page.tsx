@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Pause, Play, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Save, Pause, Play, AlertTriangle, ShieldAlert, DollarSign } from 'lucide-react';
 
 interface PlatformOrgDetail {
   id: string;
@@ -17,12 +17,25 @@ interface PlatformOrgDetail {
   maxChannels: number | null;
   maxUsers: number | null;
   maxMsgPerMonth: number | null;
+  enterprisePriceCents: number | null;
+  enterpriseStripePriceId: string | null;
   usage: {
     channelCount: number;
     userCount: number;
     pendingInvitesCount: number;
     monthlyMessageCount: number;
   };
+  plans: BillingPlan[];
+  subscription: { stripeSubscriptionId?: string | null; stripePriceId?: string | null } | null;
+}
+
+interface BillingPlan {
+  id: string;
+  code: string;
+  name: string;
+  priceCents: number;
+  currency: string;
+  stripePriceId?: string | null;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -38,6 +51,23 @@ function intInputToValue(s: string): number | null {
   const n = Number(t);
   if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) return null;
   return n;
+}
+
+function centsToCurrencyInput(value?: number | null) {
+  if (!value) return '';
+  return (value / 100).toFixed(2).replace('.', ',');
+}
+
+function currencyInputToCents(value: string) {
+  const normalized = value.trim().replace(/\./g, '').replace(',', '.');
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return Math.round(amount * 100);
+}
+
+function formatCurrency(value?: number | null) {
+  if (value === null || value === undefined) return 'Não configurado';
+  return (value / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 function ConfirmModal({
@@ -106,6 +136,9 @@ export default function PlatformOrgDetailPage() {
   const [maxMsgPerMonth, setMaxMsgPerMonth] = useState('');
   const [trialEndsAt, setTrialEndsAt] = useState('');
   const [blockedReason, setBlockedReason] = useState('');
+  const [starterPrice, setStarterPrice] = useState('');
+  const [proPrice, setProPrice] = useState('');
+  const [enterprisePrice, setEnterprisePrice] = useState('');
 
   // Modal state
   const [confirm, setConfirm] = useState<null | { kind: 'save' | 'suspend' | 'activate' }>(null);
@@ -127,10 +160,67 @@ export default function PlatformOrgDetailPage() {
       );
       setTrialEndsAt(o.trialEndsAt ? new Date(o.trialEndsAt).toISOString().slice(0, 16) : '');
       setBlockedReason(o.blockedReason || '');
+      setStarterPrice(centsToCurrencyInput(o.plans.find((p) => p.code === 'STARTER')?.priceCents));
+      setProPrice(centsToCurrencyInput(o.plans.find((p) => p.code === 'PRO')?.priceCents));
+      setEnterprisePrice(centsToCurrencyInput(o.enterprisePriceCents));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const updatePlanPrice = async (code: 'STARTER' | 'PRO', value: string) => {
+    const priceCents = currencyInputToCents(value);
+    if (!priceCents) {
+      setError('Informe um valor válido maior que zero.');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/platform/billing/plans/${code}/price`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priceCents }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Falha ao atualizar preço');
+      setNotice(`Preço do plano ${code} atualizado no Stripe e no banco.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateEnterprisePrice = async () => {
+    const priceCents = currencyInputToCents(enterprisePrice);
+    if (!priceCents) {
+      setError('Informe um valor Enterprise válido maior que zero.');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/platform/organizations/${id}/enterprise-price`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priceCents }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Falha ao atualizar Enterprise');
+      setNotice('Preço Enterprise personalizado atualizado no Stripe e no banco.');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -331,6 +421,40 @@ export default function PlatformOrgDetailPage() {
         </div>
       </section>
 
+      <section className="rounded-xl border border-slate-700 bg-slate-800/50 p-6">
+        <div className="mb-4 flex items-center gap-2">
+          <DollarSign size={18} className="text-amber-400" />
+          <h2 className="text-lg font-bold">Preços Stripe</h2>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-3">
+          <PriceEditor
+            label="Starter global"
+            value={starterPrice}
+            stripePriceId={org.plans.find((p) => p.code === 'STARTER')?.stripePriceId || null}
+            onChange={setStarterPrice}
+            onSave={() => updatePlanPrice('STARTER', starterPrice)}
+            saving={saving}
+          />
+          <PriceEditor
+            label="Pro global"
+            value={proPrice}
+            stripePriceId={org.plans.find((p) => p.code === 'PRO')?.stripePriceId || null}
+            onChange={setProPrice}
+            onSave={() => updatePlanPrice('PRO', proPrice)}
+            saving={saving}
+          />
+          <PriceEditor
+            label={`Enterprise personalizado - ${org.name}`}
+            value={enterprisePrice}
+            stripePriceId={org.enterpriseStripePriceId || null}
+            helper={`Atual: ${formatCurrency(org.enterprisePriceCents)}${org.subscription?.stripeSubscriptionId ? ' · assinatura existente será atualizada sem rateio' : ''}`}
+            onChange={setEnterprisePrice}
+            onSave={updateEnterprisePrice}
+            saving={saving}
+          />
+        </div>
+      </section>
+
       <ConfirmModal
         open={confirm?.kind === 'save'}
         title="Confirmar alteração de limites"
@@ -421,6 +545,56 @@ function UsageCard({
         )}
       </div>
       {extra && <div className="mt-1 text-xs text-slate-400">{extra}</div>}
+    </div>
+  );
+}
+
+function PriceEditor({
+  label,
+  value,
+  stripePriceId,
+  helper,
+  saving,
+  onChange,
+  onSave,
+}: {
+  label: string;
+  value: string;
+  stripePriceId?: string | null;
+  helper?: string;
+  saving: boolean;
+  onChange: (value: string) => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4">
+      <label className="block">
+        <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-400">{label}</span>
+        <div className="flex gap-2">
+          <div className="flex flex-1 items-center rounded-lg border border-slate-600 bg-slate-950 px-3 focus-within:border-amber-400">
+            <span className="mr-2 text-xs font-bold text-slate-500">R$</span>
+            <input
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              placeholder="0,00"
+              className="w-full bg-transparent py-2 font-mono outline-none"
+            />
+          </div>
+          <button
+            onClick={onSave}
+            disabled={saving}
+            className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-black uppercase tracking-widest text-slate-950 hover:bg-amber-400 disabled:opacity-50"
+          >
+            Salvar
+          </button>
+        </div>
+      </label>
+      <p className="mt-2 break-all text-[11px] font-medium text-slate-500">
+        {helper || `Stripe Price: ${stripePriceId || 'não configurado'}`}
+      </p>
+      {stripePriceId && helper && (
+        <p className="mt-1 break-all text-[10px] text-slate-600">Stripe Price: {stripePriceId}</p>
+      )}
     </div>
   );
 }

@@ -24,6 +24,7 @@ export async function GET(req: Request) {
             userCount: usage.userCount,
             pendingInvitesCount: usage.pendingInvitesCount,
             monthlyMessageCount: usage.monthlyMessageCount,
+            serviceConversationCount: usage.serviceConversationCount,
           },
         };
       })
