@@ -1,5 +1,7 @@
 import Stripe from 'stripe';
 
+import { AppError } from '@/lib/api-errors';
+
 let stripeClient: Stripe | null = null;
 
 export function getStripeClient() {
@@ -18,4 +20,21 @@ export function getStripePriceIdForPlan(planCode: string, storedPriceId?: string
 
   const envName = `STRIPE_${planCode.toUpperCase()}_PRICE_ID`;
   return process.env[envName] || null;
+}
+
+export async function assertStripePriceExists(stripe: Stripe, priceId: string, planCode: string) {
+  try {
+    return await stripe.prices.retrieve(priceId);
+  } catch (error) {
+    if (error instanceof Stripe.errors.StripeInvalidRequestError && error.code === 'resource_missing') {
+      throw new AppError(
+        `Preço Stripe inválido para o plano ${planCode}. Atualize o Price ID nas configurações de billing ou use uma chave Stripe do mesmo ambiente.`,
+        400,
+        'VALIDATION_ERROR',
+        { priceId, planCode }
+      );
+    }
+
+    throw error;
+  }
 }

@@ -16,9 +16,11 @@ import {
   Copy,
   Link as LinkIcon,
   Globe,
-  Layers
+  Layers,
+  Pencil
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { UserForm } from '@/components/users/UserForm';
 
 export default function OrganizationSettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -30,6 +32,9 @@ export default function OrganizationSettingsPage() {
   const [usage, setUsage] = useState<any>(null);
   const [activeMenu, setActiveMenu] = useState<{ type: 'member' | 'invite', id: string } | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [channels, setChannels] = useState<any[]>([]);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingMember, setEditingMember] = useState<any>(null);
 
   const fetchData = async () => {
     try {
@@ -37,11 +42,12 @@ export default function OrganizationSettingsPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;
       
-      const [profileRes, membersRes, invitesRes, usageRes] = await Promise.all([
+      const [profileRes, membersRes, invitesRes, usageRes, channelsRes] = await Promise.all([
         fetch('/api/users/me'),
         fetch('/api/users'),
         fetch('/api/organizations/invite'),
-        fetch('/api/organizations/usage')
+        fetch('/api/organizations/usage'),
+        fetch('/api/channels')
       ]);
 
       const profileData = await profileRes.json();
@@ -63,6 +69,11 @@ export default function OrganizationSettingsPage() {
       const usageData = await usageRes.json();
       if (usageRes.ok) {
         setUsage(usageData.data || null);
+      }
+
+      const channelsData = await channelsRes.json();
+      if (channelsRes.ok) {
+        setChannels(channelsData.data || []);
       }
     } catch (error) {
       console.error('Error fetching org data:', error);
@@ -103,6 +114,12 @@ export default function OrganizationSettingsPage() {
       setActionLoading(null);
       setActiveMenu(null);
     }
+  };
+
+  const handleEditMember = (member: any) => {
+    setEditingMember(member);
+    setIsEditModalOpen(true);
+    setActiveMenu(null);
   };
 
   const handleRevokeInvite = async (inviteId: string) => {
@@ -271,8 +288,15 @@ export default function OrganizationSettingsPage() {
                         {activeMenu?.type === 'member' && activeMenu?.id === member.id && (
                           <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-10 animate-in fade-in zoom-in-95 duration-200">
                             <button 
+                              onClick={() => handleEditMember(member)}
+                              className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                            >
+                              <Pencil size={16} className="text-slate-400" />
+                              Editar Membro
+                            </button>
+                            <button 
                               onClick={() => handleRemoveMember(member.id)}
-                              className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-rose-600 hover:bg-rose-50 transition-colors"
+                              className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-rose-600 hover:bg-rose-50 transition-colors border-t border-slate-50"
                             >
                               <Trash2 size={16} />
                               Remover Membro
@@ -363,6 +387,22 @@ export default function OrganizationSettingsPage() {
         onClose={() => setIsInviteModalOpen(false)} 
         onSuccess={fetchData} 
       />
+
+      {isEditModalOpen && (
+        <UserForm 
+          item={editingMember}
+          channels={channels}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setEditingMember(null);
+          }}
+          onSuccess={() => {
+            setIsEditModalOpen(false);
+            setEditingMember(null);
+            fetchData();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, CreditCard, Loader2, MessageSquare, Phone, Users, ArrowUpRight, ExternalLink } from 'lucide-react';
 
 type BillingStatus = {
@@ -84,10 +84,11 @@ export default function BillingPlanPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const checkoutSyncStarted = useRef(false);
 
-  const fetchBilling = async () => {
+  const fetchBilling = async (clearCurrentError = true) => {
     setLoading(true);
-    setError('');
+    if (clearCurrentError) setError('');
     try {
       const res = await fetch('/api/billing/status');
       const data = await res.json();
@@ -101,7 +102,40 @@ export default function BillingPlanPage() {
   };
 
   useEffect(() => {
-    fetchBilling();
+    const syncCheckoutAndFetchBilling = async () => {
+      if (checkoutSyncStarted.current) return;
+      checkoutSyncStarted.current = true;
+
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get('session_id');
+      const shouldSyncCheckout = params.get('checkout') === 'success' && !!sessionId;
+
+      if (!shouldSyncCheckout) {
+        await fetchBilling();
+        return;
+      }
+
+      setLoading(true);
+      setError('');
+      try {
+        const res = await fetch('/api/billing/checkout/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.message || 'Erro ao confirmar checkout');
+
+        params.delete('session_id');
+        window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Erro ao confirmar checkout');
+      } finally {
+        await fetchBilling(false);
+      }
+    };
+
+    syncCheckoutAndFetchBilling();
   }, []);
 
   const startCheckout = async (planCode: string) => {

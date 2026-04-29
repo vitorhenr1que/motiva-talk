@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { AppError, handleApiError } from '@/lib/api-errors';
-import { getStripeClient, getStripePriceIdForPlan } from '@/lib/stripe';
+import { assertStripePriceExists, getStripeClient, getStripePriceIdForPlan } from '@/lib/stripe';
 import { requireAdminOrOwner } from '@/lib/tenant';
 import { BillingRepository, type PlanCode } from '@/repositories/billingRepository';
 import { organizationRepository } from '@/repositories/organizationRepository';
@@ -32,11 +32,13 @@ export async function POST(req: Request) {
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;
     const stripe = getStripeClient();
+    await assertStripePriceExists(stripe, priceId, plan.code);
+
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer_email: user.email,
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${baseUrl}/settings/plan?checkout=success`,
+      success_url: `${baseUrl}/settings/plan?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/settings/plan?checkout=cancel`,
       client_reference_id: user.organizationId!,
       metadata: {
