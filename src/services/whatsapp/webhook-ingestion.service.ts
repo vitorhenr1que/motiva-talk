@@ -1,72 +1,65 @@
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { WebhookEvent } from './provider';
 import { evolutionApi } from '@/lib/evolution-api-client';
+import { TenantChannel } from './tenant-resolver';
 
 export class WebhookIngestionService {
   /**
-   * Main entry point for ingesting incoming messages from WhatsApp.
+   * Ingere mensagens recebidas via webhook.
+   *
+   * O Channel é resolvido pelo route a partir do instanceName/providerSessionId
+   * e passado aqui já validado. NÃO refazemos a query de canal e NÃO confiamos
+   * em organizationId vindo do payload — a fonte de verdade é o `channel` arg.
    */
-  static async ingestMessage(event: WebhookEvent) {
-    const { channelId, senderPhone, senderName, content, messageType, metadata } = event;
-    const externalMessageId = metadata?.key?.id;
+  static async ingestMessage(event: WebhookEvent, channel: TenantChannel) {
+    const { senderPhone, senderName, content, messageType, metadata } = event;
+    const organizationId = channel.organizationId;
+    const channelId = channel.id;
+    const instanceName = channel.providerSessionId || channel.id;
 
     if (!senderPhone || (!content && !event.mediaUrl)) {
-      console.warn('Skipping message ingestion: missing senderPhone or content/media');
+      console.warn(
+        `[INGEST] org=${organizationId} channel=${channelId} skip: missing senderPhone ou content/media`
+      );
       return;
     }
-
-    // --- Identificar canal pelo identificador exato (id OU providerSessionId).
-    // ANTES: SELECT * FROM Channel a cada webhook (pega TODOS os canais e filtra em JS).
-    // AGORA: query targeted que retorna no máximo 1 linha.
-    const channelIdNoDashes = channelId.replace(/-/g, '');
-    const { data: channelMatches } = await supabaseAdmin
-      .from('Channel')
-      .select('*')
-      .or(`id.eq.${channelId},id.eq.${channelIdNoDashes},providerSessionId.eq.${channelId}`)
-      .limit(1);
-    const channel = channelMatches?.[0];
-
-    if (!channel) {
-      console.error(`[INGEST] ERRO: Canal ${channelId} não encontrado no banco.`);
-      return;
-    }
-    const organizationId = channel.organizationId as string;
 
     let finalMediaUrl = event.mediaUrl;
     let finalMimeType = event.mimeType || 'application/octet-stream';
     let localBase64 = event.base64;
 
-    // --- TRATAMENTO DE MÍDIA: Download do WhatsApp -> Upload pro Nosso Storage (Supabase) ---
-    // Se for URL do WhatsApp (mmg.whatsapp.net), ela está criptografada.
-    // Solicitamos a versão descriptografada via API da Evolution se não vier no Webhook.
+    // Geramos o messageId antecipadamente para usá-lo como pasta no Storage
+    // (organizationId/channelId/messageId/filename).
+    const { generateId } = await import('@/lib/utils');
+    const messageId = generateId();
+
+    // --- TRATAMENTO DE MÍDIA: Download do WhatsApp -> Upload pro Storage interno ---
     if (finalMediaUrl?.includes('mmg.whatsapp.net') && !localBase64) {
-       console.log(`[INGEST] Mídia criptografada detectada (AUDIO/MEDIA). Solicitando via API...`);
-       localBase64 = await evolutionApi.getMediaBase64(channelId, metadata);
+      console.log(`[INGEST] org=${organizationId} channel=${channelId} mídia criptografada detectada, solicitando via Evolution API...`);
+      localBase64 = await evolutionApi.getMediaBase64(instanceName, metadata);
     }
 
     if ((finalMediaUrl || localBase64) && !finalMediaUrl?.includes('supabase.co')) {
       try {
-        const { generateId: genId } = await import('@/lib/utils');
         let buffer: any;
 
-        // Normalização do localBase64 (caso venha objeto da Evolution ou com prefixo data:)
         if (localBase64) {
-          console.log(`[INGEST] Processando localBase64...`);
-          
+          console.log(`[INGEST] org=${organizationId} channel=${channelId} processando localBase64...`);
+
           let rawBase64 = '';
           const obj = localBase64 as any;
           if (typeof localBase64 === 'object') {
-             rawBase64 = obj.base64 || obj.response?.base64 || JSON.stringify(localBase64);
+            rawBase64 = obj.base64 || obj.response?.base64 || JSON.stringify(localBase64);
           } else {
-             rawBase64 = localBase64 as string;
+            rawBase64 = localBase64 as string;
           }
 
           const base64Clean = rawBase64.split(',').pop() || '';
           buffer = Buffer.from(base64Clean, 'base64');
-          console.log(`[INGEST] Buffer criado via Base64. Tamanho: ${buffer.length} bytes`);
+          console.log(`[INGEST] Buffer Base64 size=${buffer.length} bytes`);
         } else if (finalMediaUrl) {
-          console.log(`[INGEST] Baixando mídia via URL: ${finalMediaUrl}...`);
-          
+          console.log(`[INGEST] org=${organizationId} channel=${channelId} baixando mídia de URL: ${finalMediaUrl}`);
+
           const fetchHeaders: any = {};
           if (finalMediaUrl.includes('evolution.fazag.edu.br')) {
             fetchHeaders['apikey'] = process.env.EVOLUTION_API_KEY;
@@ -74,13 +67,13 @@ export class WebhookIngestionService {
 
           const response = await fetch(finalMediaUrl, { headers: fetchHeaders });
           if (!response.ok) throw new Error(`Falha no download da mídia: ${response.statusText}`);
-          
+
           const arrayBuffer = await response.arrayBuffer();
           buffer = Buffer.from(arrayBuffer);
-          
+
           const contentType = response.headers.get('content-type');
-          console.log(`[INGEST] Download concluído. Status=${response.status}, ContentType=${contentType}, Size=${buffer.length} bytes`);
-          
+          console.log(`[INGEST] Download ok status=${response.status} contentType=${contentType} size=${buffer.length}`);
+
           if (contentType && contentType !== 'application/octet-stream') {
             finalMimeType = contentType;
           }
@@ -90,28 +83,21 @@ export class WebhookIngestionService {
           throw new Error('Buffer de mídia está vazio após processamento.');
         }
 
-        // --- Diagnóstico de Conteúdo (Magic Bytes) ---
         const magic = buffer.slice(0, 4).toString('hex');
-        console.log(`[INGEST] Diagnóstico de Buffer - Magic Bytes: ${magic} | ASCII: ${buffer.slice(0, 4).toString()}`);
+        console.log(`[INGEST] Magic bytes: ${magic} | ASCII: ${buffer.slice(0, 4).toString()}`);
 
         if (messageType === 'AUDIO') {
-          // WhatsApp Audio standard is OGG/Opus. Magic: 4f676753 (OggS)
           if (magic === '4f676753') {
-             console.log(`[INGEST] Detectado container OGG válido.`);
-             finalMimeType = 'audio/ogg';
+            finalMimeType = 'audio/ogg';
           } else if (magic.startsWith('1a45df')) {
-             console.log(`[INGEST] Detectado container WebM.`);
-             finalMimeType = 'audio/webm';
+            finalMimeType = 'audio/webm';
           } else if (magic.includes('66747970')) {
-             console.log(`[INGEST] Detectado container MP4.`);
-             finalMimeType = 'audio/mp4';
+            finalMimeType = 'audio/mp4';
           } else if (finalMimeType === 'application/octet-stream' || !finalMimeType.includes('audio')) {
-             // Fallback se não detectou magic conhecido mas é audio
-             finalMimeType = 'audio/ogg'; 
+            finalMimeType = 'audio/ogg';
           }
         }
-        
-        // --- Custom normalization for extensions ---
+
         let extension = 'bin';
         if (finalMimeType.includes('audio/ogg') || finalMimeType.includes('audio/opus')) extension = 'ogg';
         else if (finalMimeType.includes('audio/mp4')) extension = 'mp4';
@@ -124,84 +110,83 @@ export class WebhookIngestionService {
           if (extension === 'octet-stream') extension = 'bin';
         }
 
-        const fileName = `${genId()}.${extension}`;
-        const filePath = `received/${organizationId}/${channel.id}/${fileName}`;
-        
-        console.log(`[INGEST] Enviando para Supabase: ${filePath} | Mime: ${finalMimeType}`);
+        const fileName = `${generateId()}.${extension}`;
+        // Layout multi-tenant: organizationId/channelId/messageId/filename
+        const filePath = `${organizationId}/${channelId}/${messageId}/${fileName}`;
 
-        // Upload para o Supabase Storage (Bucket: chat-media)
+        console.log(`[INGEST] Upload Storage path=${filePath} mime=${finalMimeType} org=${organizationId}`);
+
         const { error: uploadError } = await supabaseAdmin.storage
           .from('chat-media')
           .upload(filePath, buffer, {
             contentType: finalMimeType,
             cacheControl: '3600',
-            upsert: true
+            upsert: true,
           });
-          
+
         if (uploadError) throw uploadError;
-        
-        const { data: { publicUrl } } = supabaseAdmin.storage
-          .from('chat-media')
-          .getPublicUrl(filePath);
-          
-        console.log(`[INGEST] Sucesso! URL Final: ${publicUrl}`);
+
+        const {
+          data: { publicUrl },
+        } = supabaseAdmin.storage.from('chat-media').getPublicUrl(filePath);
+
+        console.log(`[INGEST] Upload ok url=${publicUrl}`);
         finalMediaUrl = publicUrl;
       } catch (err) {
-        console.error(`[INGEST] Erro crítico no pipeline de mídia:`, err);
+        console.error(
+          `[INGEST] Erro crítico no pipeline de mídia (org=${organizationId} channel=${channelId}):`,
+          err
+        );
       }
     }
-    // --------------------------------------------------------------------------------------
 
-    // --- FILTER: Only Personal Contacts (roughly 12 digits, exclude groups/status) ---
+    // --- FILTER: Only Personal Contacts (~10-15 dígitos, exclude grupos/status) ---
     const jid = metadata?.jid || '';
     const isPersonal = jid.endsWith('@s.whatsapp.net');
     const numericOnly = senderPhone.replace(/\D/g, '');
     const hasValidLength = numericOnly.length >= 10 && numericOnly.length <= 15;
 
     if (!isPersonal || !hasValidLength) {
-      console.log(`[INGEST] Ignorando contato não pessoal: ${senderPhone} (JID: ${jid}, Len: ${numericOnly.length})`);
+      console.log(
+        `[INGEST] Ignorando contato não pessoal: ${senderPhone} (jid=${jid}, len=${numericOnly.length}, org=${organizationId})`
+      );
       return;
     }
-    // ---------------------------------------------------------------------------------
 
     try {
       const { ContactRepository } = await import('@/repositories/contactRepository');
       const { ConversationRepository } = await import('@/repositories/conversationRepository');
       const { SettingRepository } = await import('@/repositories/settingRepository');
-      const { generateId } = await import('@/lib/utils');
 
-      console.log(`[INGEST] 1. Canal validado e pronto: ${channel.name} (${channel.id})`);
+      console.log(`[INGEST] 1. Canal validado: ${channel.name} (${channelId}) org=${organizationId}`);
 
-      // 2. Extrair metadados normalizados
       const isFromMe = !!metadata?.fromMe;
       const senderType = isFromMe ? 'AGENT' : 'USER';
       const externalId = metadata?.externalId;
       const dbMessageType = event.messageType || 'TEXT';
-      
-      console.log(`[INGEST] Processando mensagem ${externalId || 'sem ID'} do ${senderType}...`);
+
+      console.log(`[INGEST] Mensagem ${externalId || 'sem ID'} sender=${senderType} org=${organizationId}`);
       if (externalId) {
         const { data: existing } = await supabaseAdmin
           .from('Message')
           .select('id')
           .eq('externalMessageId', externalId)
           .eq('organizationId', organizationId)
-          .maybeSingle()
-        
+          .maybeSingle();
+
         if (existing) {
-          console.log(`[INGEST] Deduplicação aplicada: Mensagem ${externalId} já existe. Ignorando.`);
+          console.log(`[INGEST] Deduplicação: mensagem ${externalId} já existe em org=${organizationId}. Ignorando.`);
           return;
         }
       }
 
-      // 4. Identificar ou Criar Contato
       const contact = await ContactRepository.findOrCreateByPhone(
-        senderPhone, 
+        senderPhone,
         senderName || senderPhone,
         organizationId
       );
-      console.log(`[INGEST] 2. Contato encontrado/criado: ${contact.name} (${contact.id})`);
+      console.log(`[INGEST] 2. Contato ${contact.name} (${contact.id}) org=${organizationId}`);
 
-      // 5. Identificar ou Criar Conversa
       const { data: lastConversations } = await supabaseAdmin
         .from('Conversation')
         .select(`
@@ -214,48 +199,54 @@ export class WebhookIngestionService {
         `)
         .eq('organizationId', organizationId)
         .eq('contactId', contact.id)
-        .eq('channelId', channel.id)
+        .eq('channelId', channelId)
         .order('lastMessageAt', { ascending: false })
         .limit(1);
 
       let conversation = lastConversations?.[0];
 
       if (!conversation) {
-        console.log(`[INGEST] Criando nova conversa para o contato...`);
+        console.log(`[INGEST] Criando nova conversa org=${organizationId}...`);
         const globalSettings = await SettingRepository.findByOrganization(organizationId);
-        const initialSectorId: string | null = channel.defaultSectorId || globalSettings?.defaultTriageSectorId || null;
-        
+        const initialSectorId: string | null =
+          channel.defaultSectorId || globalSettings?.defaultTriageSectorId || null;
+
         conversation = await ConversationRepository.create(organizationId, {
           contactId: contact.id,
-          channelId: channel.id,
+          channelId,
           currentSectorId: initialSectorId,
           status: 'OPEN',
-          lastMessageAt: new Date().toISOString()
+          lastMessageAt: new Date().toISOString(),
         });
 
-        const { ConversationSectorHistoryRepository } = await import('@/repositories/conversationSectorHistoryRepository');
+        const { ConversationSectorHistoryRepository } = await import(
+          '@/repositories/conversationSectorHistoryRepository'
+        );
         await ConversationSectorHistoryRepository.insert({
           conversationId: conversation.id,
           organizationId,
           sectorId: initialSectorId,
-          enteredAt: conversation.createdAt
+          enteredAt: conversation.createdAt,
         });
 
-        console.log(`[INGEST] 3. Conversa criada: ${conversation.id} (setor inicial: ${initialSectorId || 'NULL'})`);
+        console.log(
+          `[INGEST] 3. Conversa criada: ${conversation.id} setor=${initialSectorId || 'NULL'} org=${organizationId}`
+        );
       } else if (conversation.status === 'CLOSED') {
-        console.log(`[INGEST] Reabrindo conversa finalizada ${conversation.id} e movendo para triagem...`);
-        
+        console.log(`[INGEST] Reabrindo conversa ${conversation.id} (org=${organizationId})...`);
+
         const globalSettings = await SettingRepository.findByOrganization(organizationId);
-        const triageSectorId = channel.defaultSectorId || globalSettings?.defaultTriageSectorId || null;
-        
+        const triageSectorId =
+          channel.defaultSectorId || globalSettings?.defaultTriageSectorId || null;
+
         const { data: reopened } = await supabaseAdmin
           .from('Conversation')
-          .update({ 
-            status: 'OPEN', 
+          .update({
+            status: 'OPEN',
             assignedTo: null,
             finalizedBySectorId: null,
             currentSectorId: triageSectorId,
-            unreadCount: 1 
+            unreadCount: 1,
           })
           .eq('id', conversation.id)
           .eq('organizationId', organizationId)
@@ -268,35 +259,44 @@ export class WebhookIngestionService {
             tags:ConversationTag(*, tag:Tag(*))
           `)
           .single();
-        
+
         conversation = reopened;
 
-        const { ConversationSectorHistoryRepository } = await import('@/repositories/conversationSectorHistoryRepository');
+        const { ConversationSectorHistoryRepository } = await import(
+          '@/repositories/conversationSectorHistoryRepository'
+        );
         await ConversationSectorHistoryRepository.insert({
           conversationId: conversation.id,
           organizationId,
           sectorId: triageSectorId,
-          enteredAt: new Date().toISOString()
+          enteredAt: new Date().toISOString(),
         });
       } else {
-        console.log(`[INGEST] 3. Conversa ativa encontrada: ${conversation.id}`);
-        
+        console.log(`[INGEST] 3. Conversa ativa: ${conversation.id} org=${organizationId}`);
+
         if (!conversation.currentSectorId) {
           const globalSettings = await SettingRepository.findByOrganization(organizationId);
-          const initialSectorId = channel.defaultSectorId || globalSettings?.defaultTriageSectorId || null;
-          
+          const initialSectorId =
+            channel.defaultSectorId || globalSettings?.defaultTriageSectorId || null;
+
           if (initialSectorId) {
-            console.log(`[INGEST] Movendo conversa existente ${conversation.id} para triagem: ${initialSectorId}`);
-            await ConversationRepository.update(conversation.id, organizationId, { currentSectorId: initialSectorId });
-            
-            const { ConversationSectorHistoryRepository } = await import('@/repositories/conversationSectorHistoryRepository');
+            console.log(
+              `[INGEST] Movendo conversa ${conversation.id} para triagem ${initialSectorId} (org=${organizationId})`
+            );
+            await ConversationRepository.update(conversation.id, organizationId, {
+              currentSectorId: initialSectorId,
+            });
+
+            const { ConversationSectorHistoryRepository } = await import(
+              '@/repositories/conversationSectorHistoryRepository'
+            );
             await ConversationSectorHistoryRepository.insert({
               conversationId: conversation.id,
               organizationId,
               sectorId: initialSectorId,
-              enteredAt: new Date().toISOString()
+              enteredAt: new Date().toISOString(),
             });
-            
+
             conversation.currentSectorId = initialSectorId;
           }
         }
@@ -305,8 +305,10 @@ export class WebhookIngestionService {
       // --- TRATAMENTO ESPECIAL PARA REAÇÕES ---
       if (dbMessageType === 'REACTION') {
         const targetExternalId = event.targetMessageId;
-        console.log(`[INGEST] Processando REAÇÃO "${content}" para mensagem original ${targetExternalId}`);
-        
+        console.log(
+          `[INGEST] Reação "${content}" -> mensagem ${targetExternalId} (org=${organizationId})`
+        );
+
         if (targetExternalId) {
           const { data: targetMsg } = await supabaseAdmin
             .from('Message')
@@ -317,30 +319,30 @@ export class WebhookIngestionService {
 
           if (targetMsg) {
             const currentReactions = Array.isArray(targetMsg.reactions) ? targetMsg.reactions : [];
-            // Adiciona a nova reação (ou atualiza se for do mesmo remetente, mas aqui simplificaremos adicionando)
-            const newReactions = [...currentReactions, { emoji: content, sender: senderPhone, timestamp: event.timestamp }];
-            
+            const newReactions = [
+              ...currentReactions,
+              { emoji: content, sender: senderPhone, timestamp: event.timestamp },
+            ];
+
             await supabaseAdmin
               .from('Message')
               .update({ reactions: newReactions })
               .eq('id', targetMsg.id)
               .eq('organizationId', organizationId);
-            
-            console.log(`[INGEST] Reação persistida na mensagem ${targetMsg.id}`);
-            return { conversation }; // Retorna cedo, pois não queremos criar uma nova mensagem
+
+            console.log(`[INGEST] Reação persistida em ${targetMsg.id} (org=${organizationId})`);
+            return { conversation };
           }
         }
         return { conversation };
       }
-      // ----------------------------------------
 
-      // 5.5 Identificar se é uma resposta (Reply)
       const replyToMessageId = metadata?.resolvedReplyToId;
 
-      // 6. Salvar Mensagem
-      console.log(`[INGEST] Salvando no banco: Conv:${conversation.id} | Tipo:${dbMessageType} | ExternalId:${externalId || 'NONE'}`);
-      
-      // Normalização de campos que podem vir como objetos da Evolution (Long/Int64)
+      console.log(
+        `[INGEST] Salvando msg conv=${conversation.id} type=${dbMessageType} extId=${externalId || 'NONE'} org=${organizationId}`
+      );
+
       const normalizeNumber = (val: any) => {
         if (val && typeof val === 'object' && 'low' in val) return val.low;
         return typeof val === 'number' ? val : null;
@@ -348,104 +350,112 @@ export class WebhookIngestionService {
 
       const { data: newMessage, error: msgError } = await supabaseAdmin
         .from('Message')
-        .insert([{
-          id: generateId(),
-          organizationId,
-          conversationId: conversation.id,
-          channelId: channel.id,
-          sectorId: conversation.currentSectorId || null,
-          senderType,
-          content: content || '[Arquivo de Mídia]',
-          type: dbMessageType,
-          externalMessageId: externalId,
-          replyToMessageId: replyToMessageId,
-          mediaUrl: finalMediaUrl,
-          fileName: event.fileName,
-          mimeType: finalMimeType,
-          fileSize: normalizeNumber(event.fileSize),
-          duration: normalizeNumber(event.duration),
-          thumbnailUrl: event.thumbnailUrl,
-          metadata: metadata,
-          createdAt: new Date(event.timestamp).toISOString()
-        }])
+        .insert([
+          {
+            id: messageId,
+            organizationId,
+            conversationId: conversation.id,
+            channelId,
+            sectorId: conversation.currentSectorId || null,
+            senderType,
+            content: content || '[Arquivo de Mídia]',
+            type: dbMessageType,
+            externalMessageId: externalId,
+            replyToMessageId: replyToMessageId,
+            mediaUrl: finalMediaUrl,
+            fileName: event.fileName,
+            mimeType: finalMimeType,
+            fileSize: normalizeNumber(event.fileSize),
+            duration: normalizeNumber(event.duration),
+            thumbnailUrl: event.thumbnailUrl,
+            metadata: metadata,
+            createdAt: new Date(event.timestamp).toISOString(),
+          },
+        ])
         .select('*, replyToMessage:replyToMessageId(*)')
-        .single()
+        .single();
 
       if (msgError) {
-        console.error(`[INGEST] ERRO ao inserir mensagem:`, msgError);
+        console.error(`[INGEST] ERRO ao inserir mensagem (org=${organizationId}):`, msgError);
         throw msgError;
       }
-      console.log(`[INGEST] Mensagem persistida! ID: ${newMessage.id} | Media: ${!!newMessage.mediaUrl}`);
+      console.log(`[INGEST] Mensagem persistida id=${newMessage.id} hasMedia=${!!newMessage.mediaUrl}`);
 
-      // 7. Atualizar lastMessageAt e unreadCount da Conversa
-      const updateData: any = { 
-        lastMessageAt: new Date(event.timestamp).toISOString() 
+      const updateData: any = {
+        lastMessageAt: new Date(event.timestamp).toISOString(),
       };
-      
+
       if (senderType === 'USER') {
         const currentUnread = conversation.unreadCount || 0;
         updateData.unreadCount = currentUnread + 1;
-        console.log(`[INGEST] Novo unreadCount: ${updateData.unreadCount}`);
+        console.log(`[INGEST] unreadCount=${updateData.unreadCount} conv=${conversation.id}`);
       }
-      
+
       await ConversationRepository.update(conversation.id, organizationId, updateData);
-      
-      // Cancelar agendamentos se o cliente responder
+
       if (senderType === 'USER') {
         const { MessageService } = await import('@/services/messages');
         await MessageService.cancelScheduledByCustomerReply(conversation.id, organizationId);
       }
 
-      // 8. Notificação em Tempo Real
       const { RealtimeService } = await import('@/services/realtime.service');
-      console.log(`[INGEST] Disparando Realtime para conversa ${conversation.id}...`);
+      console.log(`[INGEST] Realtime conv=${conversation.id} org=${organizationId}`);
       await RealtimeService.notifyNewMessage(conversation.id, newMessage);
-      console.log(`[INGEST] Fluxo concluído com sucesso para ${newMessage.id}.`);
+      console.log(`[INGEST] Fluxo concluído msg=${newMessage.id} org=${organizationId}`);
 
-      // 9. Resposta Automática (Auto-Reply)
       if (senderType === 'USER') {
-        // Dispara de forma assíncrona para não atrasar o retorno do webhook
-        this.handleAutoReply(channel, contact, conversation).catch(err => {
-          console.error(`[INGEST] Erro ao processar Auto-Reply:`, err);
+        this.handleAutoReply(channel, contact, conversation).catch((err) => {
+          console.error(
+            `[INGEST] Erro Auto-Reply (org=${organizationId} channel=${channelId}):`,
+            err
+          );
         });
       }
 
       return { conversation, message: newMessage };
-
     } catch (error) {
-      console.error('CRITICAL: Message ingestion failed:', error);
+      console.error(
+        `[INGEST] CRITICAL: ingestion failed (org=${organizationId} channel=${channelId}):`,
+        error
+      );
       throw error;
     }
   }
 
   /**
-   * Processa e envia uma resposta automática se as condições forem atendidas.
+   * Auto-reply escopado por organização. O channel já vem resolvido — usamos
+   * channel.organizationId como tenant e channel.providerSessionId como instance
+   * para o envio externo.
    */
-  private static async handleAutoReply(channel: any, contact: any, conversation: any) {
+  private static async handleAutoReply(
+    channel: TenantChannel,
+    contact: any,
+    conversation: any
+  ) {
+    const organizationId = channel.organizationId;
+    const channelId = channel.id;
+
     try {
-      const organizationId = channel.organizationId as string;
-      console.log(`[AUTO-REPLY] Verificando configuração para canal ${channel.id}...`);
-      
-      // 1. Buscar configuração em auto_reply_settings
+      console.log(`[AUTO-REPLY] Verificando config org=${organizationId} channel=${channelId}`);
+
       const { data: settings } = await supabaseAdmin
         .from('auto_reply_settings')
         .select('*')
         .eq('organizationId', organizationId)
-        .eq('channelId', channel.id)
+        .eq('channelId', channelId)
         .maybeSingle();
 
       if (!settings || !settings.enabled || !settings.message) {
-        console.log(`[AUTO-REPLY] Configuração desativada ou mensagem vazia para canal ${channel.id}.`);
+        console.log(`[AUTO-REPLY] Desativado/sem mensagem org=${organizationId} channel=${channelId}`);
         return;
       }
 
-      // 2. Verificar cooldown em contact_auto_replies
       const { data: lastReply } = await supabaseAdmin
         .from('contact_auto_replies')
         .select('*')
         .eq('organizationId', organizationId)
         .eq('contactId', contact.id)
-        .eq('channelId', channel.id)
+        .eq('channelId', channelId)
         .maybeSingle();
 
       const cooldownMs = (settings.cooldownHours || 24) * 60 * 60 * 1000;
@@ -457,50 +467,56 @@ export class WebhookIngestionService {
 
         if (timeSinceLastReply < cooldownMs) {
           const remainingMinutes = Math.round((cooldownMs - timeSinceLastReply) / 1000 / 60);
-          console.log(`[AUTO-REPLY] Cooldown ativo para contato ${contact.id}. Faltam ${remainingMinutes} minutos.`);
+          console.log(
+            `[AUTO-REPLY] Cooldown ativo contact=${contact.id} org=${organizationId} restam=${remainingMinutes}min`
+          );
           return;
         }
       }
 
-      // 3. Enviar mensagem via Evolution API
       const instanceName = channel.providerSessionId || channel.id;
-      console.log(`[AUTO-REPLY] Enviando mensagem automática no canal ${channel.name} para ${contact.phone}...`);
-      
+      console.log(
+        `[AUTO-REPLY] Enviando org=${organizationId} channel=${channel.name}(${channelId}) -> ${contact.phone}`
+      );
+
       try {
         await evolutionApi.sendMessage(instanceName, {
           number: contact.phone,
-          text: settings.message
+          text: settings.message,
         });
       } catch (evoError) {
-        console.error(`[AUTO-REPLY] Erro da Evolution API:`, evoError);
-        return; // Se falhou o envio externo, não registramos no banco
+        console.error(
+          `[AUTO-REPLY] Falha Evolution API (org=${organizationId} channel=${channelId}):`,
+          evoError
+        );
+        return;
       }
 
       const { generateId } = await import('@/lib/utils');
       const { ConversationRepository } = await import('@/repositories/conversationRepository');
       const { RealtimeService } = await import('@/services/realtime.service');
 
-      // 4. Salvar no banco como mensagem enviada pelo sistema
       const { data: autoMsg, error: autoMsgError } = await supabaseAdmin
         .from('Message')
-        .insert([{
-          id: generateId(),
-          organizationId,
-          conversationId: conversation.id,
-          channelId: channel.id,
-          senderType: 'SYSTEM',
-          content: settings.message,
-          type: 'TEXT',
-          sendStatus: 'sent',
-          metadata: { isAutoReply: true },
-          createdAt: now.toISOString()
-        }])
+        .insert([
+          {
+            id: generateId(),
+            organizationId,
+            conversationId: conversation.id,
+            channelId,
+            senderType: 'SYSTEM',
+            content: settings.message,
+            type: 'TEXT',
+            sendStatus: 'sent',
+            metadata: { isAutoReply: true },
+            createdAt: now.toISOString(),
+          },
+        ])
         .select()
         .single();
 
       if (autoMsgError) throw autoMsgError;
 
-      // 5. Atualizar contact_auto_replies.lastAutoReplyAt
       if (lastReply) {
         await supabaseAdmin
           .from('contact_auto_replies')
@@ -510,27 +526,29 @@ export class WebhookIngestionService {
       } else {
         await supabaseAdmin
           .from('contact_auto_replies')
-          .insert([{
-            organizationId,
-            contactId: contact.id,
-            channelId: channel.id,
-            lastAutoReplyAt: now.toISOString()
-          }]);
+          .insert([
+            {
+              organizationId,
+              contactId: contact.id,
+              channelId,
+              lastAutoReplyAt: now.toISOString(),
+            },
+          ]);
       }
 
-      // 6. Atualizar conversa (lastMessageAt para subir no topo)
       await ConversationRepository.update(conversation.id, organizationId, {
         lastMessageAt: now.toISOString(),
-        lastMessagePreview: settings.message.substring(0, 100)
+        lastMessagePreview: settings.message.substring(0, 100),
       });
 
-      // 7. Notificar via Realtime para aparecer no chat imediatamente
       await RealtimeService.notifyNewMessage(conversation.id, autoMsg);
-      
-      console.log(`[AUTO-REPLY] Sucesso! Mensagem automática registrada: ${autoMsg.id}`);
 
+      console.log(`[AUTO-REPLY] Sucesso msg=${autoMsg.id} org=${organizationId} channel=${channelId}`);
     } catch (error) {
-      console.error(`[AUTO-REPLY] Erro crítico no fluxo:`, error);
+      console.error(
+        `[AUTO-REPLY] Erro crítico (org=${organizationId} channel=${channelId}):`,
+        error
+      );
     }
   }
 }
