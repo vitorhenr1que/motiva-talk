@@ -24,8 +24,21 @@ export function getStripePriceIdForPlan(planCode: string, storedPriceId?: string
 
 export async function assertStripePriceExists(stripe: Stripe, priceId: string, planCode: string) {
   try {
-    return await stripe.prices.retrieve(priceId);
+    const price = await stripe.prices.retrieve(priceId);
+
+    if (!price.active) {
+      throw new AppError(
+        `Preço Stripe inativo para o plano ${planCode}. Atualize o Price ID nas configurações de billing para um preço ativo.`,
+        400,
+        'VALIDATION_ERROR',
+        { priceId, planCode }
+      );
+    }
+
+    return price;
   } catch (error) {
+    if (error instanceof AppError) throw error;
+
     if (error instanceof Stripe.errors.StripeInvalidRequestError && error.code === 'resource_missing') {
       throw new AppError(
         `Preço Stripe inválido para o plano ${planCode}. Atualize o Price ID nas configurações de billing ou use uma chave Stripe do mesmo ambiente.`,
