@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X, Phone, MessageSquarePlus } from 'lucide-react';
+import { X, Phone, MessageSquarePlus, Zap, Globe } from 'lucide-react';
+import { WhatsAppProviderType } from '@/types/chat';
 
 interface AddChannelModalProps {
   isOpen: boolean;
@@ -10,6 +11,7 @@ interface AddChannelModalProps {
 export const AddChannelModal: React.FC<AddChannelModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [name, setName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [whatsappProvider, setWhatsappProvider] = useState<WhatsAppProviderType>('EVOLUTION');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -24,7 +26,7 @@ export const AddChannelModal: React.FC<AddChannelModalProps> = ({ isOpen, onClos
       const resp = await fetch('/api/channels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, phoneNumber }),
+        body: JSON.stringify({ name, phoneNumber, whatsappProvider }),
       });
 
       if (!resp.ok) {
@@ -82,7 +84,37 @@ export const AddChannelModal: React.FC<AddChannelModalProps> = ({ isOpen, onClos
                 onChange={(e) => setPhoneNumber(e.target.value)}
               />
             </div>
-            <p className="text-[10px] text-slate-400 ml-1">Apenas números, com DDI (Ex: 55 para Brasil)</p>
+            <p className="text-[10px] text-slate-400 ml-1">Apenas números, com DDI (Ex: 55)</p>
+          </div>
+
+          <div className="space-y-3">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Provedor WhatsApp</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setWhatsappProvider('EVOLUTION')}
+                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${
+                  whatsappProvider === 'EVOLUTION'
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600'
+                    : 'border-slate-100 dark:border-slate-800 text-slate-400 hover:border-slate-200'
+                }`}
+              >
+                <Zap size={20} />
+                <span className="text-[10px] font-bold uppercase">Evolution API</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setWhatsappProvider('META_CLOUD')}
+                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${
+                  whatsappProvider === 'META_CLOUD'
+                    ? 'border-green-500 bg-green-50 dark:bg-green-900/20 text-green-600'
+                    : 'border-slate-100 dark:border-slate-800 text-slate-400 hover:border-slate-200'
+                }`}
+              >
+                <Globe size={20} />
+                <span className="text-[10px] font-bold uppercase">Meta Cloud</span>
+              </button>
+            </div>
           </div>
 
           {error && <p className="text-sm font-bold text-rose-500 text-center animate-pulse">{error}</p>}

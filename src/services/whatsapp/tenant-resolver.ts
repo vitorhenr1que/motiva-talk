@@ -4,6 +4,7 @@ export interface TenantChannel {
   id: string;
   organizationId: string;
   provider: string | null;
+  whatsappProvider?: 'EVOLUTION' | 'META_CLOUD' | null;
   providerSessionId: string | null;
   name: string;
   defaultSectorId: string | null;
@@ -12,6 +13,10 @@ export interface TenantChannel {
   connectionStatus?: string | null;
   allowAgentNameEdit?: boolean;
   allowAgentFilterAllSectors?: boolean;
+  metaPhoneNumberId?: string | null;
+  metaWabaId?: string | null;
+  metaAccessToken?: string | null;
+  metaWebhookVerifyToken?: string | null;
   createdAt?: string;
 }
 

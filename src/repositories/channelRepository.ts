@@ -40,6 +40,31 @@ export class ChannelRepository {
     return data
   }
 
+  static async findByMetaPhoneNumberId(metaPhoneNumberId: string) {
+    const { data, error } = await supabaseAdmin
+      .from('Channel')
+      .select('*')
+      .eq('metaPhoneNumberId', metaPhoneNumberId)
+      .eq('whatsappProvider', 'META_CLOUD')
+      .eq('isActive', true)
+      .single()
+    if (error) return null
+    return data
+  }
+
+  static async findByMetaWebhookVerifyToken(metaWebhookVerifyToken: string) {
+    const { data, error } = await supabaseAdmin
+      .from('Channel')
+      .select('*')
+      .eq('metaWebhookVerifyToken', metaWebhookVerifyToken)
+      .eq('whatsappProvider', 'META_CLOUD')
+      .eq('isActive', true)
+      .limit(1)
+
+    if (error) return null
+    return data?.[0] || null
+  }
+
   static async create(organizationId: string, data: any) {
     const { data: newChannel, error } = await supabaseAdmin
       .from('Channel')

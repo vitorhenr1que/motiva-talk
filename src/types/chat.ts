@@ -30,6 +30,8 @@ export interface Contact {
   createdAt: string;
 }
 
+export type WhatsAppProviderType = 'EVOLUTION' | 'META_CLOUD';
+
 export interface Channel {
   id: string;
   organizationId?: string;
@@ -38,10 +40,15 @@ export interface Channel {
   isActive: boolean;
   createdAt: string;
   provider?: string;
+  whatsappProvider?: WhatsAppProviderType;
   providerSessionId?: string;
   connectionStatus?: string;
   allowAgentNameEdit?: boolean;
   defaultSectorId?: string | null;
+  metaPhoneNumberId?: string;
+  metaWabaId?: string;
+  metaAccessToken?: string;
+  metaWebhookVerifyToken?: string;
 }
 
 export interface Sector {

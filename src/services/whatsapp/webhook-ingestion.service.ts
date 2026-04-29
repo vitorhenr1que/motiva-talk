@@ -52,6 +52,16 @@ export class WebhookIngestionService {
     if (finalMediaUrl?.includes('mmg.whatsapp.net') && !localBase64) {
       console.log(`[INGEST] org=${organizationId} channel=${channelId} mídia criptografada detectada, solicitando via Evolution API...`);
       localBase64 = await evolutionApi.getMediaBase64(instanceName, metadata);
+    } else if ((channel as any).whatsappProvider === 'META_CLOUD' && finalMediaUrl && !localBase64) {
+      console.log(`[INGEST] org=${organizationId} channel=${channelId} mídia Meta Cloud detectada, baixando...`);
+      try {
+        const { getWhatsAppProvider } = await import('./providers');
+        const provider = getWhatsAppProvider('META_CLOUD');
+        const buffer = await (provider as any).downloadMedia(channel, finalMediaUrl);
+        localBase64 = buffer.toString('base64');
+      } catch (err: any) {
+        console.error(`[INGEST] Erro ao baixar mídia da Meta:`, err.message);
+      }
     }
 
     if ((finalMediaUrl || localBase64) && !finalMediaUrl?.includes('supabase.co')) {
@@ -394,6 +404,8 @@ export class WebhookIngestionService {
         console.error(`[INGEST] ERRO ao inserir mensagem (org=${organizationId}):`, msgError);
         throw msgError;
       }
+      const { BillingService } = await import('@/services/billing.service');
+      await BillingService.incrementMessageUsage(organizationId);
       console.log(`[INGEST] Mensagem persistida id=${newMessage.id} hasMedia=${!!newMessage.mediaUrl}`);
 
       const updateData: any = {
@@ -495,13 +507,12 @@ export class WebhookIngestionService {
       );
 
       try {
-        await evolutionApi.sendMessage(instanceName, {
-          number: contact.phone,
-          text: settings.message,
-        });
+        const { getWhatsAppProvider } = await import('./providers');
+        const provider = getWhatsAppProvider((channel as any).whatsappProvider);
+        await provider.sendTextMessage(channel as any, contact.phone, settings.message);
       } catch (evoError) {
         console.error(
-          `[AUTO-REPLY] Falha Evolution API (org=${organizationId} channel=${channelId}):`,
+          `[AUTO-REPLY] Falha ao enviar mensagem automática (org=${organizationId} channel=${channelId}):`,
           evoError
         );
         return;

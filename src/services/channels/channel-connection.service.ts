@@ -22,6 +22,8 @@ export class ChannelConnectionService {
       throw new Error(`Canal ${channelId} não encontrado`);
     }
 
+    channel.whatsappProvider = 'EVOLUTION';
+
     const instanceName = evolutionProvider.getInstanceName(channel as any);
 
     try {
@@ -51,6 +53,7 @@ export class ChannelConnectionService {
       const { data: updatedChannel, error: updateError } = await supabaseAdmin
         .from('Channel')
         .update({
+          whatsappProvider: 'EVOLUTION',
           connectionStatus: statusResult.status,
           isActive: true
         })
@@ -132,6 +135,10 @@ export class ChannelConnectionService {
 
     if (fetchError || !channel) throw new Error('Canal não encontrado');
 
+    if (channel.whatsappProvider === 'META_CLOUD') {
+      return { status: channel.connectionStatus || 'CONNECTED', details: 'Meta Cloud API' };
+    }
+
     try {
       const statusResult = await evolutionProvider.getSessionStatus(channel as any);
 
@@ -165,7 +172,9 @@ export class ChannelConnectionService {
     if (fetchError || !channel) throw new Error('Canal não encontrado');
 
     try {
-      await evolutionProvider.disconnectSession(channel as any);
+      if (channel.whatsappProvider !== 'META_CLOUD') {
+        await evolutionProvider.disconnectSession(channel as any);
+      }
       
       await supabaseAdmin
         .from('Channel')
@@ -194,6 +203,15 @@ export class ChannelConnectionService {
       .single()
 
     if (fetchError || !channel) throw new Error('Canal não encontrado');
+
+    if (channel.whatsappProvider === 'META_CLOUD') {
+      await supabaseAdmin
+        .from('Channel')
+        .update({ connectionStatus: 'DISCONNECTED' })
+        .eq('id', channelId)
+        .eq('organizationId', organizationId);
+      return { ...channel, connectionStatus: 'DISCONNECTED' };
+    }
 
     try {
       console.log(`[SERVICE] [RESET] 1. Removendo instância externa...`);
@@ -237,12 +255,14 @@ export class ChannelConnectionService {
 
     if (fetchError || !channel) throw new Error('Canal não encontrado');
 
-    // 1. Apagar sessão externa na Evolution API
-    try {
-      await evolutionProvider.deleteSession(channel as any);
-      console.log(`[SERVICE] Instância externa removida da Evolution API com sucesso.`);
-    } catch (e: any) {
-      console.warn(`[SERVICE] Falha ao remover instância: ${e.message} (Isso será ignorado no fluxo local)`);
+    // 1. Apagar sessão externa na Evolution API quando o canal usa Evolution.
+    if (channel.whatsappProvider !== 'META_CLOUD') {
+      try {
+        await evolutionProvider.deleteSession(channel as any);
+        console.log(`[SERVICE] Instância externa removida da Evolution API com sucesso.`);
+      } catch (e: any) {
+        console.warn(`[SERVICE] Falha ao remover instância: ${e.message} (Isso será ignorado no fluxo local)`);
+      }
     }
 
     // 2. Limpeza local: Descobrir e remover arquivos vinculados ao canal no Storage

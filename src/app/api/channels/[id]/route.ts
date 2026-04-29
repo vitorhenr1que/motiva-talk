@@ -57,6 +57,12 @@ export async function PATCH(
     if (body.allowAgentNameEdit !== undefined) updateData.allowAgentNameEdit = body.allowAgentNameEdit;
     if (body.defaultSectorId !== undefined) updateData.defaultSectorId = body.defaultSectorId;
     if (body.allowAgentFilterAllSectors !== undefined) updateData.allowAgentFilterAllSectors = body.allowAgentFilterAllSectors;
+    if (body.whatsappProvider !== undefined) {
+      if (!['EVOLUTION', 'META_CLOUD'].includes(body.whatsappProvider)) {
+        return NextResponse.json({ success: false, message: 'Provedor WhatsApp inválido' }, { status: 400 });
+      }
+      updateData.whatsappProvider = body.whatsappProvider;
+    }
 
     if (updateData.defaultSectorId) {
       const { data: sector } = await supabaseAdmin
@@ -81,9 +87,12 @@ export async function PATCH(
 
     if (error) throw error;
 
+    const safeData = { ...data };
+    delete safeData.metaAccessToken;
+
     return NextResponse.json({
       success: true,
-      data
+      data: safeData
     });
   } catch (error) {
     return handleApiError(error, req, { route: ROUTE });

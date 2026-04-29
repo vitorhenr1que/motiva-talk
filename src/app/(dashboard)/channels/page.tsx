@@ -12,6 +12,7 @@ interface Channel {
   phoneNumber: string;
   connectionStatus: string;
   isActive: boolean;
+  whatsappProvider?: 'EVOLUTION' | 'META_CLOUD';
 }
 
 export default function ChannelsPage() {
@@ -179,7 +180,13 @@ export default function ChannelsPage() {
                       {getStatusLabel(channel.connectionStatus)}
                     </span>
                     <button 
-                      onClick={() => setConfigModal({ isOpen: true, channel })}
+                      onClick={() => {
+                        if (channel.connectionStatus !== 'CONNECTED') {
+                          setConnectModal({ isOpen: true, channelId: channel.id, channelName: channel.name });
+                        } else {
+                          setConfigModal({ isOpen: true, channel });
+                        }
+                      }}
                       className="flex items-center gap-2 group/btn"
                     >
                       <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest group-hover/btn:mr-1 transition-all">Configurar</span>
@@ -241,6 +248,14 @@ export default function ChannelsPage() {
         onSuccess={fetchChannels} 
       />
 
+      <ChannelConfigModal
+        isOpen={configModal.isOpen}
+        onClose={() => setConfigModal({ ...configModal, isOpen: false })}
+        channel={configModal.channel}
+        onActionSuccess={fetchChannels}
+        onOpenConnect={(id, name) => setConnectModal({ isOpen: true, channelId: id, channelName: name })}
+      />
+
       <ConnectChannelModal 
         isOpen={connectModal.isOpen} 
         onClose={() => {
@@ -249,14 +264,6 @@ export default function ChannelsPage() {
         }} 
         channelId={connectModal.channelId}
         channelName={connectModal.channelName}
-      />
-
-      <ChannelConfigModal
-        isOpen={configModal.isOpen}
-        onClose={() => setConfigModal({ ...configModal, isOpen: false })}
-        channel={configModal.channel}
-        onActionSuccess={fetchChannels}
-        onOpenConnect={(id, name) => setConnectModal({ isOpen: true, channelId: id, channelName: name })}
       />
 
       {/* Info Banner */}

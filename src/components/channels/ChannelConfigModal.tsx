@@ -11,7 +11,8 @@ import {
   Zap, 
   Activity, 
   AlertTriangle, 
-  Loader2 
+  Loader2,
+  Globe
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -28,6 +29,7 @@ interface ChannelConfigModalProps {
     name: string;
     phoneNumber: string;
     connectionStatus: string;
+    whatsappProvider?: 'EVOLUTION' | 'META_CLOUD';
     allowAgentNameEdit?: boolean;
     defaultSectorId?: string | null;
     allowAgentFilterAllSectors?: boolean;
@@ -55,6 +57,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
   const [allowAgentNameEdit, setAllowAgentNameEdit] = useState(false);
   const [allowAgentFilterAllSectors, setAllowAgentFilterAllSectors] = useState(false);
   const [defaultSectorId, setDefaultSectorId] = useState<string | null>(null);
+  const [currentProvider, setCurrentProvider] = useState<'EVOLUTION' | 'META_CLOUD'>('EVOLUTION');
   const [sectors, setSectors] = useState<{ id: string, name: string }[]>([]);
 
   React.useEffect(() => {
@@ -62,10 +65,11 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
       setAllowAgentNameEdit(channel.allowAgentNameEdit || false);
       setAllowAgentFilterAllSectors(channel.allowAgentFilterAllSectors || false);
       setDefaultSectorId(channel.defaultSectorId || null);
+      setCurrentProvider(channel.whatsappProvider || 'EVOLUTION');
       fetchWebhook();
       fetchSectors();
     }
-  }, [isOpen, channel?.id, channel?.allowAgentNameEdit, channel?.defaultSectorId, channel?.allowAgentFilterAllSectors]);
+  }, [isOpen, channel?.id, channel?.allowAgentNameEdit, channel?.defaultSectorId, channel?.allowAgentFilterAllSectors, channel?.whatsappProvider]);
 
   const fetchSectors = async () => {
     try {
@@ -134,7 +138,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
     }
   };
 
-  const updateChannelSetting = async (field: string, value: boolean) => {
+  const updateChannelSetting = async (field: string, value: any) => {
     if (!channel) return;
     setUpdatingField(field);
     
@@ -149,6 +153,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
         if (field === 'allowAgentNameEdit') setAllowAgentNameEdit(value);
         if (field === 'allowAgentFilterAllSectors') setAllowAgentFilterAllSectors(value);
         if (field === 'defaultSectorId') setDefaultSectorId(value ? (value as any) : null);
+        if (field === 'whatsappProvider') setCurrentProvider(value);
         onActionSuccess();
       } else {
         alert('Falha ao atualizar configuração: ' + (data.message || 'Erro desconhecido'));
@@ -226,7 +231,15 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
             </div>
             <div className="text-left">
               <h2 className="text-xl font-black dark:text-white tracking-tight leading-none mb-1">Configurar Canal</h2>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{channel.name}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{channel.name}</p>
+                <span className={cn(
+                  "text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter",
+                  currentProvider === 'META_CLOUD' ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
+                )}>
+                  {currentProvider}
+                </span>
+              </div>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-400">
@@ -430,6 +443,52 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({
                   <option key={sector.id} value={sector.id}>{sector.name}</option>
                 ))}
               </select>
+            </div>
+
+            <div className="h-px bg-slate-100 dark:bg-slate-800/50 my-2" />
+
+            {/* Provider Selection */}
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded-lg bg-blue-100 text-blue-600">
+                  <Globe size={14} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Provedor de Conexão</p>
+                  <p className="text-[9px] font-medium text-slate-400">Escolha a tecnologia de integração</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => updateChannelSetting('whatsappProvider', 'EVOLUTION')}
+                  disabled={updatingField === 'whatsappProvider'}
+                  className={cn(
+                    "flex items-center justify-center gap-2 py-2 rounded-xl border text-[10px] font-bold transition-all",
+                    currentProvider === 'EVOLUTION'
+                      ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-600"
+                      : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-800 text-slate-400 hover:border-slate-200"
+                  )}
+                >
+                  <Zap size={12} />
+                  EVOLUTION
+                </button>
+                <button
+                  onClick={() => {
+                    onClose();
+                    onOpenConnect(channel.id, channel.name);
+                  }}
+                  disabled={updatingField === 'whatsappProvider'}
+                  className={cn(
+                    "flex items-center justify-center gap-2 py-2 rounded-xl border text-[10px] font-bold transition-all",
+                    currentProvider === 'META_CLOUD'
+                      ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-600"
+                      : "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-800 text-slate-400 hover:border-slate-200"
+                  )}
+                >
+                  <Globe size={12} />
+                  META CLOUD
+                </button>
+              </div>
             </div>
           </div>
         </div>

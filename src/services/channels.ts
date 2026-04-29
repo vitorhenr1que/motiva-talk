@@ -12,7 +12,7 @@ export class ChannelService {
     return await ChannelRepository.findById(id, organizationId)
   }
 
-  static async registerChannel(organizationId: string, data: { name: string; phoneNumber: string }) {
+  static async registerChannel(organizationId: string, data: any) {
     return await ChannelRepository.create(organizationId, {
       ...data,
       isActive: true

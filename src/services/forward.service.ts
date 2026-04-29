@@ -3,7 +3,7 @@ import { generateId } from '@/lib/utils';
 import { AppError } from '@/lib/api-errors';
 import { ConversationRepository } from '@/repositories/conversationRepository';
 import { MessageRepository } from '@/repositories/messageRepository';
-import { evolutionProvider } from '@/services/whatsapp/evolution-provider';
+import { getWhatsAppProvider } from '@/services/whatsapp/providers';
 import type { Channel, MessageType } from '@/types/chat';
 
 type SendStatus = 'sending' | 'sent' | 'failed';
@@ -265,34 +265,26 @@ export class ForwardService {
     }
 
     try {
-      const result = await evolutionProvider.sendMessage(
-        channel,
-        phone,
-        row.content,
-        row.type,
-        undefined,
-        {
-          mediaUrl: row.mediaUrl || row.content,
-          fileName: row.fileName || undefined,
-          mimeType: row.mimeType || undefined,
-          fileSize: row.fileSize || undefined,
-          duration: row.duration || undefined,
-        }
-      );
+      const provider = getWhatsAppProvider(channel.whatsappProvider);
+      const result = row.type === 'TEXT'
+        ? await provider.sendTextMessage(channel, phone, row.content)
+        : await provider.sendMediaMessage(
+            channel,
+            phone,
+            row.mediaUrl || row.content,
+            row.type,
+            row.fileName || undefined,
+            row.content
+          );
 
-      console.log(`[FORWARD] Resultado Evolution para ${row.id}:`, JSON.stringify(result));
+      console.log(`[FORWARD] Resultado ${channel.whatsappProvider || 'EVOLUTION'} para ${row.id}:`, JSON.stringify(result));
 
-      // Busca o ID em múltiplos lugares possíveis dependendo da versão/tipo da mensagem
-      const externalMessageId = 
-        result?.key?.id || 
-        result?.message?.key?.id || 
-        result?.data?.key?.id ||
-        (typeof result === 'string' ? result : null);
+      const externalMessageId = result || null;
 
         await MessageRepository.update(row.id, row.organizationId, {
         sendStatus: 'sent',
         errorMessage: null,
-        externalMessageId: externalMessageId || 'sent_via_evolution',
+        externalMessageId: externalMessageId || `sent_via_${(channel.whatsappProvider || 'EVOLUTION').toLowerCase()}`,
       });
     } catch (err: any) {
       const msg = err?.message || 'Falha desconhecida no envio';

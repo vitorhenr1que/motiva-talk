@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { evolutionProvider } from '@/services/whatsapp/evolution-provider';
+import { getWhatsAppProvider } from '@/services/whatsapp/providers';
 import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant';
 import { handleApiError } from '@/lib/api-errors';
 
@@ -43,9 +43,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Dados insuficientes para enviar a reação.' }, { status: 400 });
     }
 
-    // 2. Envia a reação via Evolution API
+    // 2. Envia a reação pelo provider configurado no canal.
     console.log(`[REACTION_API] Enviando reação "${emoji}" para a mensagem ${externalId}`);
-    const result = await evolutionProvider.sendReaction(
+    const provider = getWhatsAppProvider(channel.whatsappProvider);
+    const result = await provider.sendReaction(
       channel,
       recipient,
       externalId,

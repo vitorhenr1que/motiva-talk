@@ -10,6 +10,13 @@ export const dynamic = 'force-dynamic';
 
 const ROUTE = '/api/channels';
 
+function sanitizeChannel(channel: any) {
+  if (!channel) return channel;
+  const safeChannel = { ...channel };
+  delete safeChannel.metaAccessToken;
+  return safeChannel;
+}
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession()
@@ -38,7 +45,7 @@ export async function GET(req: Request) {
       channels = await ChannelService.listActive(organizationId, user.id)
     }
 
-    return NextResponse.json({ success: true, data: channels })
+    return NextResponse.json({ success: true, data: (channels || []).map(sanitizeChannel) })
   } catch (error) {
     return handleApiError(error, req, { route: ROUTE })
   }
