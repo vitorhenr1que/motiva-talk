@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import * as jose from 'jose'
+import type { User } from '@supabase/supabase-js'
+import { verifySupabaseAccessToken } from '@/lib/supabase-jwt'
 
 
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-const jwtSecret = process.env.SUPABASE_AUTH_JWT_SECRET
 
 interface UserOrganizationLookup {
   organizationId: string | null
@@ -85,23 +85,16 @@ export default async function proxy(req: NextRequest) {
   }
 
   log('Authenticating token')
-  let user: any = null
+  let user: User | null = null
 
-  // 1. Tentar validação local (Instantânea)
-  if (jwtSecret) {
-    try {
-      const secret = new TextEncoder().encode(jwtSecret)
-      const { payload } = await jose.jwtVerify(token, secret)
-      if (payload) {
-        user = {
-          id: payload.sub,
-          email: payload.email
-        }
-        log('Token verified locally (fast)')
-      }
-    } catch (e) {
-      log('Local verification failed, falling back to network')
+  // 1. Tentar validação criptográfica local/JWKS antes de chamar o Auth server.
+  try {
+    user = await verifySupabaseAccessToken(token)
+    if (user) {
+      log('Token verified locally (fast)')
     }
+  } catch {
+    log('Local verification failed, falling back to network')
   }
 
   // 2. Fallback para rede (Lento)
@@ -138,7 +131,7 @@ export default async function proxy(req: NextRequest) {
     try {
       userOrganization = JSON.parse(atob(cachedProfile))
       log('Profile loaded from cache')
-    } catch (e) {
+    } catch {
       log('Failed to parse cached profile')
     }
   }

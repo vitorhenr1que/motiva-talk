@@ -1,6 +1,7 @@
 import { cache } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import { verifySupabaseAccessToken } from '@/lib/supabase-jwt'
 
 export type AppUserRole = 'ADMIN' | 'SUPERVISOR' | 'AGENT' | 'OWNER'
 
@@ -68,6 +69,13 @@ export const getServerSession = cache(async () => {
   const token = cookieStore.get('sb-access-token')?.value
 
   if (!token) return null
+
+  try {
+    const verifiedUser = await verifySupabaseAccessToken(token)
+    if (verifiedUser) return verifiedUser
+  } catch {
+    // Fallback abaixo mantém compatibilidade se a verificação local/JWKS falhar.
+  }
 
   const { data: { user }, error } = await supabase.auth.getUser(token)
   
