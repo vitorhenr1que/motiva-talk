@@ -7,6 +7,8 @@ export interface Invite {
   email: string;
   role: 'ADMIN' | 'SUPERVISOR' | 'AGENT';
   token: string;
+  channelIds?: string[];
+  sectorId?: string;
   expiresAt: string;
   acceptedAt?: string | null;
   createdAt: string;

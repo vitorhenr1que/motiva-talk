@@ -14,7 +14,9 @@ import {
   MoreVertical,
   Trash2,
   Copy,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Globe,
+  Layers
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -26,6 +28,8 @@ export default function OrganizationSettingsPage() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [role, setRole] = useState<string>('AGENT');
   const [usage, setUsage] = useState<any>(null);
+  const [activeMenu, setActiveMenu] = useState<{ type: 'member' | 'invite', id: string } | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const fetchData = async () => {
     try {
@@ -69,7 +73,58 @@ export default function OrganizationSettingsPage() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (activeMenu && !(e.target as Element).closest('.action-menu-container')) {
+        setActiveMenu(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [activeMenu]);
+
+  const handleRemoveMember = async (memberId: string) => {
+    if (!confirm('Tem certeza que deseja remover este membro?')) return;
+    
+    setActionLoading(memberId);
+    try {
+      const res = await fetch(`/api/users/${memberId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setMembers(members.filter(m => m.id !== memberId));
+        fetchData(); // Update usage stats
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Erro ao remover membro');
+      }
+    } catch (error) {
+      alert('Erro de conexão');
+    } finally {
+      setActionLoading(null);
+      setActiveMenu(null);
+    }
+  };
+
+  const handleRevokeInvite = async (inviteId: string) => {
+    if (!confirm('Tem certeza que deseja revogar este convite?')) return;
+
+    setActionLoading(inviteId);
+    try {
+      const res = await fetch(`/api/organizations/invite/${inviteId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setInvites(invites.filter(i => i.id !== inviteId));
+        fetchData(); // Update usage stats
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Erro ao revogar convite');
+      }
+    } catch (error) {
+      alert('Erro de conexão');
+    } finally {
+      setActionLoading(null);
+      setActiveMenu(null);
+    }
+  };
 
   const handleCopyLink = (token: string) => {
     const url = `${window.location.origin}/invite/${token}`;
@@ -201,9 +256,30 @@ export default function OrganizationSettingsPage() {
                       {member.role}
                     </span>
                     {isAdmin && member.id !== org?.ownerId && (
-                      <button className="p-2 text-slate-300 hover:text-rose-500 transition-colors">
-                        <MoreVertical size={18} />
-                      </button>
+                      <div className="relative action-menu-container">
+                        <button 
+                          onClick={() => setActiveMenu(activeMenu?.id === member.id ? null : { type: 'member', id: member.id })}
+                          className={`p-2 rounded-xl transition-all ${activeMenu?.id === member.id ? 'bg-slate-100 text-slate-600' : 'text-slate-300 hover:text-slate-600 hover:bg-slate-50'}`}
+                        >
+                          {actionLoading === member.id ? (
+                            <Loader2 size={18} className="animate-spin" />
+                          ) : (
+                            <MoreVertical size={18} />
+                          )}
+                        </button>
+
+                        {activeMenu?.type === 'member' && activeMenu?.id === member.id && (
+                          <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-10 animate-in fade-in zoom-in-95 duration-200">
+                            <button 
+                              onClick={() => handleRemoveMember(member.id)}
+                              className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-rose-600 hover:bg-rose-50 transition-colors"
+                            >
+                              <Trash2 size={16} />
+                              Remover Membro
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -248,9 +324,30 @@ export default function OrganizationSettingsPage() {
                         <Copy size={16} />
                       </button>
                       {isAdmin && (
-                        <button className="p-2 text-slate-300 hover:text-rose-500 transition-colors">
-                          <Trash2 size={16} />
-                        </button>
+                        <div className="relative action-menu-container">
+                          <button 
+                            onClick={() => setActiveMenu(activeMenu?.id === invite.id ? null : { type: 'invite', id: invite.id })}
+                            className={`p-2 rounded-xl transition-all ${activeMenu?.id === invite.id ? 'bg-slate-100 text-slate-600' : 'text-slate-300 hover:text-slate-600 hover:bg-slate-50'}`}
+                          >
+                            {actionLoading === invite.id ? (
+                              <Loader2 size={18} className="animate-spin" />
+                            ) : (
+                              <MoreVertical size={18} />
+                            )}
+                          </button>
+
+                          {activeMenu?.type === 'invite' && activeMenu?.id === invite.id && (
+                            <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-10 animate-in fade-in zoom-in-95 duration-200">
+                              <button 
+                                onClick={() => handleRevokeInvite(invite.id)}
+                                className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-rose-600 hover:bg-rose-50 transition-colors"
+                              >
+                                <Trash2 size={16} />
+                                Revogar Convite
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -276,6 +373,33 @@ function InviteModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; onClose:
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [inviteUrl, setInviteUrl] = useState('');
+  const [sectors, setSectors] = useState<any[]>([]);
+  const [channels, setChannels] = useState<any[]>([]);
+  const [selectedSector, setSelectedSector] = useState('');
+  const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
+  const [fetchingData, setFetchingData] = useState(true);
+
+  useEffect(() => {
+    if (isOpen) {
+      const fetchData = async () => {
+        try {
+          const [secRes, chanRes] = await Promise.all([
+            fetch('/api/sectors'),
+            fetch('/api/channels')
+          ]);
+          const secData = await secRes.json();
+          const chanData = await chanRes.json();
+          if (secData.success) setSectors(secData.data || []);
+          if (chanData.success) setChannels(chanData.data || []);
+        } catch (e) {
+          console.error('Error fetching modal data:', e);
+        } finally {
+          setFetchingData(false);
+        }
+      };
+      fetchData();
+    }
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -286,7 +410,12 @@ function InviteModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; onClose:
       const res = await fetch('/api/organizations/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, role }),
+        body: JSON.stringify({ 
+          email, 
+          role, 
+          sectorId: selectedSector || null, 
+          channelIds: selectedChannels 
+        }),
       });
 
       const data = await res.json();
@@ -305,8 +434,8 @@ function InviteModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; onClose:
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-white rounded-[32px] w-full max-w-md p-8 shadow-2xl ring-1 ring-slate-900/10 scale-in-center">
-        <div className="flex items-center justify-between mb-8">
+      <div className="bg-white rounded-[32px] w-full max-w-lg p-8 shadow-2xl ring-1 ring-slate-900/10 scale-in-center max-h-[90vh] overflow-y-auto custom-scrollbar">
+        <div className="flex items-center justify-between mb-8 sticky top-0 bg-white z-10 pb-2">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-blue-50 rounded-2xl text-blue-600">
               <UserPlus size={24} />
@@ -374,13 +503,13 @@ function InviteModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; onClose:
 
             <div className="space-y-2">
               <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Cargo / Role</label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 {['AGENT', 'SUPERVISOR', 'ADMIN'].map((r) => (
                   <button
                     key={r}
                     type="button"
                     onClick={() => setRole(r)}
-                    className={`py-3 px-4 rounded-xl text-xs font-black uppercase tracking-widest border transition-all ${
+                    className={`py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
                       role === r 
                         ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200' 
                         : 'bg-white border-slate-200 text-slate-500 hover:border-blue-400'
@@ -389,6 +518,63 @@ function InviteModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; onClose:
                     {r}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Setor / Departamento</label>
+              <select
+                value={selectedSector}
+                onChange={(e) => setSelectedSector(e.target.value)}
+                className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 transition-all outline-none appearance-none cursor-pointer"
+              >
+                <option value="">Selecione um setor...</option>
+                {sectors.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Canais Permitidos</label>
+              <div className="grid grid-cols-1 gap-2">
+                {channels.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic ml-1">Nenhum canal configurado.</p>
+                ) : (
+                  channels.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedChannels(prev => 
+                          prev.includes(c.id) 
+                            ? prev.filter(id => id !== c.id) 
+                            : [...prev, c.id]
+                        )
+                      }}
+                      className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
+                        selectedChannels.includes(c.id)
+                          ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                          : 'border-slate-100 bg-slate-50 text-slate-500 hover:border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 text-left">
+                        <div className={`p-2 rounded-lg ${selectedChannels.includes(c.id) ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-400'}`}>
+                          <Globe size={14} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold">{c.name}</p>
+                          <p className="text-[10px] opacity-70">{c.phoneNumber}</p>
+                        </div>
+                      </div>
+                      <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                        selectedChannels.includes(c.id) ? 'border-blue-600 bg-blue-600' : 'border-slate-300'
+                      }`}>
+                        {selectedChannels.includes(c.id) && <CheckCircle2 size={12} className="text-white" />}
+                      </div>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
 

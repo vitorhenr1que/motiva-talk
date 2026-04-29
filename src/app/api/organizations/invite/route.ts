@@ -11,7 +11,7 @@ import { LimitsService } from '@/services/limits.service';
 export async function POST(request: Request) {
   try {
     const user = await requireAdminOrOwner();
-    const { email, role } = await request.json();
+    const { email, role, channelIds, sectorId } = await request.json();
 
     if (!email) {
       return NextResponse.json({ error: 'E-mail é obrigatório' }, { status: 400 });
@@ -23,7 +23,9 @@ export async function POST(request: Request) {
     const invite = await inviteRepository.create({
       organizationId,
       email,
-      role: role || 'AGENT'
+      role: role || 'AGENT',
+      channelIds: channelIds || [],
+      sectorId: sectorId || null
     });
 
     // In a real SaaS, we would send an email here.

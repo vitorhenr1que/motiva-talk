@@ -1,18 +1,23 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import * as jose from 'jose'
 
 
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const jwtSecret = process.env.SUPABASE_AUTH_JWT_SECRET
 
 interface UserOrganizationLookup {
   organizationId: string | null
   isPlatformAdmin: boolean | null
   organization: { id: string; status: string | null } | null
 }
+
+const CACHE_COOKIE_NAME = 'mt-org-cache'
+const CACHE_TTL = 60 * 5 // 5 minutos
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -80,41 +85,86 @@ export default async function proxy(req: NextRequest) {
   }
 
   log('Authenticating token')
-  const { data: { user }, error } = await supabase.auth.getUser(token)
+  let user: any = null
 
-  if (error || !user?.email) {
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json(
-        { success: false, message: 'Não autorizado', code: 'AUTH_REQUIRED' },
-        { status: 401 }
-      )
+  // 1. Tentar validação local (Instantânea)
+  if (jwtSecret) {
+    try {
+      const secret = new TextEncoder().encode(jwtSecret)
+      const { payload } = await jose.jwtVerify(token, secret)
+      if (payload) {
+        user = {
+          id: payload.sub,
+          email: payload.email
+        }
+        log('Token verified locally (fast)')
+      }
+    } catch (e) {
+      log('Local verification failed, falling back to network')
     }
+  }
 
-    const url = req.nextUrl.clone()
-    url.pathname = '/login'
-    url.searchParams.set('redirect', pathname)
-    return NextResponse.redirect(url)
+  // 2. Fallback para rede (Lento)
+  if (!user) {
+    const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(token)
+    if (error || !supabaseUser?.email) {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json(
+          { success: false, message: 'Não autorizado', code: 'AUTH_REQUIRED' },
+          { status: 401 }
+        )
+      }
+
+      const url = req.nextUrl.clone()
+      url.pathname = '/login'
+      url.searchParams.set('redirect', pathname)
+      return NextResponse.redirect(url)
+    }
+    user = supabaseUser
+    log('Token verified via network (slow)')
   }
 
   log('Token authenticated, checking API route')
   // Para rotas de API, fazemos apenas o check de autenticação básico.
-  // A validação de organização e permissões será feita dentro dos handlers para evitar double-query e timeouts.
   if (pathname.startsWith('/api/')) {
     return res
   }
 
-  log('Fetching user organization profile')
-  // Para páginas, ainda fazemos o check de organização para evitar flashes de conteúdo ou redirecionar cedo.
-  // Mas usamos o ID do usuário se possível (ou e-mail como fallback)
-  const { data: appUser } = await supabaseAdmin
-    .from('User')
-    .select('organizationId, isPlatformAdmin, organization:Organization(id, status)')
-    .eq('email', user.email)
-    .maybeSingle()
-  
-  log('Profile fetched')
+  // Tentar obter perfil do cache (cookie) para evitar latência extrema
+  const cachedProfile = req.cookies.get(CACHE_COOKIE_NAME)?.value
+  let userOrganization: UserOrganizationLookup | null = null
 
-  const userOrganization = appUser as UserOrganizationLookup | null
+  if (cachedProfile) {
+    try {
+      userOrganization = JSON.parse(atob(cachedProfile))
+      log('Profile loaded from cache')
+    } catch (e) {
+      log('Failed to parse cached profile')
+    }
+  }
+
+  if (!userOrganization) {
+    log('Fetching user organization profile from DB')
+    const { data: appUser } = await supabaseAdmin
+      .from('User')
+      .select('organizationId, isPlatformAdmin, organization:Organization(id, status)')
+      .eq('id', user.id)
+      .maybeSingle()
+    
+    userOrganization = appUser as UserOrganizationLookup | null
+    log('Profile fetched from DB')
+
+    // Salvar no cache para as próximas requisições
+    if (userOrganization) {
+      const cacheValue = btoa(JSON.stringify(userOrganization))
+      res.cookies.set(CACHE_COOKIE_NAME, cacheValue, {
+        maxAge: CACHE_TTL,
+        path: '/',
+        httpOnly: true,
+        sameSite: 'lax'
+      })
+    }
+  }
   const isPlatformAdmin = userOrganization?.isPlatformAdmin === true
   const isPlatformRoute = pathname.startsWith('/platform')
 

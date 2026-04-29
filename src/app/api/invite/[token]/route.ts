@@ -75,7 +75,9 @@ export async function POST(
       id: userId,
       name,
       email: invite.email,
-      role: invite.role
+      role: invite.role,
+      channelIds: invite.channelIds,
+      sectorId: invite.sectorId
     });
 
     // 3. Marcar convite como aceito

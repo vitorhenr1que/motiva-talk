@@ -15,6 +15,20 @@ export class UserRepository {
     return (data || []).map(channel => channel.id)
   }
 
+  private static async filterSectorIdForOrganization(sectorId: string, organizationId: string) {
+    if (!sectorId) return null
+
+    const { data, error } = await supabaseAdmin
+      .from('Sector')
+      .select('id')
+      .eq('organizationId', organizationId)
+      .eq('id', sectorId)
+      .maybeSingle()
+
+    if (error) throw error
+    return data?.id || null
+  }
+
   static async findMany(organizationId: string, where?: any) {
     let query = supabaseAdmin
       .from('User')
@@ -44,7 +58,7 @@ export class UserRepository {
   }
 
   static async create(organizationId: string, data: any) {
-    const { channelIds, ...rest } = data;
+    const { channelIds, sectorId, ...rest } = data;
     const id = rest.id || generateId();
     
     const { data: newUser, error } = await supabaseAdmin
@@ -69,11 +83,25 @@ export class UserRepository {
       }
     }
 
+    if (sectorId) {
+      const validSectorId = await this.filterSectorIdForOrganization(sectorId, organizationId)
+      if (validSectorId) {
+        const { error: sError } = await supabaseAdmin
+          .from('UserSector')
+          .insert({ 
+            userId: newUser.id, 
+            sectorId: validSectorId,
+            organizationId
+          });
+        if (sError) console.error('Error linking sector:', sError);
+      }
+    }
+
     return newUser
   }
 
   static async update(id: string, organizationId: string, data: any) {
-    const { channelIds, ...rest } = data;
+    const { channelIds, sectorId, ...rest } = data;
     
     const { data: updatedUser, error } = await supabaseAdmin
       .from('User')
@@ -104,11 +132,31 @@ export class UserRepository {
       }
     }
 
+    if (sectorId !== undefined) {
+      // Sincronizar setor
+      await supabaseAdmin.from('UserSector').delete().eq('userId', id).eq('organizationId', organizationId);
+      
+      if (sectorId) {
+        const validSectorId = await this.filterSectorIdForOrganization(sectorId, organizationId)
+        if (validSectorId) {
+          const { error: sError } = await supabaseAdmin
+            .from('UserSector')
+            .insert({ 
+              userId: id, 
+              sectorId: validSectorId,
+              organizationId
+            });
+          if (sError) console.error('Error updating sector:', sError);
+        }
+      }
+    }
+
     return updatedUser
   }
 
   static async delete(id: string, organizationId: string) {
     await supabaseAdmin.from('UserChannel').delete().eq('userId', id).eq('organizationId', organizationId);
+    await supabaseAdmin.from('UserSector').delete().eq('userId', id).eq('organizationId', organizationId);
 
     const { error } = await supabaseAdmin
       .from('User')
