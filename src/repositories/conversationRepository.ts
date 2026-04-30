@@ -1,7 +1,44 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateId } from '@/lib/utils'
+import type { Channel } from '@/types/chat'
+
+type MessagingConversation = {
+  id: string;
+  channelId: string;
+  contactId: string;
+  currentSectorId: string | null;
+  contact: { id: string; name: string; phone: string } | null;
+  channel: Channel | null;
+}
 
 export class ConversationRepository {
+  private static async findHistoricalIdsViaRpc(organizationId: string, where: any, limit: number) {
+    if (where.tagId || where.search || where.assignedTo || where.startDate || where.endDate || where.currentUserId) {
+      return null;
+    }
+    if (where.allowedChannelIds && where.allowedChannelIds.length === 0) return [];
+
+    const { data, error } = await supabaseAdmin.rpc('list_historical_conversation_ids', {
+      p_organization_id: organizationId,
+      p_sector_id: where.sectorId,
+      p_channel_id: where.channelId || null,
+      p_allowed_channel_ids: where.allowedChannelIds?.length ? where.allowedChannelIds : null,
+      p_limit: limit,
+      p_cursor_last_message_at: where.cursor?.value || null,
+      p_cursor_id: where.cursor?.id || null,
+      p_cursor_pinned_at: where.cursor?.pinnedAt || null,
+    });
+
+    if (error) {
+      if (error.code !== 'PGRST202') {
+        console.warn('[CONVERSA] list_historical_conversation_ids indisponível, usando fallback:', error.message);
+      }
+      return null;
+    }
+
+    return ((data || []) as Array<{ id: string }>).map((row) => row.id);
+  }
+
   static async findMany(organizationId: string, where: any) {
     const limit = where.limit || 15
 
@@ -118,13 +155,17 @@ export class ConversationRepository {
       if (where.sectorId === 'UNASSIGNED') {
         query = query.is('currentSectorId', null);
       } else if (where.historical) {
-        const { data: pastRows } = await supabaseAdmin
-          .from('ConversationSectorHistory')
-          .select('conversationId')
-          .eq('organizationId', organizationId)
-          .eq('sectorId', where.sectorId)
-          .not('leftAt', 'is', null);
-        const pastIds = Array.from(new Set((pastRows || []).map((r: any) => r.conversationId)));
+        const rpcIds = await this.findHistoricalIdsViaRpc(organizationId, where, limit);
+        let pastIds = rpcIds;
+        if (pastIds === null) {
+          const { data: pastRows } = await supabaseAdmin
+            .from('ConversationSectorHistory')
+            .select('conversationId')
+            .eq('organizationId', organizationId)
+            .eq('sectorId', where.sectorId)
+            .not('leftAt', 'is', null);
+          pastIds = Array.from(new Set((pastRows || []).map((r: any) => r.conversationId)));
+        }
         if (pastIds.length === 0) return [];
         query = query.in('id', pastIds).neq('currentSectorId', where.sectorId);
       } else if (where.status === 'CLOSED') {
@@ -182,6 +223,22 @@ export class ConversationRepository {
    */
   static async countHistorical(organizationId: string, where: any): Promise<number> {
     if (!where.sectorId || where.sectorId === 'UNASSIGNED') return 0;
+    if (where.allowedChannelIds && where.allowedChannelIds.length === 0) return 0;
+
+    const { data: rpcCount, error: rpcError } = await supabaseAdmin.rpc('count_historical_conversations', {
+      p_organization_id: organizationId,
+      p_sector_id: where.sectorId,
+      p_channel_id: where.channelId || null,
+      p_allowed_channel_ids: where.allowedChannelIds?.length ? where.allowedChannelIds : null,
+    });
+
+    if (!rpcError && rpcCount !== null && rpcCount !== undefined) {
+      return Number(rpcCount) || 0;
+    }
+
+    if (rpcError && rpcError.code !== 'PGRST202') {
+      console.warn('[CONVERSA] count_historical_conversations indisponível, usando fallback:', rpcError.message);
+    }
 
     const { data: pastRows, error: pastError } = await supabaseAdmin
       .from('ConversationSectorHistory')
@@ -420,6 +477,22 @@ export class ConversationRepository {
     return data
   }
 
+  static async findByIdForMessaging(id: string, organizationId: string): Promise<MessagingConversation> {
+    const { data, error } = await supabaseAdmin
+      .from('Conversation')
+      .select(`
+        id, channelId, contactId, currentSectorId,
+        contact:Contact(id, name, phone),
+        channel:Channel(*)
+      `)
+      .eq('id', id)
+      .eq('organizationId', organizationId)
+      .single()
+
+    if (error) throw error
+    return data as unknown as MessagingConversation
+  }
+
   static async create(organizationId: string, data: any) {
     const { data: newConversation, error } = await supabaseAdmin
       .from('Conversation')
@@ -454,6 +527,17 @@ export class ConversationRepository {
 
     if (error) throw error
     return updatedConversation
+  }
+
+  static async updateFields(id: string, organizationId: string, data: any) {
+    const { error } = await supabaseAdmin
+      .from('Conversation')
+      .update(data)
+      .eq('id', id)
+      .eq('organizationId', organizationId)
+
+    if (error) throw error
+    return true
   }
 
   static async findActive(contactId: string, channelId: string, organizationId: string) {

@@ -3,6 +3,7 @@ import {
   organizationRepository,
   type OrganizationStatus,
 } from '@/repositories/organizationRepository';
+import { BillingRepository } from '@/repositories/billingRepository';
 import { BillingService } from '@/services/billing.service';
 
 export interface OrganizationUsage {
@@ -114,19 +115,20 @@ export class LimitsService {
     serviceConversations: number;
     maxServiceConversations: number | null;
   }> {
-    const [limits, usage] = await Promise.all([
-      BillingService.getPlanLimits(organizationId),
-      BillingService.getMonthlyUsage(organizationId),
-    ]);
+    const limits = await BillingService.getPlanLimits(organizationId);
+    const { periodStart } = BillingService.getMonthRangeUtc();
+    const metric = await BillingRepository.getUsageMetric(organizationId, periodStart);
 
     const max = limits.maxMessagesPerMonth;
-    const current = usage.messages;
+    const current = metric?.value ?? 0;
 
     return {
       overQuota: max !== null && current >= max,
       current,
       max,
-      serviceConversations: usage.serviceConversations,
+      // Mantido barato para o webhook: a cota de conversas é validada no fluxo
+      // openServiceConversationWindow, não neste log informativo.
+      serviceConversations: 0,
       maxServiceConversations: limits.maxServiceConversationsPerCycle,
     };
   }

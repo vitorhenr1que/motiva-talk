@@ -72,6 +72,28 @@ export class MessageRepository {
     return data;
   }
 
+  static async findMediaByConversation(conversationId: string, organizationId: string) {
+    const { data, error } = await supabaseAdmin
+      .from('Message')
+      .select('id, mediaUrl, thumbnailUrl')
+      .eq('conversationId', conversationId)
+      .eq('organizationId', organizationId);
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async countByConversation(conversationId: string, organizationId: string) {
+    const { count, error } = await supabaseAdmin
+      .from('Message')
+      .select('id', { count: 'exact', head: true })
+      .eq('conversationId', conversationId)
+      .eq('organizationId', organizationId);
+
+    if (error) throw error;
+    return count ?? 0;
+  }
+
   static async findById(id: string, organizationId: string) {
     const { data, error } = await supabaseAdmin
       .from('Message')
@@ -163,7 +185,11 @@ export class MessageRepository {
   static async findScheduledReady(organizationId: string, limit: number = 10) {
     const { data, error } = await supabaseAdmin
       .from('Message')
-      .select('*')
+      .select(`
+        id, conversationId, channelId, content, type, mediaUrl, fileName,
+        mimeType, fileSize, thumbnailUrl, duration, replyToMessageId,
+        replyToMessage:replyToMessageId(externalMessageId)
+      `)
       .eq('organizationId', organizationId)
       .eq('sendStatus', 'scheduled')
       .lte('scheduledAt', new Date().toISOString())

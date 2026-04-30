@@ -237,8 +237,7 @@ export class ConversationService {
     const filesRemoved = await MessageService.deleteAllMediaByConversation(id, organizationId);
     
     // 3. Obter contagem de mensagens para log
-    const allMessages = await MessageRepository.findAllByConversation(id, organizationId);
-    const messagesCount = allMessages.length;
+    const messagesCount = await MessageRepository.countByConversation(id, organizationId);
 
     // 4. Desvincular Feedbacks (Importante: manter o feedback mas remover a FK da conversa que será deletada)
     await FeedbackRepository.nullifyConversation(id, organizationId);

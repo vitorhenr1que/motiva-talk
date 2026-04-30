@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await supabaseAdmin
       .from('Message')
-      .select('*')
+      .select('id, content, scheduledAt, sendStatus, type')
       .eq('conversationId', conversationId)
       .eq('organizationId', organizationId)
       .eq('sendStatus', 'scheduled')

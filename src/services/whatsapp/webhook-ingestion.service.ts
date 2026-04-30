@@ -25,20 +25,8 @@ export class WebhookIngestionService {
       return;
     }
 
-    // Mensagens recebidas NUNCA são bloqueadas por quota — perderíamos dados
-    // do cliente. Apenas sinalizamos no log para o Super Admin acompanhar.
-    try {
-      const { LimitsService } = await import('@/services/limits.service');
-      const status = await LimitsService.getMonthlyMessageStatus(organizationId);
-      if (status.overQuota) {
-        console.warn(
-          `[INGEST][OVER_QUOTA] org=${organizationId} channel=${channelId} ` +
-          `monthlyMessages=${status.current}/${status.max} — recebendo mesmo assim.`
-        );
-      }
-    } catch (e: any) {
-      console.error(`[INGEST] erro ao consultar quota org=${organizationId}:`, e?.message || e);
-    }
+    // Mensagens recebidas nunca são bloqueadas por quota; evitar consulta de uso
+    // aqui reduz I/O no caminho mais quente do webhook.
 
     let finalMediaUrl = event.mediaUrl;
     let finalMimeType = event.mimeType || 'application/octet-stream';
@@ -239,12 +227,14 @@ export class WebhookIngestionService {
       const { data: lastConversations } = await supabaseAdmin
         .from('Conversation')
         .select(`
-          *,
-          contact:Contact(*),
-          channel:Channel(*),
-          agent:User(*),
-          sector:Sector!Conversation_currentSectorId_fkey(*),
-          tags:ConversationTag(*, tag:Tag(*))
+          id,
+          status,
+          unreadCount,
+          currentSectorId,
+          createdAt,
+          channelId,
+          contactId,
+          lastMessageAt
         `)
         .eq('organizationId', organizationId)
         .eq('contactId', contact.id)
@@ -252,7 +242,7 @@ export class WebhookIngestionService {
         .order('lastMessageAt', { ascending: false })
         .limit(1);
 
-      let conversation = lastConversations?.[0];
+      let conversation: any = lastConversations?.[0] || null;
 
       if (!conversation) {
         console.log(`[INGEST] Criando nova conversa org=${organizationId}...`);
@@ -332,7 +322,7 @@ export class WebhookIngestionService {
             console.log(
               `[INGEST] Movendo conversa ${conversation.id} para triagem ${initialSectorId} (org=${organizationId})`
             );
-            await ConversationRepository.update(conversation.id, organizationId, {
+            await ConversationRepository.updateFields(conversation.id, organizationId, {
               currentSectorId: initialSectorId,
             });
 
@@ -451,7 +441,7 @@ export class WebhookIngestionService {
         console.log(`[INGEST] unreadCount=${updateData.unreadCount} conv=${conversation.id}`);
       }
 
-      await ConversationRepository.update(conversation.id, organizationId, updateData);
+      await ConversationRepository.updateFields(conversation.id, organizationId, updateData);
 
       if (senderType === 'USER') {
         const { MessageService } = await import('@/services/messages');
@@ -595,7 +585,7 @@ export class WebhookIngestionService {
           ]);
       }
 
-      await ConversationRepository.update(conversation.id, organizationId, {
+      await ConversationRepository.updateFields(conversation.id, organizationId, {
         lastMessageAt: now.toISOString(),
         lastMessagePreview: settings.message.substring(0, 100),
       });

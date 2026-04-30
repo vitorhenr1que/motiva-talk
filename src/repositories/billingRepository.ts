@@ -322,6 +322,22 @@ export class BillingRepository {
   }
 
   static async incrementUsageMetric(organizationId: string, periodStart: string, periodEnd: string) {
+    const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc('increment_usage_metric', {
+      p_organization_id: organizationId,
+      p_period_start: periodStart,
+      p_period_end: periodEnd,
+    });
+
+    if (!rpcError && rpcData) {
+      return rpcData as UsageMetric;
+    }
+
+    // Fallback para bancos onde a função ainda não foi aplicada.
+    // Mantém compatibilidade, mas o caminho otimizado é a RPC com upsert atômico.
+    if (rpcError && rpcError.code !== 'PGRST202') {
+      console.warn('[BILLING] increment_usage_metric indisponível, usando fallback:', rpcError.message);
+    }
+
     const existing = await this.getUsageMetric(organizationId, periodStart);
 
     if (!existing) {

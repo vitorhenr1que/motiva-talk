@@ -126,23 +126,30 @@ export class BillingService {
     return { start: periodStartIso, end: fallbackEnd, scope: 'billing_cycle' as const, subscription };
   }
 
-  static async getMonthlyUsage(organizationId: string): Promise<BillingUsage> {
+  static async getMonthlyUsage(
+    organizationId: string,
+    options: { includeLiveMessageCount?: boolean } = {}
+  ): Promise<BillingUsage> {
     try {
       const { periodStart, periodEnd, periodStartIso } = monthRangeUtc();
       const limits = await this.getPlanLimits(organizationId);
       const servicePeriod = await this.getServiceConversationPeriod(organizationId, limits.plan.code);
 
-      const [metric, liveMessages, serviceConversations, channels, users, pendingInvites] = await Promise.all([
+      const [metric, serviceConversations, channels, users, pendingInvites] = await Promise.all([
         BillingRepository.getUsageMetric(organizationId, periodStart),
-        BillingRepository.countMessagesSince(organizationId, periodStartIso),
         BillingRepository.countServiceConversations(organizationId, servicePeriod.start, servicePeriod.end),
         BillingRepository.countRows('Channel', organizationId),
         BillingRepository.countRows('User', organizationId),
         BillingRepository.countPendingInvites(organizationId),
       ]);
 
+      const metricMessages = metric?.value ?? 0;
+      const liveMessages = options.includeLiveMessageCount
+        ? await BillingRepository.countMessagesSince(organizationId, periodStartIso)
+        : null;
+
       return {
-        messages: Math.max(metric?.value ?? 0, liveMessages),
+        messages: liveMessages === null ? metricMessages : Math.max(metricMessages, liveMessages),
         serviceConversations: serviceConversations ?? 0,
         channels: channels ?? 0,
         users: users ?? 0,

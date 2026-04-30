@@ -103,7 +103,7 @@ export class MessageService {
     const getConversation = async () => {
       if (cachedConversation) return cachedConversation;
       const { ConversationRepository } = await import('@/repositories/conversationRepository');
-      cachedConversation = await ConversationRepository.findById(conversationId, organizationId);
+      cachedConversation = await ConversationRepository.findByIdForMessaging(conversationId, organizationId);
       return cachedConversation;
     };
 
@@ -290,7 +290,7 @@ export class MessageService {
       try {
         const { getWhatsAppProvider } = await import('@/services/whatsapp/providers');
         const { ConversationRepository } = await import('@/repositories/conversationRepository');
-        const conversation = await ConversationRepository.findById(message.conversationId, organizationId);
+        const conversation = await ConversationRepository.findByIdForMessaging(message.conversationId, organizationId);
         
         if (conversation && conversation.contact && conversation.channel) {
            const provider = getWhatsAppProvider(conversation.channel.whatsappProvider);
@@ -318,7 +318,7 @@ export class MessageService {
     const { ConversationRepository } = await import('@/repositories/conversationRepository');
     const { getWhatsAppProvider } = await import('@/services/whatsapp/providers');
 
-    const conversation = await ConversationRepository.findById(conversationId, organizationId);
+    const conversation = await ConversationRepository.findByIdForMessaging(conversationId, organizationId);
     if (conversation && conversation.contact && conversation.channel) {
       const provider = getWhatsAppProvider(conversation.channel.whatsappProvider);
       await provider.sendPresence(
@@ -341,7 +341,7 @@ export class MessageService {
       try {
         const { getWhatsAppProvider } = await import('@/services/whatsapp/providers');
         const { ConversationRepository } = await import('@/repositories/conversationRepository');
-        const conversation = await ConversationRepository.findById(message.conversationId, organizationId);
+        const conversation = await ConversationRepository.findByIdForMessaging(message.conversationId, organizationId);
         
         if (conversation && conversation.contact && conversation.channel) {
           const provider = getWhatsAppProvider(conversation.channel.whatsappProvider);
@@ -375,7 +375,7 @@ export class MessageService {
   static async scheduleMessage(organizationId: string, data: any) {
     const { scheduledAt, ...rest } = data;
     const { ConversationRepository } = await import('@/repositories/conversationRepository');
-    const conversation = await ConversationRepository.findById(rest.conversationId, organizationId);
+    const conversation = await ConversationRepository.findByIdForMessaging(rest.conversationId, organizationId);
     if (!conversation || conversation.channelId !== rest.channelId) {
       throw new AppError('Conversa ou canal não encontrados.', 404, 'NOT_FOUND');
     }
@@ -425,7 +425,7 @@ export class MessageService {
       try {
         const { getWhatsAppProvider } = await import('@/services/whatsapp/providers');
         const { ConversationRepository } = await import('@/repositories/conversationRepository');
-        const conversation = await ConversationRepository.findById(msg.conversationId, msg.organizationId);
+        const conversation = await ConversationRepository.findByIdForMessaging(msg.conversationId, msg.organizationId);
 
         if (!conversation || !conversation.contact || !conversation.channel) {
            throw new Error('Conversa ou canal não encontrado');
@@ -535,7 +535,7 @@ export class MessageService {
    * Retorna a quantidade de arquivos removidos
    */
   static async deleteAllMediaByConversation(conversationId: string, organizationId: string) {
-    const messages = await MessageRepository.findAllByConversation(conversationId, organizationId);
+    const messages = await MessageRepository.findMediaByConversation(conversationId, organizationId);
     
     // Identificar todos os arquivos (Media e Thumbnail)
     const pathsToRemoval: string[] = [];
