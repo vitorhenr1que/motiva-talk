@@ -102,6 +102,58 @@ export class MetaCloudProvider implements WhatsAppProvider {
     return messageId;
   }
 
+  async sendContactMessage(
+    channel: Channel,
+    to: string,
+    contact: { fullName: string; phoneNumber: string; wuid?: string },
+    quotedMessageId?: string
+  ): Promise<string> {
+    const { phoneNumberId, accessToken } = this.getCredentials(channel);
+    const url = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
+    
+    // Meta Cloud API contacts format
+    const payload: any = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: to.replace(/\D/g, ''),
+      type: "contacts",
+      contacts: [{
+        name: {
+          first_name: contact.fullName.split(' ')[0],
+          formatted_name: contact.fullName,
+          last_name: contact.fullName.split(' ').slice(1).join(' ') || ''
+        },
+        phones: [{
+          phone: contact.phoneNumber.replace(/\D/g, ''),
+          type: "WORK",
+          wa_id: (contact.wuid || contact.phoneNumber).replace(/\D/g, '')
+        }]
+      }]
+    };
+    
+    if (quotedMessageId) {
+      payload.context = { message_id: quotedMessageId };
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.error?.message || 'Failed to send Meta Cloud contact message');
+    }
+
+    const messageId = data.messages?.[0]?.id;
+    if (!messageId) throw new Error('Meta Cloud API não retornou o ID do contato enviado.');
+    return messageId;
+  }
+
   verifyWebhookChallenge(token: string, query: any): string | null {
     const mode = query['hub.mode'];
     const verifyToken = query['hub.verify_token'];

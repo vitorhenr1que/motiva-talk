@@ -139,6 +139,17 @@ export class MessageService {
             content,
             quoted?.id
           );
+        } else if (type === 'CONTACT') {
+          result = await provider.sendContactMessage(
+            conversation.channel,
+            conversation.contact.phone,
+            {
+              fullName: metadata?.contact?.fullName || content.replace('Contato: ', ''),
+              phoneNumber: metadata?.contact?.phoneNumber || metadata?.contact?.wuid || conversation.contact.phone,
+              wuid: metadata?.contact?.wuid || metadata?.contact?.phoneNumber
+            },
+            quoted?.id
+          );
         } else {
           result = await provider.sendMediaMessage(
             conversation.channel,
@@ -199,14 +210,6 @@ export class MessageService {
     if (!isActuallyInternal) {
       const { BillingService } = await import('@/services/billing.service');
       await BillingService.incrementMessageUsage(organizationId);
-    }
-
-    if (senderType === 'AGENT' || senderType === 'SYSTEM') {
-      // O gatilho de banco de dados 'on_message_insert' já atualiza automaticamente:
-      // - lastMessageAt
-      // - lastMessagePreview
-      // - unreadCount (zerando se for Agente/Sistema)
-      // - updatedAt
     }
 
     const { RealtimeService } = await import('@/services/realtime.service');
@@ -419,8 +422,6 @@ export class MessageService {
     const results = [];
     
     // Processamento com concorrência controlada
-    // Texto: até 3 simultâneos, Mídia: até 2 simultâneos
-    // Aqui usaremos uma abordagem sequencial simples ou chunks para garantir estabilidade
     for (const msg of messages) {
       try {
         const { getWhatsAppProvider } = await import('@/services/whatsapp/providers');
@@ -431,15 +432,6 @@ export class MessageService {
            throw new Error('Conversa ou canal não encontrado');
         }
 
-        const metadata = {
-          mediaUrl: msg.mediaUrl,
-          fileName: msg.fileName,
-          mimeType: msg.mimeType,
-          fileSize: msg.fileSize,
-          thumbnailUrl: msg.thumbnailUrl,
-          duration: msg.duration
-        };
-
         const provider = getWhatsAppProvider(conversation.channel.whatsappProvider);
         let response: any;
         if (!msg.type || msg.type === 'TEXT') {
@@ -447,6 +439,17 @@ export class MessageService {
             conversation.channel,
             conversation.contact.phone,
             msg.content,
+            msg.replyToMessage?.externalMessageId
+          );
+        } else if (msg.type === 'CONTACT') {
+          response = await provider.sendContactMessage(
+            conversation.channel,
+            conversation.contact.phone,
+            {
+              fullName: msg.metadata?.contact?.fullName || msg.content.replace('Contato: ', ''),
+              phoneNumber: msg.metadata?.contact?.phoneNumber || msg.metadata?.contact?.wuid || conversation.contact.phone,
+              wuid: msg.metadata?.contact?.wuid || msg.metadata?.contact?.phoneNumber
+            },
             msg.replyToMessage?.externalMessageId
           );
         } else {
@@ -472,7 +475,7 @@ export class MessageService {
 
         // Notificar via Realtime
         const { RealtimeService } = await import('@/services/realtime.service');
-        await RealtimeService.notifyMessageUpdate(msg.conversationId, { ...msg, sendStatus: 'sent' });
+        await RealtimeService.notifyMessageUpdate(msg.conversationId, { ...msg, sendStatus: 'sent', externalMessageId: externalId });
 
         results.push({ id: msg.id, success: true });
       } catch (error: any) {

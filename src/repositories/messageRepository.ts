@@ -187,7 +187,7 @@ export class MessageRepository {
       .from('Message')
       .select(`
         id, conversationId, channelId, content, type, mediaUrl, fileName,
-        mimeType, fileSize, thumbnailUrl, duration, replyToMessageId,
+        mimeType, fileSize, thumbnailUrl, duration, metadata, replyToMessageId,
         replyToMessage:replyToMessageId(externalMessageId)
       `)
       .eq('organizationId', organizationId)

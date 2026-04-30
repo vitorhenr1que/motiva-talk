@@ -12,6 +12,12 @@ export interface WhatsAppProvider {
     caption?: string,
     quotedMessageId?: string
   ): Promise<string>;
+  sendContactMessage(
+    channel: Channel,
+    to: string,
+    contact: { fullName: string; phoneNumber: string; wuid?: string },
+    quotedMessageId?: string
+  ): Promise<string>;
   parseIncomingWebhook(body: any): Promise<WebhookEvent>;
   getConnectionStatus(channel: Channel): Promise<'CONNECTED' | 'DISCONNECTED' | 'CONNECTING'>;
   connect(channel: Channel): Promise<any>;

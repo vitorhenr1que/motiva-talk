@@ -34,6 +34,23 @@ export class EvolutionProviderAdapter implements WhatsAppProvider {
     return result?.key?.id || result?.message?.key?.id || result?.id;
   }
 
+  async sendContactMessage(
+    channel: Channel,
+    to: string,
+    contact: { fullName: string; phoneNumber: string; wuid?: string },
+    quotedMessageId?: string
+  ): Promise<string> {
+    const quoted = quotedMessageId ? { id: quotedMessageId, content: '', fromMe: false } : undefined;
+    const result = await this.legacy.sendMessage(channel, to, `Contato: ${contact.fullName}`, 'CONTACT', quoted as any, {
+      contact: {
+        fullName: contact.fullName,
+        phoneNumber: contact.phoneNumber,
+        wuid: contact.wuid || contact.phoneNumber
+      }
+    });
+    return result?.key?.id || result?.message?.key?.id || result?.id;
+  }
+
   async parseIncomingWebhook(body: any): Promise<WebhookEvent> {
     return this.legacy.parseIncomingWebhook(body);
   }
