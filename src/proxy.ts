@@ -43,7 +43,7 @@ export default async function proxy(req: NextRequest) {
   }
 
   // Rotas que não precisam de autenticação
-  const publicRoutes = ['/login', '/register', '/invite', '/onboarding', '/api/auth/session']
+  const publicRoutes = ['/login', '/register', '/invite', '/onboarding', '/api/auth/session', '/api/auth/register']
   const publicRoutePrefixes = ['/register/', '/invite/', '/onboarding/', '/api/invite']
   const isPublicRoute = 
     publicRoutes.some(route => pathname === route) || 

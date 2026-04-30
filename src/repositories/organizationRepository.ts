@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { generateId } from '@/lib/utils';
 
 export type OrganizationStatus = 'ACTIVE' | 'SUSPENDED' | 'TRIAL' | 'CANCELED';
 
@@ -22,9 +23,10 @@ export interface Organization {
 
 export const organizationRepository = {
   async create(data: Partial<Organization>) {
+    const id = data.id || generateId();
     const { data: org, error } = await supabaseAdmin
       .from('Organization')
-      .insert(data)
+      .insert({ ...data, id })
       .select()
       .single();
 

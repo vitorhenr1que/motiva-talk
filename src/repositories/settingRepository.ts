@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { generateId } from '@/lib/utils'
 
 const DEFAULT_CHAT_SETTINGS = {
   autoIdentifyAgent: false,
@@ -38,9 +39,10 @@ export class SettingRepository {
   }
 
   static async createDefaultForOrganization(organizationId: string) {
+    const id = generateId();
     const { data: settings, error } = await supabaseAdmin
       .from('ChatSetting')
-      .insert([{ ...DEFAULT_CHAT_SETTINGS, organizationId }])
+      .insert([{ ...DEFAULT_CHAT_SETTINGS, id, organizationId }])
       .select()
       .single()
 
