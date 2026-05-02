@@ -9,6 +9,7 @@ import {
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
 import { QuickReplyMenu } from '@/components/quick-replies/Menu';
 import { QuickReplyManagerModal } from '@/components/quick-replies/ManagerModal';
+import { MessageTemplateMenu } from '@/components/chat/MessageTemplateMenu';
 import { ContactSelectorModal } from './ContactSelectorModal';
 import { uploadFile } from '@/lib/supabase-utils';
 import { supabase } from '@/lib/supabase';
@@ -132,6 +133,7 @@ export const MessageInput = () => {
 
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [repliesOpen, setRepliesOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
   const [contactSelectorOpen, setContactSelectorOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -201,6 +203,7 @@ export const MessageInput = () => {
 
   useEffect(() => {
     setRepliesOpen(false);
+    setTemplatesOpen(false);
     setContent('');
     setSuggestions([]);
     setSendError(null);
@@ -353,6 +356,7 @@ export const MessageInput = () => {
     if (e.key === 'Escape') {
       setAttachmentMenuOpen(false);
       setEmojiPickerOpen(false);
+      setTemplatesOpen(false);
     }
   };
 
@@ -954,7 +958,20 @@ export const MessageInput = () => {
             </div>
           )}
 
-          <button type="button" onClick={() => setRepliesOpen(true)} className="rounded-xl p-2.5 text-slate-400 hover:bg-slate-50 hover:text-blue-600 transition-all active:scale-90"><MessageSquareText size={22} /></button>
+          <button type="button" onClick={() => { setRepliesOpen(true); setTemplatesOpen(false); }} className="rounded-xl p-2.5 text-slate-400 hover:bg-slate-50 hover:text-blue-600 transition-all active:scale-90"><MessageSquareText size={22} /></button>
+          {activeConversation.channel?.whatsappProvider === 'META_CLOUD' && (
+            <button
+              type="button"
+              onClick={() => { setTemplatesOpen(true); setRepliesOpen(false); setAttachmentMenuOpen(false); }}
+              className={cn(
+                "rounded-xl p-2.5 transition-all active:scale-90",
+                templatesOpen ? "bg-slate-900 text-white shadow-lg" : "text-slate-400 hover:bg-slate-50 hover:text-blue-600"
+              )}
+              title="Templates WhatsApp"
+            >
+              <FileText size={22} />
+            </button>
+          )}
         </div>
 
         <div className="relative flex-1 group">
@@ -1046,6 +1063,12 @@ export const MessageInput = () => {
           onSelect={(replyContent) => { setContent(replyContent); setRepliesOpen(false); }} 
           onClose={() => setRepliesOpen(false)}
           onOpenManager={() => { setRepliesOpen(false); setManagerOpen(true); }}
+        />
+      )}
+      {templatesOpen && (
+        <MessageTemplateMenu
+          onClose={() => setTemplatesOpen(false)}
+          onError={setSendError}
         />
       )}
       {managerOpen && (

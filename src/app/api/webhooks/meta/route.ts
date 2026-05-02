@@ -34,6 +34,12 @@ export async function POST(req: NextRequest) {
 
       for (const change of changes) {
         const value = change?.value;
+        if (change?.field === 'message_template_status_update' || value?.message_template_id || value?.message_template_name) {
+          const { WhatsAppTemplateService } = await import("@/services/whatsapp-templates");
+          await WhatsAppTemplateService.updateStatusFromWebhook(value);
+          continue;
+        }
+
         const phoneNumberId = value?.metadata?.phone_number_id;
 
         if (!phoneNumberId || !value?.messages?.length) continue;

@@ -237,6 +237,130 @@ export class MetaCloudProvider implements WhatsAppProvider {
     return messageId;
   }
 
+  async createMessageTemplate(channel: Channel, payload: any): Promise<any> {
+    if (!channel.metaWabaId || !channel.metaAccessToken) {
+      throw new Error('Canal Meta Cloud sem WABA ID ou Access Token configurado.');
+    }
+
+    const wabaId = channel.metaWabaId.trim();
+    const accessToken = channel.metaAccessToken.trim();
+    const url = `https://graph.facebook.com/v18.0/${wabaId}/message_templates`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw this.buildGraphError('createMessageTemplate', response.status, data, {
+        wabaId: this.maskId(wabaId),
+        template: payload?.name,
+      });
+    }
+
+    return data;
+  }
+
+  async updateMessageTemplate(channel: Channel, metaTemplateId: string, payload: any): Promise<any> {
+    if (!channel.metaAccessToken) {
+      throw new Error('Canal Meta Cloud sem Access Token configurado.');
+    }
+
+    const url = `https://graph.facebook.com/v18.0/${metaTemplateId}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${channel.metaAccessToken.trim()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw this.buildGraphError('updateMessageTemplate', response.status, data, {
+        templateId: this.maskId(metaTemplateId),
+      });
+    }
+
+    return data;
+  }
+
+  async deleteMessageTemplate(channel: Channel, name: string): Promise<any> {
+    if (!channel.metaWabaId || !channel.metaAccessToken) {
+      throw new Error('Canal Meta Cloud sem WABA ID ou Access Token configurado.');
+    }
+
+    const wabaId = channel.metaWabaId.trim();
+    const url = `https://graph.facebook.com/v18.0/${wabaId}/message_templates?name=${encodeURIComponent(name)}`;
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${channel.metaAccessToken.trim()}`,
+      }
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw this.buildGraphError('deleteMessageTemplate', response.status, data, {
+        wabaId: this.maskId(wabaId),
+        template: name,
+      });
+    }
+
+    return data;
+  }
+
+  async sendTemplateMessage(
+    channel: Channel,
+    to: string,
+    template: { name: string; language: string; components?: any[] }
+  ): Promise<string> {
+    const { phoneNumberId, accessToken } = this.getCredentials(channel);
+    const url = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
+    const payload: any = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: to.replace(/\D/g, ''),
+      type: "template",
+      template: {
+        name: template.name,
+        language: { code: template.language },
+      }
+    };
+
+    if (template.components?.length) {
+      payload.template.components = template.components;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw this.buildGraphError('sendTemplateMessage', response.status, data, {
+        phoneNumberId: this.maskId(phoneNumberId),
+        to: this.maskId(payload.to),
+        template: template.name,
+      });
+    }
+
+    const messageId = data.messages?.[0]?.id;
+    if (!messageId) throw new Error('Meta Cloud API não retornou o ID da mensagem de template.');
+    return messageId;
+  }
+
   verifyWebhookChallenge(token: string, query: any): string | null {
     const mode = query['hub.mode'];
     const verifyToken = query['hub.verify_token'];

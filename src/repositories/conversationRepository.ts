@@ -60,7 +60,7 @@ export class ConversationRepository {
         conversationWindowStartedAt,
         updatedAt,
         contact:Contact(id, name, phone, profilePictureUrl),
-        channel:Channel(id, name, allowAgentNameEdit),
+        channel:Channel(id, name, allowAgentNameEdit, whatsappProvider),
         sector:Sector!Conversation_currentSectorId_fkey(id, name),
         tags:ConversationTag(tag:Tag(id, name, color, emoji))
       `)
@@ -466,7 +466,7 @@ export class ConversationRepository {
         finalizedBySectorId, pinnedAt, lastMessageAt, lastMessagePreview,
         unreadCount, assignedTo, createdAt, updatedAt, finalizedAt, conversationWindowStartedAt,
         contact:Contact(id, name, phone, profilePictureUrl),
-        channel:Channel(id, name, allowAgentNameEdit),
+        channel:Channel(id, name, allowAgentNameEdit, whatsappProvider),
         sector:Sector!Conversation_currentSectorId_fkey(id, name),
         tags:ConversationTag(tag:Tag(id, name, color, emoji))
       `)
