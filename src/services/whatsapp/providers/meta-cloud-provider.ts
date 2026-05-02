@@ -3,15 +3,49 @@ import { WhatsAppProvider } from "./whatsapp-provider";
 import { WebhookEvent } from "../provider";
 
 export class MetaCloudProvider implements WhatsAppProvider {
+  private maskId(value: string) {
+    if (!value) return '';
+    if (value.length <= 6) return '***';
+    return `${value.slice(0, 3)}***${value.slice(-3)}`;
+  }
+
   private getCredentials(channel: Channel) {
     if (!channel.metaPhoneNumberId || !channel.metaAccessToken) {
       throw new Error('Canal Meta Cloud sem Phone Number ID ou Access Token configurado.');
     }
 
     return {
-      phoneNumberId: channel.metaPhoneNumberId,
-      accessToken: channel.metaAccessToken
+      phoneNumberId: channel.metaPhoneNumberId.trim(),
+      accessToken: channel.metaAccessToken.trim()
     };
+  }
+
+  private buildGraphError(action: string, status: number, data: any, context: Record<string, unknown>) {
+    const error = data?.error || {};
+    const details = error?.error_data?.details || error?.error_user_msg || error?.message;
+    const parts = [
+      `${action} falhou na Meta Cloud API`,
+      `http=${status}`,
+      error.code ? `code=${error.code}` : null,
+      error.error_subcode ? `subcode=${error.error_subcode}` : null,
+      error.type ? `type=${error.type}` : null,
+      error.fbtrace_id ? `fbtrace_id=${error.fbtrace_id}` : null,
+      details ? `details=${details}` : null,
+    ].filter(Boolean);
+
+    console.error('[META_CLOUD_PROVIDER] Graph API error:', {
+      action,
+      status,
+      code: error.code,
+      subcode: error.error_subcode,
+      type: error.type,
+      message: error.message,
+      details,
+      fbtraceId: error.fbtrace_id,
+      ...context,
+    });
+
+    return new Error(parts.join(' | '));
   }
 
   async sendTextMessage(channel: Channel, to: string, text: string, quotedMessageId?: string): Promise<string> {
@@ -40,7 +74,10 @@ export class MetaCloudProvider implements WhatsAppProvider {
 
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data?.error?.message || 'Failed to send Meta Cloud message');
+      throw this.buildGraphError('sendTextMessage', response.status, data, {
+        phoneNumberId: this.maskId(phoneNumberId),
+        to: this.maskId(payload.to),
+      });
     }
 
     const messageId = data.messages?.[0]?.id;
@@ -94,7 +131,11 @@ export class MetaCloudProvider implements WhatsAppProvider {
 
     const data = await response.json();
     if (!response.ok) {
-        throw new Error(data?.error?.message || 'Failed to send Meta Cloud media message');
+        throw this.buildGraphError('sendMediaMessage', response.status, data, {
+          phoneNumberId: this.maskId(phoneNumberId),
+          to: this.maskId(payload.to),
+          type: metaType,
+        });
     }
 
     const messageId = data.messages?.[0]?.id;
@@ -146,7 +187,10 @@ export class MetaCloudProvider implements WhatsAppProvider {
 
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data?.error?.message || 'Failed to send Meta Cloud contact message');
+      throw this.buildGraphError('sendContactMessage', response.status, data, {
+        phoneNumberId: this.maskId(phoneNumberId),
+        to: this.maskId(payload.to),
+      });
     }
 
     const messageId = data.messages?.[0]?.id;
@@ -320,7 +364,9 @@ export class MetaCloudProvider implements WhatsAppProvider {
 
     if (!response.ok) {
         const data = await response.json();
-        throw new Error(data?.error?.message || 'Failed to delete Meta Cloud message');
+        throw this.buildGraphError('deleteMessage', response.status, data, {
+          phoneNumberId: this.maskId(phoneNumberId),
+        });
     }
   }
 
@@ -360,7 +406,10 @@ export class MetaCloudProvider implements WhatsAppProvider {
 
     if (!response.ok) {
         const data = await response.json();
-        throw new Error(data?.error?.message || 'Failed to send Meta Cloud reaction');
+        throw this.buildGraphError('sendReaction', response.status, data, {
+          phoneNumberId: this.maskId(phoneNumberId),
+          to: this.maskId(payload.to),
+        });
     }
   }
 }

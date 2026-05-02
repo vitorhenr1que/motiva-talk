@@ -22,7 +22,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     validateBody(body, ['phoneNumberId', 'wabaId', 'accessToken']);
     
     const { id } = await params;
-    const { phoneNumberId, wabaId, accessToken } = body;
+    const phoneNumberId = String(body.phoneNumberId || '').trim();
+    const wabaId = String(body.wabaId || '').trim();
+    const accessToken = String(body.accessToken || '').trim();
     const metaWebhookVerifyToken = body.metaWebhookVerifyToken || `motiva_${generateId()}`;
 
     // Validate if the channel belongs to the organization
