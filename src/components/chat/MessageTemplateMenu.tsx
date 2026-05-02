@@ -236,6 +236,32 @@ const CATEGORY_LABEL: Record<MessageTemplate['category'], string> = {
   authentication: 'Autenticacao',
 }
 
+function normalizeSearchValue(value: unknown) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+function getCategoryLabel(category: MessageTemplate['category']) {
+  return CATEGORY_LABEL[category] || String(category || '')
+}
+
+function getTemplateSearchText(template: MessageTemplate) {
+  return normalizeSearchValue([
+    template.name,
+    template.bodyText,
+    template.category,
+    getCategoryLabel(template.category),
+    template.language,
+    template.status,
+    STATUS_LABEL[template.status],
+    template.header?.type === 'text' ? template.header.text : '',
+    template.footerText,
+    ...(template.buttons || []).map(button => button.text),
+  ].join(' '))
+}
+
 const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-800 outline-none transition-all placeholder:text-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
 const labelClass = 'mb-1.5 block text-[10px] font-black uppercase tracking-widest text-slate-400'
 
@@ -432,12 +458,9 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
   }, [channelId])
 
   const filtered = useMemo(() => {
-    const s = search.trim().toLowerCase()
-    return templates.filter(template =>
-      template.name.toLowerCase().includes(s) ||
-      template.bodyText.toLowerCase().includes(s) ||
-      template.category.toLowerCase().includes(s)
-    )
+    const s = normalizeSearchValue(search.trim())
+    if (!s) return templates
+    return templates.filter(template => getTemplateSearchText(template).includes(s))
   }, [templates, search])
 
   const formErrors = useMemo(() => validateForm(form), [form])
@@ -627,7 +650,7 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
                       <span className="truncate text-xs font-black uppercase">{template.name}</span>
                     </div>
                     <p className={cn('mt-1 text-[10px] font-black uppercase tracking-widest', selected?.id === template.id ? 'text-slate-300' : 'text-slate-400')}>
-                      {CATEGORY_LABEL[template.category]} / {template.language}
+                      {getCategoryLabel(template.category)} / {template.language}
                     </p>
                   </div>
                   <span className={cn('shrink-0 rounded-lg border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest', STATUS_STYLE[template.status])}>
@@ -869,7 +892,7 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
                     <h3 className="truncate text-xl font-black text-slate-950">{selected.name}</h3>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <span className={cn('rounded-lg border px-2 py-1 text-[10px] font-black uppercase tracking-widest', STATUS_STYLE[selected.status])}>{STATUS_LABEL[selected.status]}</span>
-                      <span className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500">{CATEGORY_LABEL[selected.category]}</span>
+                      <span className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500">{getCategoryLabel(selected.category)}</span>
                       <span className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500">{selected.language}</span>
                     </div>
                   </div>
