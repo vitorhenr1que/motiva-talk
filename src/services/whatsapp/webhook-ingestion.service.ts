@@ -18,7 +18,7 @@ export class WebhookIngestionService {
     const channelId = channel.id;
     const instanceName = channel.providerSessionId || channel.id;
 
-    if (!senderPhone || (!content && !event.mediaUrl)) {
+    if (!senderPhone || (!content && !event.mediaUrl && messageType !== 'REACTION')) {
       console.warn(
         `[INGEST] org=${organizationId} channel=${channelId} skip: missing senderPhone ou content/media`
       );
@@ -360,27 +360,46 @@ export class WebhookIngestionService {
         );
 
         if (targetExternalId) {
-          const { data: targetMsg } = await supabaseAdmin
+          let { data: targetMsg } = await supabaseAdmin
             .from('Message')
-            .select('id, reactions')
+            .select('id, conversationId, reactions')
             .eq('externalMessageId', targetExternalId)
             .eq('organizationId', organizationId)
             .maybeSingle();
 
+          if (!targetMsg) {
+            const { data: metadataTargetMsg } = await supabaseAdmin
+              .from('Message')
+              .select('id, conversationId, reactions')
+              .filter('metadata->>id', 'eq', targetExternalId)
+              .eq('organizationId', organizationId)
+              .maybeSingle();
+            targetMsg = metadataTargetMsg;
+          }
+
           if (targetMsg) {
             const currentReactions = Array.isArray(targetMsg.reactions) ? targetMsg.reactions : [];
-            const newReactions = [
-              ...currentReactions,
-              { emoji: content, sender: senderPhone, timestamp: event.timestamp },
-            ];
+            const otherReactions = currentReactions.filter((reaction: any) => reaction.sender !== senderPhone);
+            const newReactions = content
+              ? [
+                  ...otherReactions,
+                  { emoji: content, sender: senderPhone, timestamp: event.timestamp },
+                ]
+              : otherReactions;
 
-            await supabaseAdmin
+            const { data: updatedMsg } = await supabaseAdmin
               .from('Message')
               .update({ reactions: newReactions })
               .eq('id', targetMsg.id)
-              .eq('organizationId', organizationId);
+              .eq('organizationId', organizationId)
+              .select()
+              .single();
 
             console.log(`[INGEST] Reação persistida em ${targetMsg.id} (org=${organizationId})`);
+            if (updatedMsg) {
+              const { RealtimeService } = await import('@/services/realtime.service');
+              await RealtimeService.notifyMessageUpdate(targetMsg.conversationId, updatedMsg);
+            }
             return { conversation };
           }
         }

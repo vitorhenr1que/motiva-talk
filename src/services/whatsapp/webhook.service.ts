@@ -73,12 +73,22 @@ export class WebhookService {
       console.log(`[WEBHOOK_DEBUG] Quoted Message external ID detectado: ${quotedId}`);
 
       // 2. Buscar a mensagem original SEMPRE escopada na organização do canal resolvido.
-      const { data: originalMsg } = await supabaseAdmin
+      let { data: originalMsg } = await supabaseAdmin
         .from('Message')
         .select('id')
         .eq('externalMessageId', quotedId)
         .eq('organizationId', channel.organizationId)
         .maybeSingle();
+
+      if (!originalMsg) {
+        const { data: metadataMsg } = await supabaseAdmin
+          .from('Message')
+          .select('id')
+          .filter('metadata->>id', 'eq', quotedId)
+          .eq('organizationId', channel.organizationId)
+          .maybeSingle();
+        originalMsg = metadataMsg;
+      }
 
       if (originalMsg) {
         event.metadata.resolvedReplyToId = originalMsg.id;

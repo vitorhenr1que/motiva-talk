@@ -291,6 +291,10 @@ export class MetaCloudProvider implements WhatsAppProvider {
             type = 'LOCATION';
             content = `📍 ${message.location?.name || 'Localização'}: ${message.location?.address || ''} (${message.location?.latitude}, ${message.location?.longitude})`;
             break;
+        case 'reaction':
+            type = 'REACTION';
+            content = message.reaction?.emoji || '';
+            break;
         default:
             type = 'SYSTEM';
             content = `[Mensagem do tipo ${message.type} não suportada]`;
@@ -304,8 +308,10 @@ export class MetaCloudProvider implements WhatsAppProvider {
       content,
       messageType: type,
       timestamp: parseInt(message.timestamp) * 1000,
+      targetMessageId: message.reaction?.message_id,
       metadata: {
         ...message,
+        externalId: message.id,
         fromMe: false,
         quotedMessageExternalId: message.context?.id
       },
