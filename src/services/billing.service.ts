@@ -89,13 +89,16 @@ export class BillingService {
   }
 
   static async getPlanLimits(organizationId: string): Promise<PlanLimits> {
-    const plan = await this.getCurrentPlan(organizationId);
+    const [plan, org] = await Promise.all([
+      this.getCurrentPlan(organizationId),
+      organizationRepository.findById(organizationId),
+    ]);
 
     return {
       plan,
-      maxChannels: plan.maxChannels ?? null,
-      maxUsers: plan.maxUsers ?? null,
-      maxMessagesPerMonth: plan.maxMessagesPerMonth ?? null,
+      maxChannels: org?.maxChannels !== undefined ? org.maxChannels ?? null : plan.maxChannels ?? null,
+      maxUsers: org?.maxUsers !== undefined ? org.maxUsers ?? null : plan.maxUsers ?? null,
+      maxMessagesPerMonth: org?.maxMsgPerMonth !== undefined ? org.maxMsgPerMonth ?? null : plan.maxMessagesPerMonth ?? null,
       serviceConversationQuotaEnabled: plan.serviceConversationQuotaEnabled ?? true,
       maxServiceConversationsPerCycle: plan.maxServiceConversationsPerCycle ?? null,
       serviceConversationWindowHours: plan.serviceConversationWindowHours ?? 24,
