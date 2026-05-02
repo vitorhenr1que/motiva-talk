@@ -1,6 +1,8 @@
 import { MessageRepository } from '@/repositories/messageRepository'
 import { AppError } from '@/lib/api-errors';
 
+const CONVERSATION_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 export interface CreateMessageData {
   conversationId: string;
   channelId: string;
@@ -20,6 +22,23 @@ export interface CreateMessageData {
 }
 
 export class MessageService {
+  private static isConversationWindowOpen(startedAt?: string | null, nowMs = Date.now()) {
+    if (!startedAt) return false;
+    const startedMs = new Date(startedAt).getTime();
+    if (Number.isNaN(startedMs)) return false;
+    return nowMs - startedMs < CONVERSATION_WINDOW_MS;
+  }
+
+  private static assertCanSendFreeformMessage(conversation: any) {
+    if (this.isConversationWindowOpen(conversation?.conversationWindowStartedAt)) return;
+
+    throw new AppError(
+      'A janela de 24h desta conversa esta fechada. Envie um template aprovado e aguarde o cliente responder para liberar mensagens livres.',
+      403,
+      'CONVERSATION_WINDOW_CLOSED'
+    );
+  }
+
   /**
    * Lista histórico de mensagens paginado
    * Filtra mensagens apagadas (me/todos)
@@ -127,6 +146,8 @@ export class MessageService {
           throw new AppError('Canal não pertence à conversa informada.', 400, 'VALIDATION_ERROR');
         }
 
+        this.assertCanSendFreeformMessage(conversation);
+
         // Se for mídia, passamos as informações pro provider
         const providerType = resolveWhatsAppProviderType(conversation.channel);
         const provider = getWhatsAppProvider(providerType);
@@ -173,6 +194,7 @@ export class MessageService {
         }
 
       } catch (error: any) {
+        if (error instanceof AppError) throw error;
         console.error('[MSG_SERVICE] Erro ao enviar mensagem via WhatsApp provider:', error)
         throw new AppError(`Falha no envio via WhatsApp: ${error.message}`, 500, 'INTERNAL_ERROR');
       }
@@ -437,6 +459,8 @@ export class MessageService {
         if (!conversation || !conversation.contact || !conversation.channel) {
            throw new Error('Conversa ou canal não encontrado');
         }
+
+        this.assertCanSendFreeformMessage(conversation);
 
         const providerType = resolveWhatsAppProviderType(conversation.channel);
         const provider = getWhatsAppProvider(providerType);

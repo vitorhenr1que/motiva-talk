@@ -18,7 +18,7 @@ export function getConversationWindowState(
   conversation: Pick<Conversation, 'status' | 'createdAt' | 'conversationWindowStartedAt'> | null | undefined,
   nowMs = Date.now()
 ): ConversationWindowState {
-  const startedAt = conversation?.conversationWindowStartedAt || conversation?.createdAt || null;
+  const startedAt = conversation?.conversationWindowStartedAt || null;
   const startMs = startedAt ? new Date(startedAt).getTime() : Number.NaN;
 
   if (!conversation || !startedAt || Number.isNaN(startMs)) {

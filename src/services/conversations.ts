@@ -2,22 +2,10 @@ import { ConversationRepository } from '@/repositories/conversationRepository'
 import { ConversationSectorHistoryRepository } from '@/repositories/conversationSectorHistoryRepository'
 
 export class ConversationService {
-  private static isWindowExpired(startedAt?: string | null) {
-    if (!startedAt) return true;
-    const startedMs = new Date(startedAt).getTime();
-    if (Number.isNaN(startedMs)) return true;
-    return Date.now() - startedMs >= 24 * 60 * 60 * 1000;
-  }
-
   static async closeExpiredWindows(organizationId: string) {
     const expiredIds = await ConversationRepository.findExpiredActiveWindowIds(organizationId);
-    for (const id of expiredIds) {
-      try {
-        await this.updateStatus(id, 'CLOSED', organizationId);
-      } catch (error) {
-        console.error(`[CONVERSA] Falha ao finalizar janela expirada ${id}:`, error);
-      }
-    }
+    // Janela de atendimento expirada nao finaliza a conversa. Ela apenas bloqueia
+    // mensagens livres ate o cliente interagir novamente ou o canal enviar template.
     return expiredIds.length;
   }
 
@@ -150,13 +138,7 @@ export class ConversationService {
       return await ConversationRepository.findById(conversationId, organizationId);
     }
 
-    const updateData: any = { status };
-    const current = await ConversationRepository.findById(conversationId, organizationId);
-    if (!current?.conversationWindowStartedAt || this.isWindowExpired(current.conversationWindowStartedAt)) {
-      updateData.conversationWindowStartedAt = new Date().toISOString();
-    }
-
-    return await ConversationRepository.update(conversationId, organizationId, updateData);
+    return await ConversationRepository.update(conversationId, organizationId, { status });
   }
 
   /**
@@ -193,7 +175,7 @@ export class ConversationService {
       channelId: channelId,
       status: 'OPEN',
       currentSectorId: initialSectorId,
-      conversationWindowStartedAt: new Date().toISOString()
+      conversationWindowStartedAt: null
     });
 
     // Tenure inicial: o setor padrão "entrou" no momento da criação
@@ -233,13 +215,6 @@ export class ConversationService {
         .maybeSingle();
 
       if (!sector) throw new Error('Setor não encontrado');
-    }
-
-    if (data.status && data.status !== 'CLOSED') {
-      const current = await ConversationRepository.findById(id, organizationId);
-      if (!current?.conversationWindowStartedAt || this.isWindowExpired(current.conversationWindowStartedAt)) {
-        data.conversationWindowStartedAt = new Date().toISOString();
-      }
     }
 
     if (data.status === 'CLOSED') {

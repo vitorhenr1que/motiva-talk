@@ -6,7 +6,9 @@ type MessagingConversation = {
   id: string;
   channelId: string;
   contactId: string;
+  status: string;
   currentSectorId: string | null;
+  conversationWindowStartedAt: string | null;
   contact: { id: string; name: string; phone: string } | null;
   channel: Channel | null;
 }
@@ -482,7 +484,7 @@ export class ConversationRepository {
     const { data, error } = await supabaseAdmin
       .from('Conversation')
       .select(`
-        id, channelId, contactId, currentSectorId,
+        id, channelId, contactId, status, currentSectorId, conversationWindowStartedAt,
         contact:Contact(id, name, phone),
         channel:Channel(*)
       `)

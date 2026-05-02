@@ -16,6 +16,7 @@ import { supabase } from '@/lib/supabase';
 import { getFileTypeInfo, mapKindToMessageType } from '@/lib/file-type';
 import { FileKind, PendingFile } from '@/types/chat';
 import { useChatFileDrop } from '@/hooks/useChatFileDrop';
+import { getConversationWindowState } from '@/lib/conversation-window';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -45,6 +46,11 @@ type ConversationQuotaNotice = {
   title: string;
   message: string;
   cta?: string;
+};
+
+const closedWindowError = {
+  message: 'A janela de 24h esta fechada. Envie um template aprovado e aguarde o cliente responder para liberar mensagens livres.',
+  code: 'CONVERSATION_WINDOW_CLOSED',
 };
 
 /**
@@ -389,6 +395,10 @@ export const MessageInput = () => {
     }
 
     if (!content.trim() || !activeConversation || activeConversation.status === 'CLOSED') return;
+    if (getConversationWindowState(activeConversation).isExpired) {
+      setSendError(closedWindowError);
+      return;
+    }
     setSendError(null);
 
     const canEditName = activeConversation.channel?.allowAgentNameEdit ?? chatSettings.allowAgentNameEdit;
@@ -482,6 +492,10 @@ export const MessageInput = () => {
 
   const handleSendMedia = async () => {
     if (!localPendingFile || !activeConversation || activeConversation.status === 'CLOSED') return;
+    if (getConversationWindowState(activeConversation).isExpired) {
+      setSendError(closedWindowError);
+      return;
+    }
     setSendError(null);
     
     setUploading(true);
@@ -539,6 +553,10 @@ export const MessageInput = () => {
 
   const handleSendContact = async (name: string, phone: string) => {
     if (!activeConversation || activeConversation.status === 'CLOSED') return;
+    if (getConversationWindowState(activeConversation).isExpired) {
+      setSendError(closedWindowError);
+      return;
+    }
     setSendError(null);
     setAttachmentMenuOpen(false);
     setContactSelectorOpen(false);
@@ -618,6 +636,7 @@ export const MessageInput = () => {
   if (!activeConversation) return null;
 
   const isClosed = activeConversation.status === 'CLOSED';
+  const isConversationWindowClosed = getConversationWindowState(activeConversation).isExpired;
 
   // Setor selecionado é diferente do setor atual da conversa → visualização histórica somente leitura
   const isHistoricalSector = !!(
@@ -826,6 +845,18 @@ export const MessageInput = () => {
           </div>
         )}
 
+        {isConversationWindowClosed && (
+          <div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 shadow-sm">
+            <Lock size={20} className="mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em]">Janela de 24h fechada</p>
+              <p className="mt-1 text-sm font-bold leading-5">
+                Use um template aprovado. A conversa so libera mensagens livres depois que o cliente responder.
+              </p>
+            </div>
+          </div>
+        )}
+
         {sendError && (
           <div className={cn(
             "mb-4 flex items-start gap-3 rounded-2xl border p-4 shadow-sm animate-in slide-in-from-bottom-2 duration-200",
@@ -837,7 +868,11 @@ export const MessageInput = () => {
             <div className="flex min-w-0 flex-1 flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em]">
-                  {sendError.code === 'QUOTA_EXCEEDED' ? 'Upgrade necessário' : 'Falha no envio'}
+                  {sendError.code === 'QUOTA_EXCEEDED'
+                    ? 'Upgrade necessário'
+                    : sendError.code === 'CONVERSATION_WINDOW_CLOSED'
+                      ? 'Janela de 24h fechada'
+                      : 'Falha no envio'}
                 </p>
                 <p className="mt-1 text-sm font-bold leading-5">{sendError.message}</p>
               </div>

@@ -257,9 +257,11 @@ export class WebhookIngestionService {
           contactId: contact.id,
           channelId,
           currentSectorId: initialSectorId,
-          status: 'OPEN',
+          status: senderType === 'USER' ? 'OPEN' : 'CLOSED',
           lastMessageAt: new Date().toISOString(),
-          conversationWindowStartedAt: new Date(event.timestamp).toISOString(),
+          conversationWindowStartedAt: senderType === 'USER'
+            ? new Date(event.timestamp).toISOString()
+            : null,
         });
 
         const { ConversationSectorHistoryRepository } = await import(
@@ -275,16 +277,12 @@ export class WebhookIngestionService {
         console.log(
           `[INGEST] 3. Conversa criada: ${conversation.id} setor=${initialSectorId || 'NULL'} org=${organizationId}`
         );
-      } else if (conversation.status === 'CLOSED') {
+      } else if (conversation.status === 'CLOSED' && senderType === 'USER') {
         console.log(`[INGEST] Reabrindo conversa ${conversation.id} (org=${organizationId})...`);
 
         const globalSettings = await SettingRepository.findByOrganization(organizationId);
         const triageSectorId =
           channel.defaultSectorId || globalSettings?.defaultTriageSectorId || null;
-        const previousWindowStartedAt = conversation.conversationWindowStartedAt || conversation.createdAt;
-        const windowExpired = !previousWindowStartedAt ||
-          Date.now() - new Date(previousWindowStartedAt).getTime() >= 24 * 60 * 60 * 1000;
-
         const { data: reopened } = await supabaseAdmin
           .from('Conversation')
           .update({
@@ -293,9 +291,7 @@ export class WebhookIngestionService {
             finalizedBySectorId: null,
             currentSectorId: triageSectorId,
             unreadCount: 1,
-            conversationWindowStartedAt: windowExpired
-              ? new Date(event.timestamp).toISOString()
-              : previousWindowStartedAt,
+            conversationWindowStartedAt: new Date(event.timestamp).toISOString(),
           })
           .eq('id', conversation.id)
           .eq('organizationId', organizationId)
@@ -323,11 +319,7 @@ export class WebhookIngestionService {
       } else {
         console.log(`[INGEST] 3. Conversa ativa: ${conversation.id} org=${organizationId}`);
 
-        const previousWindowStartedAt = conversation.conversationWindowStartedAt || conversation.createdAt;
-        const windowExpired = !previousWindowStartedAt ||
-          Date.now() - new Date(previousWindowStartedAt).getTime() >= 24 * 60 * 60 * 1000;
-
-        if (senderType === 'USER' && windowExpired) {
+        if (senderType === 'USER') {
           await ConversationRepository.updateFields(conversation.id, organizationId, {
             conversationWindowStartedAt: new Date(event.timestamp).toISOString(),
             status: 'OPEN',
