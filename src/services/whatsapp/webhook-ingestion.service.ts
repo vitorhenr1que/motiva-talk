@@ -156,9 +156,11 @@ export class WebhookIngestionService {
 
     // --- FILTER: Only Personal Contacts (~10-15 dígitos, exclude grupos/status) ---
     const jid = metadata?.jid || '';
-    const isPersonal = jid.endsWith('@s.whatsapp.net');
+    const provider = channel.whatsappProvider || 'EVOLUTION';
+    const hasPersonalJid = jid.endsWith('@s.whatsapp.net');
     const numericOnly = senderPhone.replace(/\D/g, '');
     const hasValidLength = numericOnly.length >= 10 && numericOnly.length <= 15;
+    const isPersonal = provider === 'META_CLOUD' ? hasValidLength : hasPersonalJid;
 
     if (!isPersonal || !hasValidLength) {
       console.log(
