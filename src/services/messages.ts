@@ -1,5 +1,4 @@
 import { MessageRepository } from '@/repositories/messageRepository'
-import { Channel } from '@/types/chat';
 import { AppError } from '@/lib/api-errors';
 
 export interface CreateMessageData {
@@ -117,7 +116,7 @@ export class MessageService {
     if (!isActuallyInternal && (senderType === 'AGENT' || senderType === 'SYSTEM')) {
 
       try {
-        const { getWhatsAppProvider } = await import('@/services/whatsapp/providers')
+        const { getWhatsAppProvider, resolveWhatsAppProviderType } = await import('@/services/whatsapp/providers')
 
         const conversation = await getConversation();
         if (!conversation || !conversation.contact || !conversation.channel) {
@@ -129,7 +128,11 @@ export class MessageService {
         }
 
         // Se for mídia, passamos as informações pro provider
-        const provider = getWhatsAppProvider(conversation.channel.whatsappProvider);
+        const providerType = resolveWhatsAppProviderType(conversation.channel);
+        const provider = getWhatsAppProvider(providerType);
+        console.log(
+          `[MSG_SERVICE] Enviando mensagem via ${providerType} channel=${conversation.channel.id} conversation=${conversation.id}`
+        );
         
         let result: any;
         if (!type || type === 'TEXT') {
@@ -165,12 +168,12 @@ export class MessageService {
         externalMessageId = typeof result === 'string' ? result : (result?.key?.id || result?.message?.key?.id);
 
         if (!externalMessageId) {
-           console.error('[MSG_SERVICE] Falha ao obter ID externo da mensagem da Evolution API. Retorno bruto:', result);
-           throw new Error('A Evolution API não retornou o ID da mensagem enviada.');
+           console.error(`[MSG_SERVICE] Falha ao obter ID externo da mensagem via ${providerType}. Retorno bruto:`, result);
+           throw new Error(`O provider ${providerType} nao retornou o ID da mensagem enviada.`);
         }
 
       } catch (error: any) {
-        console.error('[MSG_SERVICE] Erro ao enviar mensagem via Evolution API:', error)
+        console.error('[MSG_SERVICE] Erro ao enviar mensagem via WhatsApp provider:', error)
         throw new AppError(`Falha no envio via WhatsApp: ${error.message}`, 500, 'INTERNAL_ERROR');
       }
     }
@@ -291,12 +294,13 @@ export class MessageService {
     // 1. Apagar no WhatsApp via Evolution API se tiver ID externo
     if (message.externalMessageId) {
       try {
-        const { getWhatsAppProvider } = await import('@/services/whatsapp/providers');
+        const { getWhatsAppProvider, resolveWhatsAppProviderType } = await import('@/services/whatsapp/providers');
         const { ConversationRepository } = await import('@/repositories/conversationRepository');
         const conversation = await ConversationRepository.findByIdForMessaging(message.conversationId, organizationId);
         
         if (conversation && conversation.contact && conversation.channel) {
-           const provider = getWhatsAppProvider(conversation.channel.whatsappProvider);
+           const providerType = resolveWhatsAppProviderType(conversation.channel);
+           const provider = getWhatsAppProvider(providerType);
            await provider.deleteMessage(
              conversation.channel, 
              conversation.contact.phone, 
@@ -319,11 +323,12 @@ export class MessageService {
    */
   static async sendPresence(conversationId: string, presence: 'composing' | 'paused', organizationId: string) {
     const { ConversationRepository } = await import('@/repositories/conversationRepository');
-    const { getWhatsAppProvider } = await import('@/services/whatsapp/providers');
+    const { getWhatsAppProvider, resolveWhatsAppProviderType } = await import('@/services/whatsapp/providers');
 
     const conversation = await ConversationRepository.findByIdForMessaging(conversationId, organizationId);
     if (conversation && conversation.contact && conversation.channel) {
-      const provider = getWhatsAppProvider(conversation.channel.whatsappProvider);
+      const providerType = resolveWhatsAppProviderType(conversation.channel);
+      const provider = getWhatsAppProvider(providerType);
       await provider.sendPresence(
         conversation.channel,
         conversation.contact.phone,
@@ -342,12 +347,13 @@ export class MessageService {
     // 1. Se for do atendente, tenta editar no WhatsApp via Evolution API
     if (message.senderType === 'AGENT' && message.externalMessageId) {
       try {
-        const { getWhatsAppProvider } = await import('@/services/whatsapp/providers');
+        const { getWhatsAppProvider, resolveWhatsAppProviderType } = await import('@/services/whatsapp/providers');
         const { ConversationRepository } = await import('@/repositories/conversationRepository');
         const conversation = await ConversationRepository.findByIdForMessaging(message.conversationId, organizationId);
         
         if (conversation && conversation.contact && conversation.channel) {
-          const provider = getWhatsAppProvider(conversation.channel.whatsappProvider);
+          const providerType = resolveWhatsAppProviderType(conversation.channel);
+          const provider = getWhatsAppProvider(providerType);
           await provider.editMessage(
             conversation.channel,
             conversation.contact.phone,
@@ -424,7 +430,7 @@ export class MessageService {
     // Processamento com concorrência controlada
     for (const msg of messages) {
       try {
-        const { getWhatsAppProvider } = await import('@/services/whatsapp/providers');
+        const { getWhatsAppProvider, resolveWhatsAppProviderType } = await import('@/services/whatsapp/providers');
         const { ConversationRepository } = await import('@/repositories/conversationRepository');
         const conversation = await ConversationRepository.findByIdForMessaging(msg.conversationId, msg.organizationId);
 
@@ -432,7 +438,11 @@ export class MessageService {
            throw new Error('Conversa ou canal não encontrado');
         }
 
-        const provider = getWhatsAppProvider(conversation.channel.whatsappProvider);
+        const providerType = resolveWhatsAppProviderType(conversation.channel);
+        const provider = getWhatsAppProvider(providerType);
+        console.log(
+          `[SCHEDULED] Enviando mensagem ${msg.id} via ${providerType} channel=${conversation.channel.id}`
+        );
         let response: any;
         if (!msg.type || msg.type === 'TEXT') {
           response = await provider.sendTextMessage(

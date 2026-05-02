@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { getWhatsAppProvider } from '@/services/whatsapp/providers';
+import { getWhatsAppProvider, resolveWhatsAppProviderType } from '@/services/whatsapp/providers';
 import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant';
 import { handleApiError } from '@/lib/api-errors';
 
@@ -45,7 +45,8 @@ export async function POST(req: Request) {
 
     // 2. Envia a reação pelo provider configurado no canal.
     console.log(`[REACTION_API] Enviando reação "${emoji}" para a mensagem ${externalId}`);
-    const provider = getWhatsAppProvider(channel.whatsappProvider);
+    const providerType = resolveWhatsAppProviderType(channel);
+    const provider = getWhatsAppProvider(providerType);
     const result = await provider.sendReaction(
       channel,
       recipient,

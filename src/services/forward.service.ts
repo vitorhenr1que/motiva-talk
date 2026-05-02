@@ -3,7 +3,7 @@ import { generateId } from '@/lib/utils';
 import { AppError } from '@/lib/api-errors';
 import { ConversationRepository } from '@/repositories/conversationRepository';
 import { MessageRepository } from '@/repositories/messageRepository';
-import { getWhatsAppProvider } from '@/services/whatsapp/providers';
+import { getWhatsAppProvider, resolveWhatsAppProviderType } from '@/services/whatsapp/providers';
 import type { Channel, MessageType } from '@/types/chat';
 
 type SendStatus = 'sending' | 'sent' | 'failed';
@@ -265,7 +265,8 @@ export class ForwardService {
     }
 
     try {
-      const provider = getWhatsAppProvider(channel.whatsappProvider);
+      const providerType = resolveWhatsAppProviderType(channel);
+      const provider = getWhatsAppProvider(providerType);
       const result = row.type === 'TEXT'
         ? await provider.sendTextMessage(channel, phone, row.content)
         : await provider.sendMediaMessage(
@@ -277,14 +278,14 @@ export class ForwardService {
             row.content
           );
 
-      console.log(`[FORWARD] Resultado ${channel.whatsappProvider || 'EVOLUTION'} para ${row.id}:`, JSON.stringify(result));
+      console.log(`[FORWARD] Resultado ${providerType} para ${row.id}:`, JSON.stringify(result));
 
       const externalMessageId = result || null;
 
         await MessageRepository.update(row.id, row.organizationId, {
         sendStatus: 'sent',
         errorMessage: null,
-        externalMessageId: externalMessageId || `sent_via_${(channel.whatsappProvider || 'EVOLUTION').toLowerCase()}`,
+        externalMessageId: externalMessageId || `sent_via_${providerType.toLowerCase()}`,
       });
     } catch (err: any) {
       const msg = err?.message || 'Falha desconhecida no envio';

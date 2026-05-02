@@ -532,8 +532,9 @@ export class WebhookIngestionService {
       );
 
       try {
-        const { getWhatsAppProvider } = await import('./providers');
-        const provider = getWhatsAppProvider((channel as any).whatsappProvider);
+        const { getWhatsAppProvider, resolveWhatsAppProviderType } = await import('./providers');
+        const providerType = resolveWhatsAppProviderType(channel);
+        const provider = getWhatsAppProvider(providerType);
         await provider.sendTextMessage(channel as any, contact.phone, settings.message);
       } catch (evoError) {
         console.error(
