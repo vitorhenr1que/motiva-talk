@@ -19,6 +19,15 @@ import { supabase } from '@/lib/supabase';
 import { ForwardMessageModal } from './ForwardMessageModal';
 import { ScheduledMessagesModal } from './ScheduledMessagesModal';
 import UnifiedTransferModal from './UnifiedTransferModal';
+import {
+  ConversationWindowAvatar,
+  ConversationWindowCountdown,
+  ConversationWindowWarning,
+} from './ConversationWindowTimer';
+import {
+  CONVERSATION_WARNING_MS,
+  getConversationWindowState,
+} from '@/lib/conversation-window';
 
 const CustomAudioPlayer = ({ url, duration, fileName, mimeType, mediaUrl }: { url: string, duration?: number, fileName?: string, mimeType?: string, mediaUrl?: string }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -254,6 +263,8 @@ export const ChatWindow = () => {
   const [showFullEmojiPicker, setShowFullEmojiPicker] = useState<string | null>(null);
   const [isScheduledModalOpen, setIsScheduledModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [conversationNowMs, setConversationNowMs] = useState(() => Date.now());
+  const [warnedConversationId, setWarnedConversationId] = useState<string | null>(null);
 
   const EMOJI_CATEGORIES = [
     { name: 'Rostos', emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕'] },
@@ -385,6 +396,37 @@ Todos os dados e mensagens serão excluídos.`;
     window.addEventListener('keydown', handleEvents);
     return () => window.removeEventListener('keydown', handleEvents);
   }, []);
+
+  useEffect(() => {
+    setConversationNowMs(Date.now());
+    const interval = window.setInterval(() => setConversationNowMs(Date.now()), 60000);
+    return () => window.clearInterval(interval);
+  }, [activeConversation?.id]);
+
+  useEffect(() => {
+    if (!activeConversation || activeConversation.status === 'CLOSED') return;
+    const windowState = getConversationWindowState(activeConversation, conversationNowMs);
+
+    if (windowState.isExpired) {
+      fetch(`/api/conversations/${activeConversation.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'CLOSED' }),
+      })
+        .then((resp) => {
+          if (resp.ok) updateConversationLocally(activeConversation.id, { status: 'CLOSED' });
+        })
+        .catch(console.error);
+      return;
+    }
+
+    if (
+      windowState.remainingMs <= CONVERSATION_WARNING_MS &&
+      warnedConversationId !== activeConversation.id
+    ) {
+      setWarnedConversationId(activeConversation.id);
+    }
+  }, [activeConversation, conversationNowMs, updateConversationLocally, warnedConversationId]);
 
   const handleFinishConversation = async () => {
     if (!activeConversation) return;
@@ -810,13 +852,17 @@ Todos os dados e mensagens serão excluídos.`;
           <>
             <div className="flex items-center gap-4 overflow-hidden">
               <div onClick={() => setIsProfileOpen(!isProfileOpen)} className={cn("flex items-center gap-4 cursor-pointer px-2 py-1 rounded-xl transition-all hover:bg-slate-50 group/header-profile shrink-0", isProfileOpen && "bg-slate-50 shadow-inner")}>
-                <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200 shadow-sm overflow-hidden text-lg font-bold text-slate-500">
+                <ConversationWindowAvatar
+                  conversation={activeConversation}
+                  nowMs={conversationNowMs}
+                  className="rounded-full bg-slate-100 flex items-center justify-center border border-slate-200 shadow-sm text-lg font-bold text-slate-500"
+                >
                    {activeConversation.contact?.profilePictureUrl ? (
                      <img src={activeConversation.contact.profilePictureUrl} className="h-full w-full object-cover" alt={activeConversation.contact.name} />
                    ) : (
                      <span className="uppercase">{activeConversation.contact?.name?.[0] || '?'}</span>
                    )}
-                </div>
+                </ConversationWindowAvatar>
                 <div className="leading-tight">
                   <div className="flex items-center gap-2">
                      <h3 className="text-sm font-bold text-slate-800 tracking-tight transition-colors truncate max-w-[150px]">{activeConversation.contact?.name}</h3>
@@ -825,6 +871,7 @@ Todos os dados e mensagens serão excluídos.`;
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className={cn("h-2 w-2 rounded-full", isClosed ? "bg-red-500" : "bg-green-500 animate-pulse")} />
                     <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none">{isClosed ? 'Atendimento Finalizado' : (activeConversation.channel?.name || 'Inbox')}</span>
+                    <ConversationWindowCountdown conversation={activeConversation} nowMs={conversationNowMs} />
                   </div>
                 </div>
               </div>
@@ -1468,6 +1515,8 @@ Todos os dados e mensagens serão excluídos.`;
           </div>
         </div>
       )}
+
+      <ConversationWindowWarning conversation={activeConversation} nowMs={conversationNowMs} />
 
       {/* Closed Warning */}
       {isClosed && (

@@ -10,12 +10,13 @@ import { formatPhone } from '@/lib/utils';
 import { formatTimeBahia, parseSafeDate } from '@/lib/date-utils';
 import { supabase } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ConversationWindowAvatar, ConversationWindowCountdown } from '@/components/chat/ConversationWindowTimer';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const MemoizedConversationItem = React.memo(({ conv, activeId, isDeleting, isPinning, onSelect, onOpenMenu, onUpdateCounts, onTogglePin }: any) => {
+const MemoizedConversationItem = React.memo(({ conv, activeId, isDeleting, isPinning, nowMs, onSelect, onOpenMenu, onUpdateCounts, onTogglePin }: any) => {
   return (
     <motion.div
       layout
@@ -45,19 +46,25 @@ const MemoizedConversationItem = React.memo(({ conv, activeId, isDeleting, isPin
           "bg-emerald-500"
         )
       )} />
-      <div className="relative h-12 w-12 shrink-0 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 shadow-sm transition-transform group-hover:scale-105 overflow-hidden border border-slate-100">
+      <ConversationWindowAvatar
+        conversation={conv}
+        nowMs={nowMs}
+        size={48}
+        className="rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 shadow-sm transition-transform group-hover:scale-105 border border-slate-100"
+      >
         {conv.contact.profilePictureUrl ? (
           <img src={conv.contact.profilePictureUrl} className="h-full w-full object-cover" alt={conv.contact.name} />
         ) : (
           conv.contact.name?.[0] || '?'
         )}
-      </div>
+      </ConversationWindowAvatar>
       <div className="flex flex-1 flex-col overflow-hidden">
         <div className="flex items-center justify-between mb-0.5">
           <span className={cn("truncate text-sm font-bold tracking-tight", (conv.unreadCount || 0) > 0 || activeId === conv.id ? "text-slate-900" : "text-slate-700")}>
             {conv.contact.name}
           </span>
           <div className="flex items-center gap-1">
+            <ConversationWindowCountdown conversation={conv} nowMs={nowMs} compact />
             <span className="text-[10px] text-slate-400 font-bold whitespace-nowrap mr-1">
               {conv.lastMessageAt ? formatTimeBahia(conv.lastMessageAt) : '---'}
             </span>
@@ -154,7 +161,9 @@ const MemoizedConversationItem = React.memo(({ conv, activeId, isDeleting, isPin
          prev.conv.status === next.conv.status &&
          prev.conv.unreadCount === next.conv.unreadCount &&
          prev.conv.lastMessagePreview === next.conv.lastMessagePreview &&
-         prev.conv.pinnedAt === next.conv.pinnedAt;
+         prev.conv.pinnedAt === next.conv.pinnedAt &&
+         prev.conv.conversationWindowStartedAt === next.conv.conversationWindowStartedAt &&
+         Math.floor(prev.nowMs / 60000) === Math.floor(next.nowMs / 60000);
 });
 
 export const Sidebar = () => {
@@ -192,6 +201,7 @@ export const Sidebar = () => {
   const [menuCoords, setMenuCoords] = useState<{ top: number, left: number } | null>(null);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [conversationNowMs, setConversationNowMs] = useState(() => Date.now());
   
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -200,6 +210,11 @@ export const Sidebar = () => {
     const handler = setTimeout(() => setDebouncedSearch(search), 500);
     return () => clearTimeout(handler);
   }, [search]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setConversationNowMs(Date.now()), 60000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   // Status mapping for API
   const getTabStatus = (tab: string) => {
@@ -604,6 +619,7 @@ export const Sidebar = () => {
               activeId={activeConversation?.id}
               isDeleting={deletingId === conv.id}
               isPinning={pinningId === conv.id}
+              nowMs={conversationNowMs}
               onSelect={setActiveConversation}
               onOpenMenu={handleOpenMenu}
               onUpdateCounts={fetchCounts}

@@ -92,6 +92,7 @@ export interface Conversation {
   lastMessagePreview?: string;
   unreadCount?: number;
   finalizedAt?: string | null;
+  conversationWindowStartedAt?: string | null;
   updatedAt?: string;
   contact: Contact;
   channel: Channel;

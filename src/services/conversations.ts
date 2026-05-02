@@ -2,6 +2,25 @@ import { ConversationRepository } from '@/repositories/conversationRepository'
 import { ConversationSectorHistoryRepository } from '@/repositories/conversationSectorHistoryRepository'
 
 export class ConversationService {
+  private static isWindowExpired(startedAt?: string | null) {
+    if (!startedAt) return true;
+    const startedMs = new Date(startedAt).getTime();
+    if (Number.isNaN(startedMs)) return true;
+    return Date.now() - startedMs >= 24 * 60 * 60 * 1000;
+  }
+
+  static async closeExpiredWindows(organizationId: string) {
+    const expiredIds = await ConversationRepository.findExpiredActiveWindowIds(organizationId);
+    for (const id of expiredIds) {
+      try {
+        await this.updateStatus(id, 'CLOSED', organizationId);
+      } catch (error) {
+        console.error(`[CONVERSA] Falha ao finalizar janela expirada ${id}:`, error);
+      }
+    }
+    return expiredIds.length;
+  }
+
   /**
    * Aplica reset de setor no fechamento da conversa.
    * Por regra de negócio, ao fechar a conversa o currentSectorId volta para o
@@ -91,6 +110,9 @@ export class ConversationService {
    * Lista conversas por filtro genérico (suporta RBAC)
    */
   static async listByFilter(organizationId: string, where: any) {
+    if (!where.historical) {
+      await this.closeExpiredWindows(organizationId);
+    }
     return await ConversationRepository.findMany(organizationId, where)
   }
 
@@ -128,13 +150,20 @@ export class ConversationService {
       return await ConversationRepository.findById(conversationId, organizationId);
     }
 
-    return await ConversationRepository.update(conversationId, organizationId, { status });
+    const updateData: any = { status };
+    const current = await ConversationRepository.findById(conversationId, organizationId);
+    if (!current?.conversationWindowStartedAt || this.isWindowExpired(current.conversationWindowStartedAt)) {
+      updateData.conversationWindowStartedAt = new Date().toISOString();
+    }
+
+    return await ConversationRepository.update(conversationId, organizationId, updateData);
   }
 
   /**
    * Busca conversa detalhada por ID
    */
   static async getById(id: string, organizationId: string) {
+    await this.closeExpiredWindows(organizationId);
     return await ConversationRepository.findById(id, organizationId)
   }
 
@@ -163,7 +192,8 @@ export class ConversationService {
       contactId: contactId,
       channelId: channelId,
       status: 'OPEN',
-      currentSectorId: initialSectorId
+      currentSectorId: initialSectorId,
+      conversationWindowStartedAt: new Date().toISOString()
     });
 
     // Tenure inicial: o setor padrão "entrou" no momento da criação
@@ -203,6 +233,13 @@ export class ConversationService {
         .maybeSingle();
 
       if (!sector) throw new Error('Setor não encontrado');
+    }
+
+    if (data.status && data.status !== 'CLOSED') {
+      const current = await ConversationRepository.findById(id, organizationId);
+      if (!current?.conversationWindowStartedAt || this.isWindowExpired(current.conversationWindowStartedAt)) {
+        data.conversationWindowStartedAt = new Date().toISOString();
+      }
     }
 
     if (data.status === 'CLOSED') {

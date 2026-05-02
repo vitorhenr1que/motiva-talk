@@ -236,7 +236,8 @@ export class WebhookIngestionService {
           createdAt,
           channelId,
           contactId,
-          lastMessageAt
+          lastMessageAt,
+          conversationWindowStartedAt
         `)
         .eq('organizationId', organizationId)
         .eq('contactId', contact.id)
@@ -258,6 +259,7 @@ export class WebhookIngestionService {
           currentSectorId: initialSectorId,
           status: 'OPEN',
           lastMessageAt: new Date().toISOString(),
+          conversationWindowStartedAt: new Date(event.timestamp).toISOString(),
         });
 
         const { ConversationSectorHistoryRepository } = await import(
@@ -279,6 +281,9 @@ export class WebhookIngestionService {
         const globalSettings = await SettingRepository.findByOrganization(organizationId);
         const triageSectorId =
           channel.defaultSectorId || globalSettings?.defaultTriageSectorId || null;
+        const previousWindowStartedAt = conversation.conversationWindowStartedAt || conversation.createdAt;
+        const windowExpired = !previousWindowStartedAt ||
+          Date.now() - new Date(previousWindowStartedAt).getTime() >= 24 * 60 * 60 * 1000;
 
         const { data: reopened } = await supabaseAdmin
           .from('Conversation')
@@ -288,6 +293,9 @@ export class WebhookIngestionService {
             finalizedBySectorId: null,
             currentSectorId: triageSectorId,
             unreadCount: 1,
+            conversationWindowStartedAt: windowExpired
+              ? new Date(event.timestamp).toISOString()
+              : previousWindowStartedAt,
           })
           .eq('id', conversation.id)
           .eq('organizationId', organizationId)
@@ -314,6 +322,22 @@ export class WebhookIngestionService {
         });
       } else {
         console.log(`[INGEST] 3. Conversa ativa: ${conversation.id} org=${organizationId}`);
+
+        const previousWindowStartedAt = conversation.conversationWindowStartedAt || conversation.createdAt;
+        const windowExpired = !previousWindowStartedAt ||
+          Date.now() - new Date(previousWindowStartedAt).getTime() >= 24 * 60 * 60 * 1000;
+
+        if (senderType === 'USER' && windowExpired) {
+          await ConversationRepository.updateFields(conversation.id, organizationId, {
+            conversationWindowStartedAt: new Date(event.timestamp).toISOString(),
+            status: 'OPEN',
+            assignedTo: null,
+            finalizedAt: null,
+            finalizedBySectorId: null,
+          });
+          conversation.conversationWindowStartedAt = new Date(event.timestamp).toISOString();
+          conversation.status = 'OPEN';
+        }
 
         if (!conversation.currentSectorId) {
           const globalSettings = await SettingRepository.findByOrganization(organizationId);

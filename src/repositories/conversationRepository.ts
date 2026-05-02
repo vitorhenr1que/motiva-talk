@@ -57,6 +57,7 @@ export class ConversationRepository {
         finalizedBySectorId,
         lastMessagePreview,
         finalizedAt,
+        conversationWindowStartedAt,
         updatedAt,
         contact:Contact(id, name, phone, profilePictureUrl),
         channel:Channel(id, name, allowAgentNameEdit),
@@ -463,7 +464,7 @@ export class ConversationRepository {
       .select(`
         id, channelId, contactId, status, currentSectorId,
         finalizedBySectorId, pinnedAt, lastMessageAt, lastMessagePreview,
-        unreadCount, assignedTo, createdAt, updatedAt, finalizedAt,
+        unreadCount, assignedTo, createdAt, updatedAt, finalizedAt, conversationWindowStartedAt,
         contact:Contact(id, name, phone, profilePictureUrl),
         channel:Channel(id, name, allowAgentNameEdit),
         sector:Sector!Conversation_currentSectorId_fkey(id, name),
@@ -491,6 +492,21 @@ export class ConversationRepository {
 
     if (error) throw error
     return data as unknown as MessagingConversation
+  }
+
+  static async findExpiredActiveWindowIds(organizationId: string, limit = 25) {
+    const expiresBefore = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data, error } = await supabaseAdmin
+      .from('Conversation')
+      .select('id')
+      .eq('organizationId', organizationId)
+      .in('status', ['OPEN', 'IN_PROGRESS'])
+      .not('conversationWindowStartedAt', 'is', null)
+      .lte('conversationWindowStartedAt', expiresBefore)
+      .limit(limit);
+
+    if (error) throw error;
+    return (data || []).map((row: any) => row.id as string);
   }
 
   static async create(organizationId: string, data: any) {
