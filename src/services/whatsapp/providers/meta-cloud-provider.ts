@@ -104,16 +104,24 @@ export class MetaCloudProvider implements WhatsAppProvider {
     };
 
     const metaType = typeMap[type] || 'document';
+    const mediaObject: Record<string, string> = {
+      link: mediaUrl,
+    };
+
+    if (caption && ['image', 'video', 'document'].includes(metaType)) {
+      mediaObject.caption = caption;
+    }
+
+    if (fileName && metaType === 'document') {
+      mediaObject.filename = fileName;
+    }
+
     const payload: any = {
       messaging_product: "whatsapp",
       recipient_type: "individual",
       to: to.replace(/\D/g, ''),
       type: metaType,
-      [metaType]: {
-        link: mediaUrl,
-        caption: caption,
-        filename: fileName
-      }
+      [metaType]: mediaObject
     };
 
     if (quotedMessageId) {
