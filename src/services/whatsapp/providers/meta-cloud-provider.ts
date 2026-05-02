@@ -2,6 +2,17 @@ import { Channel, MessageType } from "@/types/chat";
 import { WhatsAppProvider } from "./whatsapp-provider";
 import { WebhookEvent } from "../provider";
 
+type MetaWebhookMessageContext = {
+  id?: string;
+  message_id?: string;
+  messageId?: string;
+  from?: string;
+};
+
+type MetaWebhookMessageWithContext = {
+  context?: MetaWebhookMessageContext;
+};
+
 export class MetaCloudProvider implements WhatsAppProvider {
   private maskId(value: string) {
     if (!value) return '';
@@ -46,6 +57,26 @@ export class MetaCloudProvider implements WhatsAppProvider {
     });
 
     return new Error(parts.join(' | '));
+  }
+
+  private getQuotedMessageExternalId(message: MetaWebhookMessageWithContext): string | undefined {
+    const context = message?.context;
+    if (!context) return undefined;
+
+    return context.id || context.message_id || context.messageId;
+  }
+
+  private buildQuotedMessageSnapshot(message: MetaWebhookMessageWithContext) {
+    const quotedExternalId = this.getQuotedMessageExternalId(message);
+    if (!quotedExternalId) return undefined;
+
+    return {
+      stanzaId: quotedExternalId,
+      externalId: quotedExternalId,
+      quotedText: '[Mensagem respondida]',
+      quotedSender: message.context?.from || '',
+      quotedMessageType: 'UNKNOWN',
+    };
   }
 
   async sendTextMessage(channel: Channel, to: string, text: string, quotedMessageId?: string): Promise<string> {
@@ -250,6 +281,8 @@ export class MetaCloudProvider implements WhatsAppProvider {
     let content = '';
     let type: MessageType = 'TEXT';
     let mediaFields: any = {};
+    const quotedMessageExternalId = this.getQuotedMessageExternalId(message);
+    const quotedMessageSnapshot = this.buildQuotedMessageSnapshot(message);
 
     switch (message.type) {
         case 'text':
@@ -321,7 +354,8 @@ export class MetaCloudProvider implements WhatsAppProvider {
         ...message,
         externalId: message.id,
         fromMe: false,
-        quotedMessageExternalId: message.context?.id
+        quotedMessageExternalId,
+        quotedMessageSnapshot
       },
       ...mediaFields
     };

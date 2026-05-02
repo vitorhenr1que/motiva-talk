@@ -64,7 +64,7 @@ const MemoizedConversationItem = React.memo(({ conv, activeId, isDeleting, isPin
             {conv.contact.name}
           </span>
           <div className="flex items-center gap-1">
-            <ConversationWindowCountdown conversation={conv} nowMs={nowMs} compact />
+            {/* <ConversationWindowCountdown conversation={conv} nowMs={nowMs} compact /> */}
             <span className="text-[10px] text-slate-400 font-bold whitespace-nowrap mr-1">
               {conv.lastMessageAt ? formatTimeBahia(conv.lastMessageAt) : '---'}
             </span>
