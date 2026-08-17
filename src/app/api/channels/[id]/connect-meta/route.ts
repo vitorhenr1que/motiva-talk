@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ChannelRepository } from "@/repositories/channelRepository";
-import { getServerSession } from '@/lib/auth-server';
-import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant';
+import { requireAdminOrOwner } from '@/lib/tenant';
 import { AppError, handleApiError, validateBody } from '@/lib/api-errors';
 import { generateId } from '@/lib/utils';
 
@@ -11,12 +10,8 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession();
-    if (!session?.email) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-    const organizationId = await getCurrentOrganizationId();
-    if (!organizationId) throw organizationNotFoundError();
+    const user = await requireAdminOrOwner();
+    const organizationId = user.organizationId;
 
     const body = await req.json();
     validateBody(body, ['phoneNumberId', 'wabaId']);

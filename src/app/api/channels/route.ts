@@ -4,7 +4,7 @@ import { LimitsService } from '@/services/limits.service'
 import { handleApiError, validateBody } from '@/lib/api-errors'
 import { getServerSession } from '@/lib/auth-server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
+import { getCurrentOrganizationId, organizationNotFoundError, requireAdminOrOwner } from '@/lib/tenant'
 import { ChannelRepository } from '@/repositories/channelRepository'
 
 export const dynamic = 'force-dynamic';
@@ -55,9 +55,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    console.log(`[API] ${req.method} ${ROUTE}:`, body); // Simple trace
-    const organizationId = await getCurrentOrganizationId()
-    if (!organizationId) throw organizationNotFoundError()
+    const user = await requireAdminOrOwner()
+    const organizationId = user.organizationId
     
     validateBody(body, ['name', 'phoneNumber'])
 

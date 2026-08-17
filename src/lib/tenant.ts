@@ -41,7 +41,7 @@ export async function requireOrganization(): Promise<string> {
   return user.organizationId
 }
 
-export async function requireAdminOrOwner(): Promise<UserWithOrganization> {
+export async function requireAdminOrOwner(): Promise<UserWithOrganization & { organizationId: string }> {
   const user = await getCurrentUserWithOrganization()
 
   if (!user?.organizationId || !user.organization) {
@@ -52,5 +52,5 @@ export async function requireAdminOrOwner(): Promise<UserWithOrganization> {
     throw new AppError('Acesso negado', 403, 'FORBIDDEN')
   }
 
-  return user
+  return { ...user, organizationId: user.organizationId }
 }
