@@ -1,17 +1,17 @@
-import { Channel, SenderType, MessageType } from '@/types/chat';
+import { MessageType } from '@/types/chat';
 
-export interface SessionStatus {
-  status: 'PENDING' | 'QR_CODE' | 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR';
-  details?: string;
-}
-
-export interface QrCodeData {
-  base64: string;
-  code: string;
+export interface WebhookMetadata {
+  externalId?: string;
+  fromMe?: boolean;
+  quotedMessageExternalId?: string;
+  quoted?: { key?: { id?: string } };
+  quotedMessageSnapshot?: { quotedMessageType?: string; [key: string]: unknown };
+  resolvedReplyToId?: string;
+  [key: string]: unknown;
 }
 
 export interface WebhookEvent {
-  type: 'MESSAGE' | 'STATUS' | 'CONNECTION';
+  type: 'MESSAGE' | 'STATUS';
   channelId: string;
   senderPhone?: string;
   senderName?: string;
@@ -26,56 +26,5 @@ export interface WebhookEvent {
   base64?: string;
   thumbnailUrl?: string;
   targetMessageId?: string;
-  metadata?: any;
-}
-
-/**
- * Generic interface for WhatsApp providers.
- * Allows decoupling the core logic from specific APIs like Evolution API.
- */
-export interface WhatsAppProvider {
-  /**
-   * Initializes or creates a new session for a channel.
-   */
-  createSession(channel: Channel): Promise<void>;
-
-  /**
-   * Fetches the current QR code for a session that is in 'QRCODE' state.
-   */
-  getQrCode(channel: Channel): Promise<QrCodeData>;
-
-  /**
-   * Retrieves the current connectivity status of a session.
-   */
-  getSessionStatus(channel: Channel): Promise<SessionStatus>;
-
-  /**
-   * Logs out from WhatsApp but keeps the instance/session created in the provider.
-   */
-  disconnectSession(channel: Channel): Promise<void>;
-
-  /**
-   * Completely removes the instance/session from the provider.
-   */
-  deleteSession(channel: Channel): Promise<void>;
-
-  /**
-   * Standardizes incoming webhook payloads from the provider into a common format.
-   */
-  parseIncomingWebhook(payload: any): Promise<WebhookEvent>;
-
-  /**
-   * Sends a message through the provider.
-   */
-  sendMessage(channel: Channel, recipient: string, content: string, type?: MessageType): Promise<any>;
-  
-  /**
-   * Edits an existing message.
-   */
-  editMessage(channel: Channel, recipient: string, externalId: string, fromMe: boolean, newContent: string): Promise<any>;
-
-  /**
-   * Configures the webhook for the session to receive real-time notifications.
-   */
-  setWebhook(channel: Channel, url: string, events: string[]): Promise<void>;
+  metadata?: WebhookMetadata;
 }

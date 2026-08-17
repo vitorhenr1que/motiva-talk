@@ -5,14 +5,20 @@ import { Plus, Search, User as UserIcon, RefreshCw, AlertCircle } from 'lucide-r
 import { UserTable } from '@/components/users/UserTable';
 import { UserForm } from '@/components/users/UserForm';
 
+interface UserItem {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  userChannels?: Array<{ channelId: string; channel: { name: string } }>;
+}
+
 export default function UsersManagementPage() {
-  const [users, setUsers] = useState([]);
+  const [users, setUsers] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [channels, setChannels] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState(null);
-  
-  const [usage, setUsage] = useState<any>(null);
+  const [editingItem, setEditingItem] = useState<UserItem | null>(null);
   
   const [filters, setFilters] = useState({
     search: '',
@@ -21,22 +27,19 @@ export default function UsersManagementPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [uRes, chRes, usageRes] = await Promise.all([
+      const [uRes, chRes] = await Promise.all([
         fetch('/api/users'),
-        fetch('/api/channels'),
-        fetch('/api/organizations/usage')
+        fetch('/api/channels')
       ]);
 
       if (!uRes.ok) throw new Error('Acesso negado');
       
       const uData = await uRes.json();
       const chData = await chRes.json();
-      const usageData = await usageRes.json();
 
       setUsers(uData.data || []);
       setChannels(chData.data || []);
-      setUsage(usageData.data || null);
-    } catch (error) {
+    } catch {
        console.error('Failed to load users');
     } finally {
       setLoading(false);
@@ -48,12 +51,11 @@ export default function UsersManagementPage() {
   }, []);
 
   const handleCreate = () => {
-    if (isLimitReached) return;
     setEditingItem(null);
     setIsModalOpen(true);
   };
 
-  const handleEdit = (item: any) => {
+  const handleEdit = (item: UserItem) => {
     setEditingItem(item);
     setIsModalOpen(true);
   };
@@ -63,17 +65,15 @@ export default function UsersManagementPage() {
     try {
       const resp = await fetch(`/api/users/${id}`, { method: 'DELETE' });
       if (resp.ok) fetchData();
-    } catch (e) {
+    } catch {
       alert('Erro ao excluir');
     }
   };
 
-  const filteredUsers = users.filter((u: any) => 
+  const filteredUsers = users.filter((u) =>
     u.name.toLowerCase().includes(filters.search.toLowerCase()) || 
     u.email.toLowerCase().includes(filters.search.toLowerCase())
   );
-
-  const isLimitReached = usage?.maxUsers !== null && (usage?.userCount + usage?.pendingInvitesCount) >= usage?.maxUsers;
 
   return (
     <div className="flex-1 overflow-y-auto bg-slate-50/50 p-8">
@@ -89,21 +89,11 @@ export default function UsersManagementPage() {
           <div className="flex flex-col items-end gap-2">
             <button 
               onClick={handleCreate}
-              disabled={isLimitReached}
-              className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-lg transition-all active:scale-95 ${
-                isLimitReached 
-                ? 'bg-slate-400 cursor-not-allowed shadow-none' 
-                : 'bg-blue-600 shadow-blue-200 hover:bg-blue-700'
-              }`}
+              className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-200 transition-all hover:bg-blue-700 active:scale-95"
             >
               <Plus size={18} />
               Novo Usuário
             </button>
-            {isLimitReached && (
-              <span className="text-[10px] font-bold text-rose-500 bg-rose-50 px-2 py-1 rounded-md border border-rose-100 animate-pulse">
-                Limite de usuários atingido ({usage.maxUsers})
-              </span>
-            )}
           </div>
         </header>
 

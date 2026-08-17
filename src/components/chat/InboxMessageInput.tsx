@@ -41,13 +41,6 @@ async function getMessageError(resp: Response) {
   }
 }
 
-type ConversationQuotaNotice = {
-  type: 'warning' | 'exceeded';
-  title: string;
-  message: string;
-  cta?: string;
-};
-
 const closedWindowError = {
   message: 'A janela de 24h esta fechada. Envie um template aprovado e aguarde o cliente responder para liberar mensagens livres.',
   code: 'CONVERSATION_WINDOW_CLOSED',
@@ -144,11 +137,6 @@ export const MessageInput = () => {
   const [contactSelectorOpen, setContactSelectorOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [sendError, setSendError] = useState<{ message: string; code?: string } | null>(null);
-  const [quotaNotice, setQuotaNotice] = useState<ConversationQuotaNotice | null>(null);
-  const [quotaNoticeDismissed, setQuotaNoticeDismissed] = useState(false);
-  const quotaNoticeDismissKey = user?.id
-    ? `motiva_quota_notice_dismissed:${user.id}`
-    : 'motiva_quota_notice_dismissed';
   
   useEffect(() => {
     const handleGlobalDrop = (e: any) => {
@@ -204,10 +192,6 @@ export const MessageInput = () => {
   };
 
   useEffect(() => {
-    setQuotaNoticeDismissed(sessionStorage.getItem(quotaNoticeDismissKey) === 'true');
-  }, [quotaNoticeDismissKey]);
-
-  useEffect(() => {
     setRepliesOpen(false);
     setTemplatesOpen(false);
     setContent('');
@@ -217,70 +201,6 @@ export const MessageInput = () => {
     setAttachmentMenuOpen(false);
     setEditingMessage(null);
   }, [activeConversation?.id]);
-
-  const dismissQuotaNotice = () => {
-    setQuotaNoticeDismissed(true);
-    sessionStorage.setItem(quotaNoticeDismissKey, 'true');
-  };
-
-  useEffect(() => {
-    if (!activeConversation || activeConversation.status === 'CLOSED') return;
-
-    let cancelled = false;
-
-    const fetchQuota = async () => {
-      try {
-        const res = await fetch('/api/organizations/usage');
-        const data = await res.json();
-        if (!res.ok || !data.success || cancelled) return;
-
-        const max = data.data?.serviceConversationQuotaEnabled
-          ? data.data?.maxServiceConversationsPerCycle
-          : null;
-        const current = data.data?.serviceConversationCount ?? 0;
-        const planCode = data.data?.plan;
-
-        if (max === null || max === undefined) {
-          setQuotaNotice(null);
-          return;
-        }
-
-        const remaining = max - current;
-
-        if (remaining <= 0) {
-          setQuotaNotice({
-            type: 'exceeded',
-            title: 'Franquia ultrapassada',
-            message: planCode === 'FREE'
-              ? 'As mensagens continuam chegando, mas respostas de agentes estão bloqueadas até fazer upgrade.'
-              : 'As mensagens e respostas continuam ativas. O excedente será registrado para cobrança adicional.',
-            cta: planCode === 'FREE' ? 'Fazer upgrade agora' : undefined,
-          });
-          return;
-        }
-
-        if (remaining <= 50) {
-          setQuotaNotice({
-            type: 'warning',
-            title: 'Franquia quase no limite',
-            message: `Faltam ${remaining.toLocaleString('pt-BR')} conversas para atingir a franquia do plano.`,
-            cta: planCode === 'FREE' ? 'Ver planos' : undefined,
-          });
-          return;
-        }
-
-        setQuotaNotice(null);
-      } catch {
-        if (!cancelled) setQuotaNotice(null);
-      }
-    };
-
-    fetchQuota();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeConversation?.id, activeConversation?.status, messages.length]);
 
   useEffect(() => {
     if (editingMessage) {
@@ -809,42 +729,6 @@ export const MessageInput = () => {
        )}
 
       <div className="p-4">
-        {quotaNotice && !quotaNoticeDismissed && (
-          <div className={cn(
-            "mb-4 flex items-start gap-3 rounded-2xl border p-4 shadow-sm animate-in slide-in-from-bottom-2 duration-200",
-            quotaNotice.type === 'exceeded'
-              ? "border-amber-300 bg-amber-50 text-amber-950"
-              : "border-blue-200 bg-blue-50 text-blue-900"
-          )}>
-            <AlertTriangle size={20} className="mt-0.5 shrink-0" />
-            <div className="flex min-w-0 flex-1 flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em]">{quotaNotice.title}</p>
-                <p className="mt-1 text-sm font-bold leading-5">{quotaNotice.message}</p>
-              </div>
-              {quotaNotice.cta && (
-                <a
-                  href="/settings/plan"
-                  className={cn(
-                    "inline-flex shrink-0 items-center justify-center rounded-xl px-4 py-2 text-xs font-black uppercase tracking-widest text-white shadow-sm transition-all active:scale-95",
-                    quotaNotice.type === 'exceeded' ? "bg-amber-600 hover:bg-amber-700" : "bg-blue-600 hover:bg-blue-700"
-                  )}
-                >
-                  {quotaNotice.cta}
-                </a>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={dismissQuotaNotice}
-              className="rounded-xl p-1.5 opacity-60 transition-all hover:bg-white/70 hover:opacity-100"
-              title="Fechar aviso"
-            >
-              <X size={16} />
-            </button>
-          </div>
-        )}
-
         {isConversationWindowClosed && (
           <div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 shadow-sm">
             <Lock size={20} className="mt-0.5 shrink-0" />
@@ -860,30 +744,18 @@ export const MessageInput = () => {
         {sendError && (
           <div className={cn(
             "mb-4 flex items-start gap-3 rounded-2xl border p-4 shadow-sm animate-in slide-in-from-bottom-2 duration-200",
-            sendError.code === 'QUOTA_EXCEEDED'
-              ? "border-amber-200 bg-amber-50 text-amber-900"
-              : "border-red-200 bg-red-50 text-red-900"
+            "border-red-200 bg-red-50 text-red-900"
           )}>
             <AlertTriangle size={20} className="mt-0.5 shrink-0" />
             <div className="flex min-w-0 flex-1 flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em]">
-                  {sendError.code === 'QUOTA_EXCEEDED'
-                    ? 'Upgrade necessário'
-                    : sendError.code === 'CONVERSATION_WINDOW_CLOSED'
+                  {sendError.code === 'CONVERSATION_WINDOW_CLOSED'
                       ? 'Janela de 24h fechada'
                       : 'Falha no envio'}
                 </p>
                 <p className="mt-1 text-sm font-bold leading-5">{sendError.message}</p>
               </div>
-              {sendError.code === 'QUOTA_EXCEEDED' && (
-                <a
-                  href="/settings/plan"
-                  className="inline-flex shrink-0 items-center justify-center rounded-xl bg-amber-600 px-4 py-2 text-xs font-black uppercase tracking-widest text-white shadow-sm transition-all hover:bg-amber-700 active:scale-95"
-                >
-                  Fazer upgrade agora
-                </a>
-              )}
             </div>
             <button
               type="button"

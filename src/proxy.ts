@@ -12,8 +12,7 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 interface UserOrganizationLookup {
   organizationId: string | null
-  isPlatformAdmin: boolean | null
-  organization: { id: string; status: string | null } | null
+  organization: { id: string } | null
 }
 
 const CACHE_COOKIE_NAME = 'mt-org-cache'
@@ -43,8 +42,8 @@ export default async function proxy(req: NextRequest) {
   }
 
   // Rotas que não precisam de autenticação
-  const publicRoutes = ['/login', '/register', '/invite', '/onboarding', '/api/auth/session', '/api/auth/register']
-  const publicRoutePrefixes = ['/register/', '/invite/', '/onboarding/', '/api/invite']
+  const publicRoutes = ['/login', '/invite', '/api/auth/session']
+  const publicRoutePrefixes = ['/invite/', '/api/invite']
   const isPublicRoute = 
     publicRoutes.some(route => pathname === route) || 
     publicRoutePrefixes.some(route => pathname.startsWith(route)) ||
@@ -57,7 +56,7 @@ export default async function proxy(req: NextRequest) {
 
   if (isPublicRoute) {
     const token = req.cookies.get('sb-access-token')?.value
-    const guestOnlyRoutes = ['/login', '/register']
+    const guestOnlyRoutes = ['/login']
     
     if (token && guestOnlyRoutes.includes(pathname)) {
       const url = req.nextUrl.clone()
@@ -140,7 +139,7 @@ export default async function proxy(req: NextRequest) {
     log('Fetching user organization profile from DB')
     const { data: appUser } = await supabaseAdmin
       .from('User')
-      .select('organizationId, isPlatformAdmin, organization:Organization(id, status)')
+      .select('organizationId, organization:Organization(id)')
       .eq('id', user.id)
       .maybeSingle()
     
@@ -158,35 +157,11 @@ export default async function proxy(req: NextRequest) {
       })
     }
   }
-  const isPlatformAdmin = userOrganization?.isPlatformAdmin === true
-  const isPlatformRoute = pathname.startsWith('/platform')
-
-  if (isPlatformAdmin) {
-    return res
-  }
-
-  if (isPlatformRoute) {
-    const url = req.nextUrl.clone()
-    url.pathname = '/login'
-    url.searchParams.set('error', 'platform_admin_required')
-    return NextResponse.redirect(url)
-  }
-
   if (!userOrganization?.organizationId || !userOrganization.organization) {
     const url = req.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('error', 'organization_not_found')
     return NextResponse.redirect(url)
-  }
-
-  const orgStatus = userOrganization.organization.status ?? 'ACTIVE'
-  if (orgStatus !== 'ACTIVE') {
-    const url = req.nextUrl.clone()
-    url.pathname = '/login'
-    url.searchParams.set('error', 'organization_blocked')
-    const response = NextResponse.redirect(url)
-    response.cookies.delete('sb-access-token')
-    return response
   }
 
   return res

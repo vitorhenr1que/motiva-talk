@@ -3,11 +3,6 @@ import { requireAdminOrOwner } from '@/lib/tenant';
 import { inviteRepository } from '@/repositories/inviteRepository';
 import { LimitsService } from '@/services/limits.service';
 
-// IMPORTANTE: nenhum endpoint sob /api/organizations pode aceitar payloads que
-// alterem maxChannels/maxUsers/maxMsgPerMonth/status/blockedReason. Esses campos
-// são exclusivos do painel de Super Admin (/api/platform/*). ADMIN da empresa
-// nunca pode editar os próprios limites.
-
 export async function POST(request: Request) {
   try {
     const user = await requireAdminOrOwner();
@@ -28,7 +23,7 @@ export async function POST(request: Request) {
       sectorId: sectorId || null
     });
 
-    // In a real SaaS, we would send an email here.
+    // O link é entregue pelo administrador ao novo membro da equipe.
     // For now, we just return the invite details (including token/URL)
     const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL || ''}/invite/${invite.token}`;
 

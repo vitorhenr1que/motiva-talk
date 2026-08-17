@@ -1,24 +1,12 @@
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { generateId } from '@/lib/utils';
 
-export type OrganizationStatus = 'ACTIVE' | 'SUSPENDED' | 'TRIAL' | 'CANCELED';
-
 export interface Organization {
   id: string;
   name: string;
   slug: string;
   ownerId?: string | null;
-  plan: string;
   createdAt?: string;
-  status?: OrganizationStatus;
-  maxChannels?: number | null;
-  maxUsers?: number | null;
-  maxMsgPerMonth?: number | null;
-  trialEndsAt?: string | null;
-  blockedReason?: string | null;
-  enterprisePriceCents?: number | null;
-  enterpriseStripePriceId?: string | null;
-  enterpriseStripeProductId?: string | null;
 }
 
 export const organizationRepository = {

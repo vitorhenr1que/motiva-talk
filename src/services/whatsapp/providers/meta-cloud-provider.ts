@@ -14,6 +14,8 @@ type MetaWebhookMessageWithContext = {
 };
 
 export class MetaCloudProvider implements WhatsAppProvider {
+  private readonly graphVersion = process.env.META_GRAPH_API_VERSION || 'v25.0';
+
   private maskId(value: string) {
     if (!value) return '';
     if (value.length <= 6) return '***';
@@ -21,14 +23,26 @@ export class MetaCloudProvider implements WhatsAppProvider {
   }
 
   private getCredentials(channel: Channel) {
-    if (!channel.metaPhoneNumberId || !channel.metaAccessToken) {
+    const phoneNumberId = channel.metaPhoneNumberId?.trim() || process.env.META_PHONE_NUMBER_ID?.trim();
+    const accessToken = channel.metaAccessToken?.trim() || process.env.META_ACCESS_TOKEN?.trim();
+    if (!phoneNumberId || !accessToken) {
       throw new Error('Canal Meta Cloud sem Phone Number ID ou Access Token configurado.');
     }
 
-    return {
-      phoneNumberId: channel.metaPhoneNumberId.trim(),
-      accessToken: channel.metaAccessToken.trim()
-    };
+    return { phoneNumberId, accessToken };
+  }
+
+  private getTemplateCredentials(channel: Channel) {
+    const wabaId = channel.metaWabaId?.trim() || process.env.META_WABA_ID?.trim();
+    const accessToken = channel.metaAccessToken?.trim() || process.env.META_ACCESS_TOKEN?.trim();
+    if (!wabaId || !accessToken) {
+      throw new Error('Canal Meta Cloud sem WABA ID ou Access Token configurado.');
+    }
+    return { wabaId, accessToken };
+  }
+
+  private graphUrl(resource: string) {
+    return `https://graph.facebook.com/${this.graphVersion}/${resource}`;
   }
 
   private buildGraphError(action: string, status: number, data: any, context: Record<string, unknown>) {
@@ -81,7 +95,7 @@ export class MetaCloudProvider implements WhatsAppProvider {
 
   async sendTextMessage(channel: Channel, to: string, text: string, quotedMessageId?: string): Promise<string> {
     const { phoneNumberId, accessToken } = this.getCredentials(channel);
-    const url = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
+    const url = this.graphUrl(`${phoneNumberId}/messages`);
     const payload: any = {
       messaging_product: "whatsapp",
       recipient_type: "individual",
@@ -126,7 +140,7 @@ export class MetaCloudProvider implements WhatsAppProvider {
     quotedMessageId?: string
   ): Promise<string> {
     const { phoneNumberId, accessToken } = this.getCredentials(channel);
-    const url = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
+    const url = this.graphUrl(`${phoneNumberId}/messages`);
     const typeMap: Record<string, string> = {
         'IMAGE': 'image',
         'VIDEO': 'video',
@@ -189,7 +203,7 @@ export class MetaCloudProvider implements WhatsAppProvider {
     quotedMessageId?: string
   ): Promise<string> {
     const { phoneNumberId, accessToken } = this.getCredentials(channel);
-    const url = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
+    const url = this.graphUrl(`${phoneNumberId}/messages`);
     
     // Meta Cloud API contacts format
     const payload: any = {
@@ -238,13 +252,8 @@ export class MetaCloudProvider implements WhatsAppProvider {
   }
 
   async createMessageTemplate(channel: Channel, payload: any): Promise<any> {
-    if (!channel.metaWabaId || !channel.metaAccessToken) {
-      throw new Error('Canal Meta Cloud sem WABA ID ou Access Token configurado.');
-    }
-
-    const wabaId = channel.metaWabaId.trim();
-    const accessToken = channel.metaAccessToken.trim();
-    const url = `https://graph.facebook.com/v18.0/${wabaId}/message_templates`;
+    const { wabaId, accessToken } = this.getTemplateCredentials(channel);
+    const url = this.graphUrl(`${wabaId}/message_templates`);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -267,15 +276,16 @@ export class MetaCloudProvider implements WhatsAppProvider {
   }
 
   async updateMessageTemplate(channel: Channel, metaTemplateId: string, payload: any): Promise<any> {
-    if (!channel.metaAccessToken) {
+    const accessToken = channel.metaAccessToken?.trim() || process.env.META_ACCESS_TOKEN?.trim();
+    if (!accessToken) {
       throw new Error('Canal Meta Cloud sem Access Token configurado.');
     }
 
-    const url = `https://graph.facebook.com/v18.0/${metaTemplateId}`;
+    const url = this.graphUrl(metaTemplateId);
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${channel.metaAccessToken.trim()}`,
+        'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload)
@@ -292,16 +302,12 @@ export class MetaCloudProvider implements WhatsAppProvider {
   }
 
   async deleteMessageTemplate(channel: Channel, name: string): Promise<any> {
-    if (!channel.metaWabaId || !channel.metaAccessToken) {
-      throw new Error('Canal Meta Cloud sem WABA ID ou Access Token configurado.');
-    }
-
-    const wabaId = channel.metaWabaId.trim();
-    const url = `https://graph.facebook.com/v18.0/${wabaId}/message_templates?name=${encodeURIComponent(name)}`;
+    const { wabaId, accessToken } = this.getTemplateCredentials(channel);
+    const url = this.graphUrl(`${wabaId}/message_templates?name=${encodeURIComponent(name)}`);
     const response = await fetch(url, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Bearer ${channel.metaAccessToken.trim()}`,
+        'Authorization': `Bearer ${accessToken}`,
       }
     });
 
@@ -322,7 +328,7 @@ export class MetaCloudProvider implements WhatsAppProvider {
     template: { name: string; language: string; components?: any[] }
   ): Promise<string> {
     const { phoneNumberId, accessToken } = this.getCredentials(channel);
-    const url = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
+    const url = this.graphUrl(`${phoneNumberId}/messages`);
     const payload: any = {
       messaging_product: "whatsapp",
       recipient_type: "individual",
@@ -376,7 +382,8 @@ export class MetaCloudProvider implements WhatsAppProvider {
     const entry = body.entry?.[0];
     const change = entry?.changes?.[0];
     const value = change?.value;
-    const message = value?.messages?.[0];
+    const isBusinessAppEcho = change?.field === 'smb_message_echoes';
+    const message = value?.messages?.[0] || value?.message_echoes?.[0];
     const contact = value?.contacts?.[0];
     const phone_number_id = value?.metadata?.phone_number_id;
 
@@ -399,7 +406,7 @@ export class MetaCloudProvider implements WhatsAppProvider {
       };
     }
 
-    const senderPhone = message.from;
+    const senderPhone = isBusinessAppEcho ? message.to : message.from;
     const senderName = contact?.profile?.name || senderPhone;
     
     let content = '';
@@ -477,7 +484,7 @@ export class MetaCloudProvider implements WhatsAppProvider {
       metadata: {
         ...message,
         externalId: message.id,
-        fromMe: false,
+        fromMe: isBusinessAppEcho,
         quotedMessageExternalId,
         quotedMessageSnapshot
       },
@@ -487,7 +494,7 @@ export class MetaCloudProvider implements WhatsAppProvider {
 
   async downloadMedia(channel: Channel, mediaId: string): Promise<Buffer> {
     const { accessToken } = this.getCredentials(channel);
-    const url = `https://graph.facebook.com/v18.0/${mediaId}`;
+    const url = this.graphUrl(mediaId);
     const response = await fetch(url, {
         headers: { 'Authorization': `Bearer ${accessToken}` }
     });
@@ -518,7 +525,7 @@ export class MetaCloudProvider implements WhatsAppProvider {
     if (!fromMe) return;
 
     const { phoneNumberId, accessToken } = this.getCredentials(channel);
-    const url = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
+    const url = this.graphUrl(`${phoneNumberId}/messages`);
     const payload = {
       messaging_product: "whatsapp",
       status: "deleted",
@@ -549,13 +556,13 @@ export class MetaCloudProvider implements WhatsAppProvider {
 
   async editMessage(channel: Channel, to: string, externalId: string, fromMe: boolean, newContent: string): Promise<any> {
     // Meta Cloud API support for editing messages is limited and might require a different endpoint or version.
-    // As of v18.0, it's not a standard "edit" like Evolution API.
+    // A edição de mensagens ainda não faz parte do fluxo adotado neste projeto.
     throw new Error('Editing messages is not supported in Meta Cloud API yet.');
   }
 
   async sendReaction(channel: Channel, to: string, externalId: string, fromMe: boolean, emoji: string): Promise<any> {
     const { phoneNumberId, accessToken } = this.getCredentials(channel);
-    const url = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
+    const url = this.graphUrl(`${phoneNumberId}/messages`);
     const payload = {
       messaging_product: "whatsapp",
       recipient_type: "individual",

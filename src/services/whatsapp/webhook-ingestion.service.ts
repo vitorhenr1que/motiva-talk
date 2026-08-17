@@ -1,14 +1,12 @@
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import type { ServiceConversationUsage } from '@/repositories/billingRepository';
 import { WebhookEvent } from './provider';
-import { evolutionApi } from '@/lib/evolution-api-client';
 import { TenantChannel } from './tenant-resolver';
 
 export class WebhookIngestionService {
   /**
    * Ingere mensagens recebidas via webhook.
    *
-   * O Channel é resolvido pelo route a partir do instanceName/providerSessionId
+   * O Channel é resolvido pelo route a partir do Phone Number ID da Meta
    * e passado aqui já validado. NÃO refazemos a query de canal e NÃO confiamos
    * em organizationId vindo do payload — a fonte de verdade é o `channel` arg.
    */
@@ -16,7 +14,6 @@ export class WebhookIngestionService {
     const { senderPhone, senderName, content, messageType, metadata } = event;
     const organizationId = channel.organizationId;
     const channelId = channel.id;
-    const instanceName = channel.providerSessionId || channel.id;
 
     if (!senderPhone || (!content && !event.mediaUrl && messageType !== 'REACTION')) {
       console.warn(
@@ -38,10 +35,7 @@ export class WebhookIngestionService {
     const messageId = generateId();
 
     // --- TRATAMENTO DE MÍDIA: Download do WhatsApp -> Upload pro Storage interno ---
-    if (finalMediaUrl?.includes('mmg.whatsapp.net') && !localBase64) {
-      console.log(`[INGEST] org=${organizationId} channel=${channelId} mídia criptografada detectada, solicitando via Evolution API...`);
-      localBase64 = await evolutionApi.getMediaBase64(instanceName, metadata);
-    } else if ((channel as any).whatsappProvider === 'META_CLOUD' && finalMediaUrl && !localBase64) {
+    if (finalMediaUrl && !localBase64) {
       console.log(`[INGEST] org=${organizationId} channel=${channelId} mídia Meta Cloud detectada, baixando...`);
       try {
         const { getWhatsAppProvider } = await import('./providers');
@@ -74,12 +68,7 @@ export class WebhookIngestionService {
         } else if (finalMediaUrl) {
           console.log(`[INGEST] org=${organizationId} channel=${channelId} baixando mídia de URL: ${finalMediaUrl}`);
 
-          const fetchHeaders: any = {};
-          if (finalMediaUrl.includes('evolution.fazag.edu.br')) {
-            fetchHeaders['apikey'] = process.env.EVOLUTION_API_KEY;
-          }
-
-          const response = await fetch(finalMediaUrl, { headers: fetchHeaders });
+          const response = await fetch(finalMediaUrl);
           if (!response.ok) throw new Error(`Falha no download da mídia: ${response.statusText}`);
 
           const arrayBuffer = await response.arrayBuffer();
@@ -155,16 +144,12 @@ export class WebhookIngestionService {
     }
 
     // --- FILTER: Only Personal Contacts (~10-15 dígitos, exclude grupos/status) ---
-    const jid = metadata?.jid || '';
-    const provider = channel.whatsappProvider || 'EVOLUTION';
-    const hasPersonalJid = jid.endsWith('@s.whatsapp.net');
     const numericOnly = senderPhone.replace(/\D/g, '');
     const hasValidLength = numericOnly.length >= 10 && numericOnly.length <= 15;
-    const isPersonal = provider === 'META_CLOUD' ? hasValidLength : hasPersonalJid;
 
-    if (!isPersonal || !hasValidLength) {
+    if (!hasValidLength) {
       console.log(
-        `[INGEST] Ignorando contato não pessoal: ${senderPhone} (jid=${jid}, len=${numericOnly.length}, org=${organizationId})`
+        `[INGEST] Ignorando contato inválido: ${senderPhone} (len=${numericOnly.length}, org=${organizationId})`
       );
       return;
     }
@@ -202,29 +187,6 @@ export class WebhookIngestionService {
         organizationId
       );
       console.log(`[INGEST] 2. Contato ${contact.name} (${contact.id}) org=${organizationId}`);
-
-      let serviceWindow: { usage: ServiceConversationUsage; created: boolean; overQuota?: boolean } | null = null;
-      if (senderType === 'USER' && dbMessageType !== 'REACTION') {
-        try {
-          const { LimitsService } = await import('@/services/limits.service');
-          serviceWindow = await LimitsService.openServiceConversationWindow({
-            organizationId,
-            contactId: contact.id,
-            channelId,
-            firstUserMessageAt: new Date(event.timestamp).toISOString(),
-            externalMessageId: externalId,
-          });
-
-          if (serviceWindow.created) {
-            console.log(
-              `[INGEST][SERVICE_WINDOW] nova janela org=${organizationId} contact=${contact.id} ` +
-              `windowEndsAt=${serviceWindow.usage.windowEndsAt} overQuota=${serviceWindow.overQuota}`
-            );
-          }
-        } catch (quotaError: unknown) {
-          throw quotaError;
-        }
-      }
 
       const { data: lastConversations } = await supabaseAdmin
         .from('Conversation')
@@ -359,15 +321,6 @@ export class WebhookIngestionService {
         }
       }
 
-      if (serviceWindow?.usage && !serviceWindow.usage.conversationId) {
-        const { BillingRepository } = await import('@/repositories/billingRepository');
-        await BillingRepository.attachServiceConversationUsage(
-          serviceWindow.usage.id,
-          organizationId,
-          conversation.id
-        );
-      }
-
       // --- TRATAMENTO ESPECIAL PARA REAÇÕES ---
       if (dbMessageType === 'REACTION') {
         const targetExternalId = event.targetMessageId;
@@ -464,8 +417,6 @@ export class WebhookIngestionService {
         console.error(`[INGEST] ERRO ao inserir mensagem (org=${organizationId}):`, msgError);
         throw msgError;
       }
-      const { BillingService } = await import('@/services/billing.service');
-      await BillingService.incrementMessageUsage(organizationId);
       console.log(`[INGEST] Mensagem persistida id=${newMessage.id} hasMedia=${!!newMessage.mediaUrl}`);
 
       const updateData: any = {
@@ -511,8 +462,7 @@ export class WebhookIngestionService {
 
   /**
    * Auto-reply escopado por organização. O channel já vem resolvido — usamos
-   * channel.organizationId como tenant e channel.providerSessionId como instance
-   * para o envio externo.
+   * channel.organizationId como tenant para o envio pela Meta Cloud API.
    */
   private static async handleAutoReply(
     channel: TenantChannel,
@@ -561,7 +511,6 @@ export class WebhookIngestionService {
         }
       }
 
-      const instanceName = channel.providerSessionId || channel.id;
       console.log(
         `[AUTO-REPLY] Enviando org=${organizationId} channel=${channel.name}(${channelId}) -> ${contact.phone}`
       );
@@ -571,10 +520,10 @@ export class WebhookIngestionService {
         const providerType = resolveWhatsAppProviderType(channel);
         const provider = getWhatsAppProvider(providerType);
         await provider.sendTextMessage(channel as any, contact.phone, settings.message);
-      } catch (evoError) {
+      } catch (metaError) {
         console.error(
           `[AUTO-REPLY] Falha ao enviar mensagem automática (org=${organizationId} channel=${channelId}):`,
-          evoError
+          metaError
         );
         return;
       }

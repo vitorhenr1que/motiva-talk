@@ -209,7 +209,7 @@ export class WhatsAppTemplateService {
     if (channel.whatsappProvider !== 'META_CLOUD') {
       throw new AppError('Templates só funcionam em canais com whatsappProvider META_CLOUD.', 400, 'VALIDATION_ERROR')
     }
-    if (!channel.metaWabaId || !channel.metaAccessToken) {
+    if ((!channel.metaWabaId && !process.env.META_WABA_ID) || (!channel.metaAccessToken && !process.env.META_ACCESS_TOKEN)) {
       throw new AppError('Canal Meta Cloud sem WABA ID ou Access Token configurado.', 400, 'VALIDATION_ERROR')
     }
 
@@ -393,9 +393,6 @@ export class WhatsAppTemplateService {
       sectorId: conversation.currentSectorId || null,
       createdAt: new Date().toISOString(),
     })
-
-    const { BillingService } = await import('@/services/billing.service')
-    await BillingService.incrementMessageUsage(organizationId)
 
     const { RealtimeService } = await import('@/services/realtime.service')
     await RealtimeService.notifyNewMessage(conversation.id, message)

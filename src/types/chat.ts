@@ -30,7 +30,7 @@ export interface Contact {
   createdAt: string;
 }
 
-export type WhatsAppProviderType = 'EVOLUTION' | 'META_CLOUD';
+export type WhatsAppProviderType = 'META_CLOUD';
 
 export interface Channel {
   id: string;

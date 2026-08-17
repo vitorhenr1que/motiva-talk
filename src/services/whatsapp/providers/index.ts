@@ -1,5 +1,4 @@
 import type { WhatsAppProvider } from "./whatsapp-provider";
-import { evolutionProvider } from "./evolution-provider";
 import { metaCloudProvider } from "./meta-cloud-provider";
 import type { WhatsAppProviderType } from "@/types/chat";
 
@@ -12,18 +11,12 @@ type ProviderLikeChannel = {
 export function resolveWhatsAppProviderType(
   channel?: ProviderLikeChannel | null
 ): WhatsAppProviderType {
-  if (channel?.whatsappProvider) return channel.whatsappProvider;
-  if (channel?.metaPhoneNumberId || channel?.metaAccessToken) return 'META_CLOUD';
-  return 'EVOLUTION';
+  return 'META_CLOUD';
 }
 
-export function getWhatsAppProvider(type?: WhatsAppProviderType | null): WhatsAppProvider {
-  if (type === 'META_CLOUD') {
-    return metaCloudProvider;
-  }
-  // Default to EVOLUTION for backward compatibility
-  return evolutionProvider;
+export function getWhatsAppProvider(_type?: WhatsAppProviderType | null): WhatsAppProvider {
+  return metaCloudProvider;
 }
 
 export type { WhatsAppProvider };
-export { evolutionProvider, metaCloudProvider };
+export { metaCloudProvider };

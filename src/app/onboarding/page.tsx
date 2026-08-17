@@ -5,10 +5,9 @@ import { useRouter } from 'next/navigation';
 import { 
   CheckCircle2, 
   MessageSquarePlus, 
-  QrCode, 
+  Cloud,
   Loader2, 
   ArrowRight, 
-  Building2, 
   Sparkles,
   ShieldCheck,
   Smartphone,
@@ -133,7 +132,7 @@ export default function OnboardingPage() {
               </div>
               <div className="space-y-3">
                 <h1 className="text-3xl font-black text-slate-900 tracking-tight">Crie seu primeiro canal</h1>
-                <p className="text-slate-500 font-medium">O Motiva Talk funciona integrando seu WhatsApp atual através da Evolution API.</p>
+                <p className="text-slate-500 font-medium">O Motiva Talk usa exclusivamente a API oficial do WhatsApp Business da Meta.</p>
               </div>
               
               <div className="grid grid-cols-1 gap-4 text-left">
@@ -156,23 +155,23 @@ export default function OnboardingPage() {
                 <ArrowRight className="group-hover:translate-x-2 transition-transform" />
               </button>
               
-              <p className="text-xs text-slate-400 font-medium italic">* Você precisará do seu celular em mãos no próximo passo.</p>
+              <p className="text-xs text-slate-400 font-medium italic">* O número precisa estar cadastrado e verificado no WhatsApp Manager da Meta.</p>
             </div>
           )}
 
           {step === 3 && (
             <div className="text-center space-y-8 animate-in fade-in slide-in-from-right duration-500">
               <div className="mx-auto w-24 h-24 bg-amber-50 rounded-[32px] flex items-center justify-center text-amber-600">
-                <QrCode size={48} />
+                <Cloud size={48} />
               </div>
               <div className="space-y-3">
-                <h1 className="text-3xl font-black text-slate-900 tracking-tight">Conecte seu WhatsApp</h1>
-                <p className="text-slate-500 font-medium">Canal <strong>{createdChannelName}</strong> registrado! Agora vamos vincular o dispositivo.</p>
+                <h1 className="text-3xl font-black text-slate-900 tracking-tight">Conecte a Meta Cloud API</h1>
+                <p className="text-slate-500 font-medium">Canal <strong>{createdChannelName}</strong> registrado. Agora informe os identificadores oficiais da Meta.</p>
               </div>
               
               <div className="bg-amber-50 border border-amber-100 rounded-3xl p-6 text-left">
                 <p className="text-sm text-amber-800 font-medium leading-relaxed">
-                  Ao clicar no botão abaixo, um QR Code será gerado. Escaneie-o usando a função "Dispositivos Conectados" no seu WhatsApp, igual ao WhatsApp Web.
+                  Você precisará do ID do número de telefone e do ID da conta do WhatsApp Business. O token permanente fica protegido somente no servidor.
                 </p>
               </div>
 
@@ -181,7 +180,7 @@ export default function OnboardingPage() {
                 className="group w-full py-5 bg-slate-900 hover:bg-black text-white rounded-3xl font-bold text-lg shadow-xl transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3"
               >
                 Conectar Agora
-                <QrCode size={20} />
+                <Cloud size={20} />
               </button>
 
               <button 

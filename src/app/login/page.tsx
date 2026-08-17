@@ -19,10 +19,8 @@ function LoginForm() {
 
   useEffect(() => {
     const errorParam = searchParams.get('error');
-    if (errorParam === 'organization_blocked') {
-      setError('Sua organização está bloqueada. Entre em contato com o suporte.');
-    } else if (errorParam === 'organization_not_found') {
-      setError('Organização não encontrada.');
+    if (errorParam === 'organization_not_found') {
+      setError('Sua conta ainda não foi vinculada ao ambiente do Motiva Talk.');
     }
   }, [searchParams]);
 

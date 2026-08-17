@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     
     const { conversationId, presence } = body;
     
-    // Status deve ser 'composing' ou 'paused' (conforme Evolution API)
+    // Status deve ser 'composing' ou 'paused'.
     await MessageService.sendPresence(conversationId, presence, organizationId);
     
     return NextResponse.json({ success: true });

@@ -24,11 +24,8 @@ export type AppErrorType =
   | 'DATABASE_ERROR'
   | 'INTERNAL_ERROR'
   | 'BAD_REQUEST'
-  | 'QUOTA_EXCEEDED'
   | 'CONVERSATION_WINDOW_CLOSED'
-  | 'ORGANIZATION_BLOCKED'
-  | 'ORGANIZATION_NOT_FOUND'
-  | 'PLATFORM_ADMIN_REQUIRED';
+  | 'ORGANIZATION_NOT_FOUND';
 
 export class AppError extends Error {
   constructor(

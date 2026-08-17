@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Phone, Globe, Shield, Loader2, MessageCircle, AlertTriangle, CheckCircle2, MoreVertical, Settings, Unlink, QrCode, Trash2 } from 'lucide-react';
+import { Plus, Shield, Loader2, MessageCircle, Settings, Unlink, Cloud, Trash2 } from 'lucide-react';
 import { AddChannelModal } from '@/components/channels/AddChannelModal';
 import { ConnectChannelModal } from '@/components/channels/ConnectChannelModal';
 import { ChannelConfigModal } from '@/components/channels/ChannelConfigModal';
@@ -12,11 +12,10 @@ interface Channel {
   phoneNumber: string;
   connectionStatus: string;
   isActive: boolean;
-  whatsappProvider?: 'EVOLUTION' | 'META_CLOUD';
+  whatsappProvider?: 'META_CLOUD';
 }
 
 export default function ChannelsPage() {
-  const [usage, setUsage] = useState<any>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -32,16 +31,9 @@ export default function ChannelsPage() {
 
   const fetchChannels = useCallback(async () => {
     try {
-      const [chRes, usageRes] = await Promise.all([
-        fetch('/api/channels'),
-        fetch('/api/organizations/usage')
-      ]);
-      
+      const chRes = await fetch('/api/channels');
       const chData = await chRes.json();
-      const usageData = await usageRes.json();
-      
       setChannels(chData.data || []);
-      setUsage(usageData.data || null);
     } catch (error) {
       console.error('Failed to fetch channels:', error);
     } finally {
@@ -70,7 +62,7 @@ export default function ChannelsPage() {
       } else {
         alert(`Erro ao remover canal: ${data.message || data.error || 'Falha desconhecida.'}`);
       }
-    } catch (err) {
+    } catch {
       alert('Falha crítica na comunicação com o servidor ao tentar remover o canal.');
     } finally {
       setDeletingChannels(prev => {
@@ -88,8 +80,7 @@ export default function ChannelsPage() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'CONNECTED': return 'text-green-600 bg-green-50 ring-green-600/10';
-      case 'CONNECTING': 
-      case 'QR_CODE': return 'text-amber-600 bg-amber-50 ring-amber-600/10';
+      case 'CONNECTING': return 'text-amber-600 bg-amber-50 ring-amber-600/10';
       case 'ERROR': return 'text-rose-600 bg-rose-50 ring-rose-600/10';
       default: return 'text-slate-500 bg-slate-50 ring-slate-900/5';
     }
@@ -99,14 +90,11 @@ export default function ChannelsPage() {
     switch (status) {
       case 'CONNECTED': return 'ONLINE';
       case 'CONNECTING': return 'CONECTANDO';
-      case 'QR_CODE': return 'AGUARDANDO QR';
       case 'ERROR': return 'ERRO';
       case 'DISCONNECTED': return 'DESCONECTADO';
       default: return 'OFFLINE';
     }
   };
-
-  const isLimitReached = usage?.maxChannels !== null && usage?.channelCount >= usage?.maxChannels;
 
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-10 animate-in fade-in slide-in-from-top-4 duration-700">
@@ -114,28 +102,18 @@ export default function ChannelsPage() {
       <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-8">
         <div>
           <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight leading-none mb-3">Canais de Atendimento</h1>
-          <p className="text-slate-500 dark:text-slate-400 font-medium">Gerencie suas conexões do WhatsApp e outros canais integrados.</p>
+          <p className="text-slate-500 dark:text-slate-400 font-medium">Gerencie a conexão oficial do WhatsApp pela Meta Cloud API.</p>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <button 
-            onClick={() => !isLimitReached && setIsAddModalOpen(true)}
-            disabled={isLimitReached}
-            className={`flex items-center gap-3 rounded-2xl px-6 py-4 font-bold text-white shadow-xl transition-all hover:scale-105 active:scale-95 group ${
-              isLimitReached 
-              ? 'bg-slate-400 cursor-not-allowed shadow-none' 
-              : 'bg-blue-600 shadow-blue-200 dark:shadow-none hover:bg-blue-700 hover:shadow-2xl'
-            }`}
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="group flex items-center gap-3 rounded-2xl bg-blue-600 px-6 py-4 font-bold text-white shadow-xl shadow-blue-200 transition-all hover:scale-105 hover:bg-blue-700 hover:shadow-2xl active:scale-95 dark:shadow-none"
           >
-            <div className={`p-1.5 rounded-lg transition-transform duration-500 ${isLimitReached ? 'bg-white/10' : 'bg-white/20 group-hover:rotate-90'}`}>
-               <Plus size={18} strokeWidth={4} />
+            <div className="rounded-lg bg-white/20 p-1.5 transition-transform duration-500 group-hover:rotate-90">
+              <Plus size={18} strokeWidth={4} />
             </div>
             <span>Registrar Canal</span>
           </button>
-          {isLimitReached && (
-            <span className="text-xs font-bold text-rose-500 bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-100 animate-pulse">
-              Limite de canais atingido ({usage.maxChannels})
-            </span>
-          )}
         </div>
       </div>
 
@@ -199,8 +177,8 @@ export default function ChannelsPage() {
                       onClick={() => setConnectModal({ isOpen: true, channelId: channel.id, channelName: channel.name })}
                       className="flex items-center justify-center gap-3 w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 py-3.5 rounded-2xl font-bold text-sm shadow-xl transition-all hover:bg-slate-800 dark:hover:bg-slate-100 active:scale-95"
                     >
-                      <QrCode size={18} />
-                      Conectar WhatsApp
+                      <Cloud size={18} />
+                      Configurar Meta API
                     </button>
                  )}
                  
@@ -217,35 +195,24 @@ export default function ChannelsPage() {
             </div>
           ))}
 
-          {/* New Channel Placeholder */}
-          <button 
-            onClick={() => !isLimitReached && setIsAddModalOpen(true)}
-            disabled={isLimitReached}
-            className={`group relative rounded-3xl border-2 border-dashed p-8 flex flex-col items-center justify-center text-center transition-all ${
-              isLimitReached
-              ? 'border-slate-200 bg-slate-50/30 cursor-not-allowed opacity-60'
-              : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-white dark:hover:bg-slate-900'
-            }`}
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="group relative flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-200 bg-slate-50/50 p-8 text-center transition-all hover:border-blue-400 hover:bg-white dark:border-slate-800 dark:bg-slate-900/30 dark:hover:border-blue-500 dark:hover:bg-slate-900"
           >
-            <div className={`rounded-2xl p-4 shadow-sm ring-1 transition-all duration-300 ${
-              isLimitReached
-              ? 'bg-slate-100 text-slate-300 ring-slate-200'
-              : 'bg-white dark:bg-slate-800 ring-slate-200 dark:ring-slate-700 group-hover:scale-110 group-hover:bg-blue-600 group-hover:text-white'
-            }`}>
-               <Plus size={32} strokeWidth={2.5} className={`${isLimitReached ? 'text-slate-300' : 'text-slate-400 group-hover:text-white transition-colors'}`} />
+            <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 transition-all duration-300 group-hover:scale-110 group-hover:bg-blue-600 group-hover:text-white dark:bg-slate-800 dark:ring-slate-700">
+              <Plus size={32} strokeWidth={2.5} className="text-slate-400 transition-colors group-hover:text-white" />
             </div>
-            <p className={`mt-4 text-sm font-black uppercase tracking-widest ${isLimitReached ? 'text-slate-300' : 'text-slate-400 group-hover:text-blue-600'}`}>
-              {isLimitReached ? 'Limite atingido' : 'Adicionar novo canal'}
-            </p>
+            <p className="mt-4 text-sm font-black uppercase tracking-widest text-slate-400 group-hover:text-blue-600">Adicionar novo canal</p>
           </button>
+
         </div>
       )}
 
       {/* Modals */}
-      <AddChannelModal 
-        isOpen={isAddModalOpen} 
-        onClose={() => setIsAddModalOpen(false)} 
-        onSuccess={fetchChannels} 
+      <AddChannelModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSuccess={fetchChannels}
       />
 
       <ChannelConfigModal
@@ -273,7 +240,7 @@ export default function ChannelsPage() {
          </div>
          <div>
            <h4 className="font-bold text-slate-900 dark:text-white tracking-tight">Canais Criptografados</h4>
-           <p className="text-sm text-slate-500 dark:text-slate-400">Todas as comunicações via Evolution API são seguras e seguem os protocolos de privacidade do WhatsApp.</p>
+           <p className="text-sm text-slate-500 dark:text-slate-400">As comunicações usam exclusivamente a API oficial do WhatsApp Business da Meta.</p>
          </div>
       </div>
     </div>

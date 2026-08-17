@@ -114,7 +114,7 @@ export class MessageService {
 
     const isActuallyInternal = isInternal !== undefined ? isInternal : (senderType === 'SYSTEM' || !!metadata?.isInternal);
 
-    // OTIMIZAÇÃO: a conversa pode ser necessária em DOIS lugares — para enviar via Evolution
+    // OTIMIZAÇÃO: a conversa pode ser necessária em DOIS lugares — para enviar via Meta Cloud API
     // (envia mídia/texto pro contato) e para resolver o sectorId (caso não venha explícito).
     // Antes: 2 findById; agora: 1 findById preguiçoso, reaproveitado.
     let cachedConversation: any = null;
@@ -126,8 +126,6 @@ export class MessageService {
     };
 
     if (!isActuallyInternal && senderType === 'AGENT') {
-      // FREE acima da franquia não responde; planos pagos continuam respondendo e
-      // o excedente fica registrado para billing. Recebimento nunca é bloqueado.
       const { LimitsService } = await import('@/services/limits.service');
       await LimitsService.checkCanSendMessage(organizationId);
     }
@@ -232,11 +230,6 @@ export class MessageService {
       createdAt: new Date().toISOString()
     })
 
-    if (!isActuallyInternal) {
-      const { BillingService } = await import('@/services/billing.service');
-      await BillingService.incrementMessageUsage(organizationId);
-    }
-
     const { RealtimeService } = await import('@/services/realtime.service');
     await RealtimeService.notifyNewMessage(conversationId, newMessage);
 
@@ -307,13 +300,13 @@ export class MessageService {
   }
 
   /**
-   * Apaga mensagem para todos (Evolution API + Soft-Delete)
+   * Apaga mensagem para todos (Meta Cloud API + Soft-Delete)
    */
   static async deleteForEveryone(id: string, organizationId: string) {
     const message = await MessageRepository.findById(id, organizationId);
     if (!message) throw new Error('Mensagem não encontrada');
 
-    // 1. Apagar no WhatsApp via Evolution API se tiver ID externo
+    // 1. Apagar no WhatsApp via Meta Cloud API se tiver ID externo
     if (message.externalMessageId) {
       try {
         const { getWhatsAppProvider, resolveWhatsAppProviderType } = await import('@/services/whatsapp/providers');
@@ -331,7 +324,7 @@ export class MessageService {
            );
         }
       } catch (error: any) {
-        console.error('[API_DELETE_EVERYONE] Falha na Evolution API:', error.message);
+        console.error('[API_DELETE_EVERYONE] Falha na Meta Cloud API:', error.message);
         throw new Error(`WhatsApp não permitiu apagar: ${error.message}`);
       }
     }
@@ -366,7 +359,7 @@ export class MessageService {
     const message = await MessageRepository.findById(id, organizationId);
     if (!message) throw new AppError('Mensagem não encontrada', 404, 'NOT_FOUND');
 
-    // 1. Se for do atendente, tenta editar no WhatsApp via Evolution API
+    // 1. Se for do atendente, tenta editar no WhatsApp via Meta Cloud API
     if (message.senderType === 'AGENT' && message.externalMessageId) {
       try {
         const { getWhatsAppProvider, resolveWhatsAppProviderType } = await import('@/services/whatsapp/providers');
@@ -385,7 +378,7 @@ export class MessageService {
           );
         }
       } catch (error: any) {
-        console.error('[MSG_SERVICE] Erro ao editar mensagem via Evolution API:', error);
+        console.error('[MSG_SERVICE] Erro ao editar mensagem via Meta Cloud API:', error);
         throw new AppError(`Falha na edição via WhatsApp: ${error.message}`, 500, 'INTERNAL_ERROR');
       }
     }

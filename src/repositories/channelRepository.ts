@@ -65,6 +65,31 @@ export class ChannelRepository {
     return data?.[0] || null
   }
 
+  static async findByPhoneNumber(phoneNumber: string) {
+    const { data, error } = await supabaseAdmin
+      .from('Channel')
+      .select('*')
+      .eq('phoneNumber', phoneNumber.replace(/\D/g, ''))
+      .eq('whatsappProvider', 'META_CLOUD')
+      .eq('isActive', true)
+      .limit(1)
+
+    if (error) return null
+    return data?.[0] || null
+  }
+
+  static async findByPhoneNumberInOrganization(phoneNumber: string, organizationId: string) {
+    const { data, error } = await supabaseAdmin
+      .from('Channel')
+      .select('*')
+      .eq('organizationId', organizationId)
+      .eq('phoneNumber', phoneNumber.replace(/\D/g, ''))
+      .limit(1)
+
+    if (error) throw error
+    return data?.[0] || null
+  }
+
   static async create(organizationId: string, data: any) {
     const { data: newChannel, error } = await supabaseAdmin
       .from('Channel')

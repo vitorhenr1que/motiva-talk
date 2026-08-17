@@ -47,7 +47,7 @@ export class ForwardService {
   /**
    * Entry point for POST /api/messages/forward-batch.
    * Resolves destinations, inserts all forwarded rows as sendStatus='sending',
-   * and dispatches Evolution sends with bounded concurrency in the background.
+   * and dispatches Meta Cloud API sends with bounded concurrency in the background.
    * Returns as soon as the DB rows exist so realtime can paint the chat.
    */
   static async forwardBatch(input: ForwardBatchInput) {

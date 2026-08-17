@@ -6,7 +6,6 @@ import {
   Users, 
   UserPlus, 
   Mail, 
-  Shield, 
   Clock, 
   CheckCircle2, 
   X, 
@@ -16,7 +15,6 @@ import {
   Copy,
   Link as LinkIcon,
   Globe,
-  Layers,
   Pencil
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -29,7 +27,6 @@ export default function OrganizationSettingsPage() {
   const [invites, setInvites] = useState<any[]>([]);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [role, setRole] = useState<string>('AGENT');
-  const [usage, setUsage] = useState<any>(null);
   const [activeMenu, setActiveMenu] = useState<{ type: 'member' | 'invite', id: string } | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [channels, setChannels] = useState<any[]>([]);
@@ -42,11 +39,10 @@ export default function OrganizationSettingsPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;
       
-      const [profileRes, membersRes, invitesRes, usageRes, channelsRes] = await Promise.all([
+      const [profileRes, membersRes, invitesRes, channelsRes] = await Promise.all([
         fetch('/api/users/me'),
         fetch('/api/users'),
         fetch('/api/organizations/invite'),
-        fetch('/api/organizations/usage'),
         fetch('/api/channels')
       ]);
 
@@ -64,11 +60,6 @@ export default function OrganizationSettingsPage() {
       const invitesData = await invitesRes.json();
       if (invitesRes.ok) {
         setInvites(invitesData.data || []);
-      }
-
-      const usageData = await usageRes.json();
-      if (usageRes.ok) {
-        setUsage(usageData.data || null);
       }
 
       const channelsData = await channelsRes.json();
@@ -159,7 +150,6 @@ export default function OrganizationSettingsPage() {
   }
 
   const isAdmin = role === 'ADMIN' || role === 'OWNER';
-  const isUserLimitReached = usage?.maxUsers !== null && (usage?.userCount + usage?.pendingInvitesCount) >= usage?.maxUsers;
 
   return (
     <div className="p-8 max-w-5xl mx-auto space-y-10 animate-in fade-in slide-in-from-top-4 duration-500 pb-20">
@@ -171,22 +161,12 @@ export default function OrganizationSettingsPage() {
         <div className="flex flex-col items-end gap-2">
           {isAdmin && (
             <button 
-              onClick={() => !isUserLimitReached && setIsInviteModalOpen(true)}
-              disabled={isUserLimitReached}
-              className={`flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-bold text-white shadow-lg transition-all active:scale-95 ${
-                isUserLimitReached 
-                ? 'bg-slate-400 cursor-not-allowed shadow-none' 
-                : 'bg-blue-600 shadow-blue-200 hover:shadow-2xl hover:scale-105'
-              }`}
+              onClick={() => setIsInviteModalOpen(true)}
+              className="flex items-center gap-2 rounded-2xl bg-blue-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-blue-200 transition-all hover:scale-105 hover:shadow-2xl active:scale-95"
             >
               <UserPlus size={18} />
               Convidar Membro
             </button>
-          )}
-          {isUserLimitReached && (
-            <span className="text-[10px] font-bold text-rose-500 bg-rose-50 px-2 py-1 rounded-md border border-rose-100 animate-pulse">
-              Limite de membros atingido ({usage.maxUsers})
-            </span>
           )}
         </div>
       </div>
@@ -202,7 +182,7 @@ export default function OrganizationSettingsPage() {
               </div>
               <div>
                 <h2 className="text-lg font-bold text-slate-800">Dados Gerais</h2>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">SaaS ID: {org?.id?.substring(0, 8)}...</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ambiente local</p>
               </div>
             </div>
 
@@ -215,13 +195,6 @@ export default function OrganizationSettingsPage() {
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Slug da Organização</label>
                 <div className="p-3 bg-slate-50 rounded-xl font-bold text-blue-600 border border-slate-100 italic">/{org?.slug}</div>
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Plano Atual</label>
-                <div className="flex items-center justify-between p-3 bg-green-50 rounded-xl font-bold text-green-700 border border-green-100">
-                  <span>{org?.plan || 'FREE'}</span>
-                  <span className="text-[10px] bg-green-600 text-white px-2 py-0.5 rounded-full">ATIVO</span>
-                </div>
-              </div>
             </div>
           </section>
 
@@ -230,7 +203,7 @@ export default function OrganizationSettingsPage() {
             <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Resumo da Equipe</h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <p className="text-2xl font-black">{members.length}{usage?.maxUsers && <span className="text-sm text-slate-500 font-normal"> / {usage.maxUsers}</span>}</p>
+                <p className="text-2xl font-black">{members.length}</p>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Membros Ativos</p>
               </div>
               <div className="space-y-1">

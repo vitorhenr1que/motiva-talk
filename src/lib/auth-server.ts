@@ -5,21 +5,12 @@ import { verifySupabaseAccessToken } from '@/lib/supabase-jwt'
 
 export type AppUserRole = 'ADMIN' | 'SUPERVISOR' | 'AGENT' | 'OWNER'
 
-export type OrganizationStatus = 'ACTIVE' | 'SUSPENDED' | 'TRIAL' | 'CANCELED'
-
 export interface OrganizationContext {
   id: string
   name: string
   slug: string
   ownerId: string | null
-  plan: string | null
   createdAt: string | null
-  status: OrganizationStatus
-  maxChannels: number | null
-  maxUsers: number | null
-  maxMsgPerMonth: number | null
-  trialEndsAt: string | null
-  blockedReason: string | null
 }
 
 export interface UserWithOrganization {
@@ -28,7 +19,6 @@ export interface UserWithOrganization {
   email: string
   role: AppUserRole
   organizationId: string | null
-  isPlatformAdmin: boolean
   organization: OrganizationContext | null
 }
 
@@ -38,20 +28,12 @@ const USER_WITH_ORG_SELECT = `
   email,
   role,
   organizationId,
-  isPlatformAdmin,
   organization:Organization (
     id,
     name,
     slug,
     ownerId,
-    plan,
-    createdAt,
-    status,
-    maxChannels,
-    maxUsers,
-    maxMsgPerMonth,
-    trialEndsAt,
-    blockedReason
+    createdAt
   )
 `
 

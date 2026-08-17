@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     const contact = conversation?.contact;
     const externalId = message.metadata?.externalId || message.externalMessageId;
     
-    // De acordo com a Evolution API, fromMe deve ser true se a mensagem que estamos reagindo foi enviada por NÓS
+    // fromMe deve ser true se a mensagem que estamos reagindo foi enviada por nós.
     const fromMe = message.fromMe ?? (message.senderType === 'AGENT');
     const recipient = contact?.phone;
 

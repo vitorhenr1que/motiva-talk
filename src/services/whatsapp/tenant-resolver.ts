@@ -4,8 +4,7 @@ export interface TenantChannel {
   id: string;
   organizationId: string;
   provider: string | null;
-  whatsappProvider?: 'EVOLUTION' | 'META_CLOUD' | null;
-  providerSessionId: string | null;
+  whatsappProvider?: 'META_CLOUD' | null;
   name: string;
   defaultSectorId: string | null;
   isActive?: boolean;
@@ -21,8 +20,7 @@ export interface TenantChannel {
 }
 
 /**
- * Resolve o Channel responsável por um identificador vindo do webhook
- * (instanceName, providerSessionId ou o próprio Channel.id).
+ * Resolve o canal pelo Phone Number ID fornecido no webhook da Meta.
  *
  * É a ÚNICA fonte de verdade do tenant para o pipeline de webhooks:
  * todo organizationId/channelId/provider downstream deve vir daqui.
@@ -34,14 +32,12 @@ export async function resolveTenantChannel(
 ): Promise<TenantChannel | null> {
   if (!instanceIdentifier) return null;
 
-  const idNoDashes = instanceIdentifier.replace(/-/g, '');
-
   const { data, error } = await supabaseAdmin
     .from('Channel')
     .select('*')
-    .or(
-      `id.eq.${instanceIdentifier},id.eq.${idNoDashes},providerSessionId.eq.${instanceIdentifier}`
-    )
+    .eq('metaPhoneNumberId', instanceIdentifier)
+    .eq('whatsappProvider', 'META_CLOUD')
+    .eq('isActive', true)
     .limit(1);
 
   if (error) {
