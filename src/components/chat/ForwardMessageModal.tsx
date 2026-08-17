@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { X, Search, Loader2, Send, Check } from 'lucide-react';
 import { formatPhone } from '@/lib/utils';
 import { useChatStore } from '@/store/useChatStore';
+import { ContactAvatar } from '@/components/ui/ContactAvatar';
 
 interface Contact {
   id: string;
@@ -197,11 +198,7 @@ export const ForwardMessageModal: React.FC<ForwardMessageModalProps> = ({ isOpen
                     </div>
 
                     <div className="h-10 w-10 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden shrink-0">
-                      {contact.profilePictureUrl ? (
-                        <img src={contact.profilePictureUrl} alt={contact.name} className="h-full w-full object-cover" />
-                      ) : (
-                        <span className="text-slate-500 font-bold uppercase">{contact.name?.[0] || '?'}</span>
-                      )}
+                      <ContactAvatar name={contact.name} photoUrl={contact.profilePictureUrl} sizes="40px" className="text-sm" />
                     </div>
 
                     <div className="flex flex-col overflow-hidden">

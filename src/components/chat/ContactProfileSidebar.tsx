@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useChatStore } from '@/store/useChatStore';
 import { 
   User, Phone, Calendar, Tag as TagIcon, Edit3, 
@@ -8,8 +8,9 @@ import {
   ShieldCheck, Loader2, Check, X, ExternalLink,
   MessageSquare, Clock as TimeIcon, Zap, MoreHorizontal,
   Flame, TrendingUp, History, Download, Settings2, 
-  StickyNote, Pin, Trash2
+  StickyNote, Pin, Trash2, Camera, ImageOff
 } from 'lucide-react';
+import { ContactAvatar } from '@/components/ui/ContactAvatar';
 import { TagSelector } from './TagSelector';
 import { SalesFunnel } from './SalesFunnel';
 import { FunnelManagerModal } from './FunnelManagerModal';
@@ -30,6 +31,9 @@ export const ContactProfileSidebar = () => {
   const [saving, setSaving] = useState(false);
   const [isStarred, setIsStarred] = useState(false);
   const [isFunnelManagerOpen, setIsFunnelManagerOpen] = useState(false);
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   if (!activeConversation) {
     return (
@@ -55,6 +59,8 @@ export const ContactProfileSidebar = () => {
       </div>
     );
   }
+
+  const hasManualPhoto = contact.profilePictureUrl?.startsWith('/api/contacts/') ?? false;
 
   const handleEditName = () => {
     setTempName(contact.name);
@@ -107,6 +113,63 @@ export const ContactProfileSidebar = () => {
     }
   };
 
+  const uploadPhoto = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setPhotoError('');
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) {
+      setPhotoError('Escolha uma imagem JPEG, PNG ou WebP de até 2 MB.');
+      event.target.value = '';
+      return;
+    }
+
+    setPhotoLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch(`/api/contacts/${contact.id}/profile-picture`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok || !data.profilePictureUrl) {
+        throw new Error(data.message || 'Não foi possível salvar a foto.');
+      }
+
+      updateConversationLocally(activeConversation.id, {
+        contact: {
+          ...contact,
+          profilePictureUrl: data.profilePictureUrl,
+          lastProfilePictureFetchAt: new Date().toISOString(),
+        },
+      });
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : 'Não foi possível salvar a foto.');
+    } finally {
+      setPhotoLoading(false);
+      event.target.value = '';
+    }
+  };
+
+  const removePhoto = async () => {
+    setPhotoLoading(true);
+    setPhotoError('');
+    try {
+      const response = await fetch(`/api/contacts/${contact.id}/profile-picture`, { method: 'DELETE' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Não foi possível remover a foto.');
+
+      updateConversationLocally(activeConversation.id, {
+        contact: { ...contact, profilePictureUrl: undefined, lastProfilePictureFetchAt: new Date().toISOString() },
+      });
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : 'Não foi possível remover a foto.');
+    } finally {
+      setPhotoLoading(false);
+    }
+  };
+
   return (
     <div className="w-80 border-l bg-white h-full overflow-y-auto flex flex-col animate-in slide-in-from-right-4 duration-500 scrollbar-hide select-none">
       
@@ -117,13 +180,34 @@ export const ContactProfileSidebar = () => {
            <div className="relative group">
               <div className="h-24 w-24 rounded-[2.5rem] bg-white p-1.5 shadow-2xl transition-transform duration-500 group-hover:scale-105">
                  <div className="h-full w-full rounded-[2rem] bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center text-3xl font-black text-slate-400 overflow-hidden relative border border-slate-100 shadow-sm">
-                    {contact.profilePictureUrl ? (
-                       <img src={contact.profilePictureUrl} className="h-full w-full object-cover" alt={contact.name} />
-                    ) : (
-                       contact.name?.[0] || '?'
-                    )}
+                    <ContactAvatar name={contact.name} photoUrl={contact.profilePictureUrl} sizes="96px" className="rounded-[2rem] text-3xl" />
                     <div className="absolute bottom-1 right-1 h-5 w-5 rounded-full bg-emerald-500 border-4 border-white shadow-sm" />
                  </div>
+              </div>
+              <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadPhoto} className="sr-only" />
+              <div className="absolute -bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5">
+                <button
+                  type="button"
+                  disabled={photoLoading}
+                  onClick={() => photoInputRef.current?.click()}
+                  className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-indigo-600 text-white shadow-lg transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 disabled:opacity-60"
+                  aria-label={hasManualPhoto ? 'Trocar foto do contato' : 'Adicionar foto ao contato'}
+                  title={hasManualPhoto ? 'Trocar foto' : 'Adicionar foto'}
+                >
+                  {photoLoading ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
+                </button>
+                {hasManualPhoto && (
+                  <button
+                    type="button"
+                    disabled={photoLoading}
+                    onClick={removePhoto}
+                    className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-slate-700 text-white shadow-lg transition hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-400 focus:ring-offset-2 disabled:opacity-60"
+                    aria-label="Remover foto do contato"
+                    title="Remover foto"
+                  >
+                    <ImageOff size={14} />
+                  </button>
+                )}
               </div>
            </div>
         </div>
@@ -167,6 +251,7 @@ export const ContactProfileSidebar = () => {
         <p className="text-[11px] font-bold text-slate-400 font-mono tracking-tighter mb-4 opacity-70">
           {formatPhone(contact.phone)}
         </p>
+        {photoError && <p role="alert" className="mb-4 rounded-xl bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-600">{photoError}</p>}
 
         {/* Observation / Pinned Note Field (System Logic Integrated) */}
         <div className="mt-2 px-1">

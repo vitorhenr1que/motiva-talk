@@ -15,6 +15,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { ContactAvatar } from '@/components/ui/ContactAvatar';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -271,15 +272,7 @@ export default function FunnelKanbanPage() {
                                        "h-9 w-9 rounded-xl flex items-center justify-center text-sm font-black transition-all duration-300 overflow-hidden",
                                        activeConversation?.id === item.conversation.id ? "bg-indigo-600 text-white" : "bg-indigo-50 text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white"
                                     )}>
-                                       {item.conversation.contact.profilePictureUrl ? (
-                                          <img 
-                                             src={item.conversation.contact.profilePictureUrl} 
-                                             alt={item.conversation.contact.name} 
-                                             className="h-full w-full object-cover"
-                                          />
-                                       ) : (
-                                          item.conversation.contact.name?.[0] || '?'
-                                       )}
+                                       <ContactAvatar name={item.conversation.contact.name} photoUrl={item.conversation.contact.profilePictureUrl} sizes="36px" className="text-sm" />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                        <h3 className="text-xs font-black text-slate-800 tracking-tight truncate group-hover:text-indigo-600 transition-colors uppercase">

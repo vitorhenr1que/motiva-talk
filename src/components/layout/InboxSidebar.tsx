@@ -11,6 +11,7 @@ import { formatTimeBahia, parseSafeDate } from '@/lib/date-utils';
 import { supabase } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ConversationWindowAvatar, ConversationWindowCountdown } from '@/components/chat/ConversationWindowTimer';
+import { ContactAvatar } from '@/components/ui/ContactAvatar';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -52,11 +53,7 @@ const MemoizedConversationItem = React.memo(({ conv, activeId, isDeleting, isPin
         size={48}
         className="rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 shadow-sm transition-transform group-hover:scale-105 border border-slate-100"
       >
-        {conv.contact.profilePictureUrl ? (
-          <img src={conv.contact.profilePictureUrl} className="h-full w-full object-cover" alt={conv.contact.name} />
-        ) : (
-          conv.contact.name?.[0] || '?'
-        )}
+        <ContactAvatar name={conv.contact.name} photoUrl={conv.contact.profilePictureUrl} sizes="48px" className="text-sm" />
       </ConversationWindowAvatar>
       <div className="flex flex-1 flex-col overflow-hidden">
         <div className="flex items-center justify-between mb-0.5">

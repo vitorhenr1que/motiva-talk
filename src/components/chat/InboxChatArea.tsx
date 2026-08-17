@@ -28,6 +28,7 @@ import {
   CONVERSATION_WARNING_MS,
   getConversationWindowState,
 } from '@/lib/conversation-window';
+import { ContactAvatar } from '@/components/ui/ContactAvatar';
 
 const CustomAudioPlayer = ({ url, duration, fileName, mimeType, mediaUrl }: { url: string, duration?: number, fileName?: string, mimeType?: string, mediaUrl?: string }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -659,42 +660,6 @@ Todos os dados e mensagens serão excluídos.`;
     fetchPerms();
   }, []);
 
-  // Efeito para disparar a busca da foto de perfil (estratégia de cache)
-  useEffect(() => {
-    if (!activeConversation?.contact?.id || !activeConversation?.channelId) return;
-
-    const contact = activeConversation.contact;
-    const lastFetch = contact.lastProfilePictureFetchAt ? new Date(contact.lastProfilePictureFetchAt) : null;
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
-    // Só dispara se não tiver URL ou se o cache expirou (> 24h)
-    if (!contact.profilePictureUrl || !lastFetch || lastFetch < twentyFourHoursAgo) {
-      const triggerFetch = async () => {
-        try {
-          console.log(`[UI_DEBUG] Disparando busca de foto para: ${contact.phone}`);
-          const res = await fetch(`/api/contacts/${contact.id}/profile-picture`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ channelId: activeConversation.channelId })
-          });
-          const data = await res.json();
-          if (data.success && data.profilePictureUrl) {
-            updateConversationLocally(activeConversation.id, {
-               contact: { 
-                 ...contact, 
-                 profilePictureUrl: data.profilePictureUrl, 
-                 lastProfilePictureFetchAt: new Date().toISOString() 
-               }
-            });
-          }
-        } catch (e) {
-          console.error('[PROFILE_PICTURE_TRIGGER] Falha:', e);
-        }
-      };
-      triggerFetch();
-    }
-  }, [activeConversation?.id, activeConversation?.contact?.id, activeConversation?.channelId]);
-
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, loadingMessages]);
@@ -857,11 +822,7 @@ Todos os dados e mensagens serão excluídos.`;
                   nowMs={conversationNowMs}
                   className="rounded-full bg-slate-100 flex items-center justify-center border border-slate-200 shadow-sm text-lg font-bold text-slate-500"
                 >
-                   {activeConversation.contact?.profilePictureUrl ? (
-                     <img src={activeConversation.contact.profilePictureUrl} className="h-full w-full object-cover" alt={activeConversation.contact.name} />
-                   ) : (
-                     <span className="uppercase">{activeConversation.contact?.name?.[0] || '?'}</span>
-                   )}
+                   <ContactAvatar name={activeConversation.contact?.name} photoUrl={activeConversation.contact?.profilePictureUrl} sizes="48px" className="text-lg" />
                 </ConversationWindowAvatar>
                 <div className="leading-tight">
                   <div className="flex items-center gap-2">
