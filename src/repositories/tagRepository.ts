@@ -2,6 +2,18 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateId } from '@/lib/utils'
 
 export class TagRepository {
+  static async findById(id: string, organizationId: string) {
+    const { data, error } = await supabaseAdmin
+      .from('Tag')
+      .select('*')
+      .eq('id', id)
+      .eq('organizationId', organizationId)
+      .maybeSingle()
+
+    if (error) throw error
+    return data
+  }
+
   static async findMany(organizationId: string) {
     const { data, error } = await supabaseAdmin
       .from('Tag')

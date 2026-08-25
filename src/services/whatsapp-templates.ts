@@ -4,6 +4,7 @@ import { ChannelRepository } from '@/repositories/channelRepository'
 import { ConversationRepository } from '@/repositories/conversationRepository'
 import { MessageRepository } from '@/repositories/messageRepository'
 import { WhatsAppTemplateRepository } from '@/repositories/whatsappTemplateRepository'
+import { TagRepository } from '@/repositories/tagRepository'
 import { metaCloudProvider } from '@/services/whatsapp/providers/meta-cloud-provider'
 
 type TemplateCategory = 'utility' | 'marketing' | 'authentication'
@@ -25,6 +26,11 @@ type TemplateInput = {
   rodape?: string | null
   botoes?: ButtonInput[] | null
   variaveis?: Array<{ name: string; example: string }> | null
+}
+
+type BulkVariableRule = {
+  mode: 'fixed' | 'contact_name' | 'contact_phone'
+  value?: string
 }
 
 const STATUS_MAP: Record<string, string> = {
@@ -199,7 +205,70 @@ function renderTemplateText(template: any, variables: string[] = []) {
 
 export class WhatsAppTemplateService {
   static async list(organizationId: string, filters: { channelId?: string; status?: string }) {
-    return WhatsAppTemplateRepository.findMany(organizationId, filters)
+    // O status local pode estar defasado; filtre somente depois de consultar a Meta.
+    const templates = await WhatsAppTemplateRepository.findMany(organizationId, {
+      channelId: filters.channelId,
+    })
+    if (!templates.length) return templates
+
+    const syncedById = new Map<string, any>()
+    const channelIds = Array.from(new Set(templates.map(template => template.channelId).filter(Boolean)))
+
+    for (const channelId of channelIds) {
+      try {
+        const channel = await ChannelRepository.findById(channelId, organizationId)
+        if (channel.whatsappProvider !== 'META_CLOUD') continue
+
+        const metaTemplates = await metaCloudProvider.listMessageTemplates(channel as any)
+        const metaById = new Map(
+          metaTemplates
+            .filter(template => template?.id)
+            .map(template => [String(template.id), template])
+        )
+
+        const channelTemplates = templates.filter(template => template.channelId === channelId && template.metaTemplateId)
+        const syncedAt = new Date().toISOString()
+
+        await Promise.all(channelTemplates.map(async template => {
+          const metaTemplate: any = metaById.get(String(template.metaTemplateId))
+          if (!metaTemplate) return
+
+          const status = mapMetaStatus(metaTemplate.status)
+          const rejectionReason = status === 'rejeitado'
+            ? metaTemplate.rejected_reason || null
+            : null
+          const patch: any = {
+            status,
+            lastSyncedAt: syncedAt,
+            errorMessage: rejectionReason,
+            rejectionReason,
+            approvedAt: status === 'aprovado' ? (template.approvedAt || syncedAt) : null,
+            rejectedAt: status === 'rejeitado' ? (template.rejectedAt || syncedAt) : null,
+          }
+
+          const updated = await WhatsAppTemplateRepository.update(
+            template.id,
+            organizationId,
+            patch
+          )
+          syncedById.set(template.id, updated)
+        }))
+      } catch (error) {
+        console.error(`[WHATSAPP_TEMPLATES] Falha ao sincronizar canal ${channelId} com a Meta:`, error)
+        if (filters.channelId === channelId) {
+          throw new AppError(
+            'Não foi possível consultar o status dos templates na Meta. Tente novamente em instantes.',
+            502,
+            'INTERNAL_ERROR'
+          )
+        }
+      }
+    }
+
+    const syncedTemplates = templates.map(template => syncedById.get(template.id) || template)
+    return filters.status
+      ? syncedTemplates.filter(template => template.status === filters.status)
+      : syncedTemplates
   }
 
   static async create(organizationId: string, input: TemplateInput) {
@@ -286,15 +355,15 @@ export class WhatsAppTemplateService {
       components,
     }
 
-    let status = 'pendente'
-    let errorMessage = null
     if (current.metaTemplateId) {
       try {
-        const metaResponse = await metaCloudProvider.updateMessageTemplate(channel as any, current.metaTemplateId, payload)
-        status = mapMetaStatus(metaResponse.status)
+        await metaCloudProvider.updateMessageTemplate(channel as any, current.metaTemplateId, payload)
       } catch (error: any) {
-        status = 'rejeitado'
-        errorMessage = error.message
+        throw new AppError(
+          error.message || 'A Meta recusou a edição do template.',
+          409,
+          'CONFLICT'
+        )
       }
     }
 
@@ -309,9 +378,9 @@ export class WhatsAppTemplateService {
       buttons: merged.botoes || [],
       components,
       metadata: { variables: merged.variaveis || [] },
-      status,
+      status: 'pendente',
       submittedAt: new Date().toISOString(),
-      errorMessage,
+      errorMessage: null,
     })
   }
 
@@ -397,6 +466,122 @@ export class WhatsAppTemplateService {
     const { RealtimeService } = await import('@/services/realtime.service')
     await RealtimeService.notifyNewMessage(conversation.id, message)
     return message
+  }
+
+  static async previewBulkByTag(
+    organizationId: string,
+    input: { templateId: string; tagId: string }
+  ) {
+    if (!input.templateId || !input.tagId) {
+      throw new AppError('templateId e tagId são obrigatórios.', 400, 'VALIDATION_ERROR')
+    }
+
+    const current = await WhatsAppTemplateRepository.findById(input.templateId, organizationId)
+    const syncedTemplates = await this.list(organizationId, { channelId: current.channelId })
+    const template = syncedTemplates.find(item => item.id === input.templateId)
+    if (!template) throw new AppError('Template não encontrado.', 404, 'NOT_FOUND')
+    if (template.status !== 'aprovado') {
+      throw new AppError('Apenas templates aprovados podem ser usados em campanhas.', 400, 'VALIDATION_ERROR')
+    }
+
+    const tag = await TagRepository.findById(input.tagId, organizationId)
+    if (!tag) throw new AppError('Etiqueta não encontrada.', 404, 'NOT_FOUND')
+
+    const recipients = await ConversationRepository.findManyByTagForMessaging(
+      input.tagId,
+      template.channelId,
+      organizationId
+    )
+
+    return {
+      template,
+      tag: { id: tag.id, name: tag.name, color: tag.color, emoji: tag.emoji },
+      total: recipients.length,
+      sample: recipients.slice(0, 5).map(recipient => ({
+        conversationId: recipient.id,
+        contactName: recipient.contact?.name || recipient.contact?.phone || 'Contato',
+        phone: recipient.contact?.phone || '',
+      })),
+      recipients,
+    }
+  }
+
+  static async sendBulkByTag(
+    organizationId: string,
+    input: { templateId: string; tagId: string; variables?: BulkVariableRule[] }
+  ) {
+    const preview = await this.previewBulkByTag(organizationId, input)
+    if (!preview.total) {
+      throw new AppError('Nenhum contato elegível encontrado com esta etiqueta neste canal.', 400, 'VALIDATION_ERROR')
+    }
+    if (preview.total > 200) {
+      throw new AppError(
+        `Esta campanha possui ${preview.total} destinatários. O limite por disparo é 200.`,
+        400,
+        'VALIDATION_ERROR'
+      )
+    }
+
+    const placeholders = getPlaceholders(preview.template.bodyText || '')
+    const rules = input.variables || []
+    if (rules.length !== placeholders.length) {
+      throw new AppError('Configure todas as variáveis do template para o disparo.', 400, 'VALIDATION_ERROR')
+    }
+    for (const rule of rules) {
+      if (!['fixed', 'contact_name', 'contact_phone'].includes(rule.mode)) {
+        throw new AppError('Modo de variável inválido.', 400, 'VALIDATION_ERROR')
+      }
+      if (rule.mode === 'fixed' && !rule.value?.trim()) {
+        throw new AppError('Preencha todos os valores fixos da campanha.', 400, 'VALIDATION_ERROR')
+      }
+    }
+
+    const resolveVariables = (recipient: any) => rules.map(rule => {
+      if (rule.mode === 'contact_name') return recipient.contact?.name || recipient.contact?.phone || ''
+      if (rule.mode === 'contact_phone') return recipient.contact?.phone || ''
+      return rule.value?.trim() || ''
+    })
+
+    const results: Array<{
+      conversationId: string
+      contactName: string
+      success: boolean
+      messageId?: string
+      error?: string
+    }> = []
+    let nextIndex = 0
+    const workerCount = Math.min(3, preview.recipients.length)
+
+    await Promise.all(Array.from({ length: workerCount }, async () => {
+      while (nextIndex < preview.recipients.length) {
+        const recipient = preview.recipients[nextIndex++]
+        const contactName = recipient.contact?.name || recipient.contact?.phone || 'Contato'
+        try {
+          const message = await this.send(organizationId, {
+            templateId: input.templateId,
+            conversationId: recipient.id,
+            variables: resolveVariables(recipient),
+          })
+          results.push({ conversationId: recipient.id, contactName, success: true, messageId: message.id })
+        } catch (error: any) {
+          results.push({
+            conversationId: recipient.id,
+            contactName,
+            success: false,
+            error: error?.message || 'Falha ao enviar template.',
+          })
+        }
+      }
+    }))
+
+    const sent = results.filter(result => result.success).length
+    return {
+      tag: preview.tag,
+      total: preview.total,
+      sent,
+      failed: preview.total - sent,
+      results,
+    }
   }
 
   static getUsageExamples() {

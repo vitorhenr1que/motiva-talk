@@ -4,9 +4,10 @@
 import React, { useEffect, useMemo, useReducer, useState } from 'react'
 import {
   Check, ChevronLeft, Edit2, ExternalLink, Loader2, MessageSquareReply, Mic, MoreVertical,
-  Paperclip, Phone, Plus, Search, Send, Smile, Trash2, Variable, Video, X
+  Megaphone, Paperclip, Phone, Plus, Search, Send, Smile, Trash2, Variable, Video, X
 } from 'lucide-react'
 import { useChatStore } from '@/store/useChatStore'
+import { BulkTemplateCampaign } from '@/components/chat/BulkTemplateCampaign'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
@@ -434,26 +435,37 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
   const [editing, setEditing] = useState<MessageTemplate | null>(null)
   const [variableInputOpen, setVariableInputOpen] = useState(false)
   const [variableName, setVariableName] = useState('')
+  const [campaignOpen, setCampaignOpen] = useState(false)
   const [form, dispatch] = useReducer(formReducer, channelId, emptyForm)
 
-  const fetchTemplates = async () => {
+  const fetchTemplates = async (background = false) => {
     if (!channelId) return
-    setLoading(true)
+    if (!background) setLoading(true)
     try {
       const resp = await fetch(`/api/whatsapp/templates?channelId=${channelId}`)
       const data = await resp.json()
       if (!resp.ok || !data.success) throw new Error(data.message || 'Falha ao carregar templates.')
-      setTemplates(data.data || [])
+      const nextTemplates = data.data || []
+      setTemplates(nextTemplates)
+      setSelected(current => current
+        ? nextTemplates.find((template: MessageTemplate) => template.id === current.id) || current
+        : null
+      )
     } catch (error: any) {
-      onError({ message: error.message || 'Falha ao carregar templates.' })
+      if (!background) onError({ message: error.message || 'Falha ao carregar templates.' })
     } finally {
-      setLoading(false)
+      if (!background) setLoading(false)
     }
   }
 
   useEffect(() => {
     dispatch({ type: 'reset', channelId })
     fetchTemplates()
+    const statusSyncTimer = window.setInterval(() => {
+      void fetchTemplates(true)
+    }, 60_000)
+
+    return () => window.clearInterval(statusSyncTimer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId])
 
@@ -546,6 +558,7 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
 
   const handleSelect = (template: MessageTemplate) => {
     setSelected(template)
+    setCampaignOpen(false)
     setSendExamples(extractVariableNames(template.bodyText).map((name) => {
       const suggestion = VARIABLE_SUGGESTIONS.find(item => item.name === name)
       return suggestion?.example || ''
@@ -956,10 +969,16 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
                     botoes={selected.buttons || []}
                   />
                 </div>
-                <button type="button" onClick={handleSend} disabled={saving || selected.status !== 'aprovado'} className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-xs font-black uppercase tracking-widest text-slate-950 shadow-lg transition-all hover:bg-blue-50 active:scale-95 disabled:opacity-40">
-                  {saving ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                  Enviar template
-                </button>
+                <div className="mt-4 grid gap-2">
+                  <button type="button" onClick={handleSend} disabled={saving || selected.status !== 'aprovado'} className="flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-xs font-black uppercase tracking-widest text-slate-950 shadow-lg transition-all hover:bg-blue-50 active:scale-95 disabled:opacity-40">
+                    {saving ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                    Enviar para esta conversa
+                  </button>
+                  <button type="button" onClick={() => setCampaignOpen(true)} disabled={saving || selected.status !== 'aprovado'} className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-blue-600/20 transition-all hover:bg-blue-500 active:scale-95 disabled:opacity-40">
+                    <Megaphone size={16} />
+                    Disparar por etiqueta
+                  </button>
+                </div>
               </aside>
             </div>
           ) : (
@@ -979,6 +998,13 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
           )}
         </div>
       </div>
+      {campaignOpen && selected && (
+        <BulkTemplateCampaign
+          template={selected}
+          onClose={() => setCampaignOpen(false)}
+          onError={onError}
+        />
+      )}
     </div>
   )
 }

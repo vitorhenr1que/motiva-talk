@@ -13,6 +13,21 @@ type MetaWebhookMessageWithContext = {
   context?: MetaWebhookMessageContext;
 };
 
+type MetaMessageTemplate = {
+  id: string;
+  name: string;
+  status: string;
+  category?: string;
+  language: string;
+  rejected_reason?: string;
+};
+
+type MetaMessageTemplatePage = {
+  data?: MetaMessageTemplate[];
+  paging?: { next?: string };
+  error?: unknown;
+};
+
 export class MetaCloudProvider implements WhatsAppProvider {
   private readonly graphVersion = process.env.META_GRAPH_API_VERSION || 'v25.0';
 
@@ -273,6 +288,35 @@ export class MetaCloudProvider implements WhatsAppProvider {
     }
 
     return data;
+  }
+
+  async listMessageTemplates(channel: Channel): Promise<MetaMessageTemplate[]> {
+    const { wabaId, accessToken } = this.getTemplateCredentials(channel);
+    const fields = 'id,name,status,category,language,rejected_reason';
+    let url: string | null = this.graphUrl(
+      `${wabaId}/message_templates?fields=${encodeURIComponent(fields)}&limit=250`
+    );
+    const templates: MetaMessageTemplate[] = [];
+
+    while (url) {
+      const response: Response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      });
+      const data: MetaMessageTemplatePage = await response.json();
+
+      if (!response.ok) {
+        throw this.buildGraphError('listMessageTemplates', response.status, data, {
+          wabaId: this.maskId(wabaId),
+        });
+      }
+
+      templates.push(...(Array.isArray(data?.data) ? data.data : []));
+      url = typeof data?.paging?.next === 'string' ? data.paging.next : null;
+    }
+
+    return templates;
   }
 
   async updateMessageTemplate(channel: Channel, metaTemplateId: string, payload: any): Promise<any> {
