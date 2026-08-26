@@ -28,6 +28,18 @@ export class FunnelRepository {
     return data
   }
 
+  static async findStageById(id: string, organizationId: string) {
+    const { data, error } = await supabaseAdmin
+      .from('FunnelStage')
+      .select('*')
+      .eq('id', id)
+      .eq('organizationId', organizationId)
+      .maybeSingle()
+
+    if (error) throw error
+    return data
+  }
+
   /**
    * Cria uma nova etapa no funil
    */

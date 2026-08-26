@@ -16,6 +16,43 @@ type MessagingConversation = {
 export type BulkMessagingConversation = MessagingConversation
 
 export class ConversationRepository {
+  private static async findManyByIdsForMessaging(
+    conversationIds: string[],
+    channelId: string,
+    organizationId: string
+  ): Promise<BulkMessagingConversation[]> {
+    const uniqueIds = Array.from(new Set(conversationIds))
+    if (!uniqueIds.length) return []
+
+    const conversations: BulkMessagingConversation[] = []
+    const queryBatchSize = 200
+    for (let index = 0; index < uniqueIds.length; index += queryBatchSize) {
+      const batch = uniqueIds.slice(index, index + queryBatchSize)
+      const { data, error } = await supabaseAdmin
+        .from('Conversation')
+        .select(`
+          id, channelId, contactId, status, currentSectorId, conversationWindowStartedAt,
+          contact:Contact(id, name, phone),
+          channel:Channel(*)
+        `)
+        .eq('organizationId', organizationId)
+        .eq('channelId', channelId)
+        .in('id', batch)
+
+      if (error) throw error
+      conversations.push(...((data || []) as unknown as BulkMessagingConversation[]))
+    }
+
+    const uniqueByContact = new Map<string, BulkMessagingConversation>()
+    for (const conversation of conversations) {
+      if (!conversation.contact || !conversation.channel) continue
+      const contactKey = conversation.contact.id || conversation.contact.phone
+      if (!uniqueByContact.has(contactKey)) uniqueByContact.set(contactKey, conversation)
+    }
+
+    return Array.from(uniqueByContact.values())
+  }
+
   private static async findHistoricalIdsViaRpc(organizationId: string, where: any, limit: number) {
     if (where.tagId || where.search || where.assignedTo || where.startDate || where.endDate || where.currentUserId) {
       return null;
@@ -512,6 +549,7 @@ export class ConversationRepository {
         .select('conversationId')
         .eq('tagId', tagId)
         .eq('organizationId', organizationId)
+        .order('conversationId', { ascending: true })
         .range(from, from + pageSize - 1)
 
       if (error) throw error
@@ -520,36 +558,33 @@ export class ConversationRepository {
       if (page.length < pageSize) break
     }
 
-    const uniqueIds = Array.from(new Set(conversationIds))
-    if (!uniqueIds.length) return []
+    return this.findManyByIdsForMessaging(conversationIds, channelId, organizationId)
+  }
 
-    const conversations: BulkMessagingConversation[] = []
-    const queryBatchSize = 200
-    for (let index = 0; index < uniqueIds.length; index += queryBatchSize) {
-      const batch = uniqueIds.slice(index, index + queryBatchSize)
+  static async findManyByFunnelStageForMessaging(
+    stageId: string,
+    channelId: string,
+    organizationId: string
+  ): Promise<BulkMessagingConversation[]> {
+    const conversationIds: string[] = []
+    const pageSize = 1000
+
+    for (let from = 0; ; from += pageSize) {
       const { data, error } = await supabaseAdmin
-        .from('Conversation')
-        .select(`
-          id, channelId, contactId, status, currentSectorId, conversationWindowStartedAt,
-          contact:Contact(id, name, phone),
-          channel:Channel(*)
-        `)
+        .from('ConversationFunnel')
+        .select('conversationId')
+        .eq('stageId', stageId)
         .eq('organizationId', organizationId)
-        .eq('channelId', channelId)
-        .in('id', batch)
+        .order('conversationId', { ascending: true })
+        .range(from, from + pageSize - 1)
 
       if (error) throw error
-      conversations.push(...((data || []) as unknown as BulkMessagingConversation[]))
+      const page = data || []
+      conversationIds.push(...page.map(row => row.conversationId))
+      if (page.length < pageSize) break
     }
 
-    const uniqueByContact = new Map<string, BulkMessagingConversation>()
-    for (const conversation of conversations) {
-      if (!conversation.contact || !conversation.channel) continue
-      const contactKey = conversation.contact.id || conversation.contact.phone
-      if (!uniqueByContact.has(contactKey)) uniqueByContact.set(contactKey, conversation)
-    }
-
-    return Array.from(uniqueByContact.values())
+    return this.findManyByIdsForMessaging(conversationIds, channelId, organizationId)
   }
 
   static async findExpiredActiveWindowIds(organizationId: string, limit = 25) {

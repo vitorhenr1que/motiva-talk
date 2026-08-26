@@ -5,6 +5,7 @@ import { ConversationRepository } from '@/repositories/conversationRepository'
 import { MessageRepository } from '@/repositories/messageRepository'
 import { WhatsAppTemplateRepository } from '@/repositories/whatsappTemplateRepository'
 import { TagRepository } from '@/repositories/tagRepository'
+import { FunnelRepository } from '@/repositories/funnelRepository'
 import { metaCloudProvider } from '@/services/whatsapp/providers/meta-cloud-provider'
 
 type TemplateCategory = 'utility' | 'marketing' | 'authentication'
@@ -31,6 +32,13 @@ type TemplateInput = {
 type BulkVariableRule = {
   mode: 'fixed' | 'contact_name' | 'contact_phone'
   value?: string
+}
+
+type BulkAudienceInput = {
+  templateId: string
+  audienceType?: 'tag' | 'stage'
+  tagId?: string
+  stageId?: string
 }
 
 const STATUS_MAP: Record<string, string> = {
@@ -189,10 +197,18 @@ function mapMetaStatus(status?: string) {
 function buildSendComponents(template: any, variables: string[] = []) {
   const components: any[] = []
   const bodySlots = getPlaceholders(template.bodyText || '')
+  const firstMissingVariableIndex = bodySlots.findIndex((_, index) => !variables[index]?.trim())
+  if (firstMissingVariableIndex !== -1) {
+    throw new AppError(
+      `Informe um valor para {{${bodySlots[firstMissingVariableIndex]}}}.`,
+      400,
+      'VALIDATION_ERROR'
+    )
+  }
   if (bodySlots.length) {
     components.push({
       type: 'body',
-      parameters: bodySlots.map((_, index) => ({ type: 'text', text: variables[index] || '' }))
+      parameters: bodySlots.map((_, index) => ({ type: 'text', text: variables[index].trim() }))
     })
   }
   return components
@@ -468,12 +484,14 @@ export class WhatsAppTemplateService {
     return message
   }
 
-  static async previewBulkByTag(
+  static async previewBulk(
     organizationId: string,
-    input: { templateId: string; tagId: string }
+    input: BulkAudienceInput
   ) {
-    if (!input.templateId || !input.tagId) {
-      throw new AppError('templateId e tagId são obrigatórios.', 400, 'VALIDATION_ERROR')
+    const audienceType = input.audienceType || (input.stageId ? 'stage' : 'tag')
+    const audienceId = audienceType === 'stage' ? input.stageId : input.tagId
+    if (!input.templateId || !audienceId || !['tag', 'stage'].includes(audienceType)) {
+      throw new AppError('Template e segmento de público são obrigatórios.', 400, 'VALIDATION_ERROR')
     }
 
     const current = await WhatsAppTemplateRepository.findById(input.templateId, organizationId)
@@ -484,18 +502,33 @@ export class WhatsAppTemplateService {
       throw new AppError('Apenas templates aprovados podem ser usados em campanhas.', 400, 'VALIDATION_ERROR')
     }
 
-    const tag = await TagRepository.findById(input.tagId, organizationId)
-    if (!tag) throw new AppError('Etiqueta não encontrada.', 404, 'NOT_FOUND')
-
-    const recipients = await ConversationRepository.findManyByTagForMessaging(
-      input.tagId,
-      template.channelId,
-      organizationId
-    )
+    let segment: { type: 'tag' | 'stage'; id: string; name: string; color?: string; emoji?: string }
+    let recipients
+    if (audienceType === 'stage') {
+      const stage = await FunnelRepository.findStageById(audienceId, organizationId)
+      if (!stage || stage.type !== 'STEP') {
+        throw new AppError('Fase do Kanban não encontrada.', 404, 'NOT_FOUND')
+      }
+      segment = { type: 'stage', id: stage.id, name: stage.name }
+      recipients = await ConversationRepository.findManyByFunnelStageForMessaging(
+        stage.id,
+        template.channelId,
+        organizationId
+      )
+    } else {
+      const tag = await TagRepository.findById(audienceId, organizationId)
+      if (!tag) throw new AppError('Etiqueta não encontrada.', 404, 'NOT_FOUND')
+      segment = { type: 'tag', id: tag.id, name: tag.name, color: tag.color, emoji: tag.emoji }
+      recipients = await ConversationRepository.findManyByTagForMessaging(
+        tag.id,
+        template.channelId,
+        organizationId
+      )
+    }
 
     return {
       template,
-      tag: { id: tag.id, name: tag.name, color: tag.color, emoji: tag.emoji },
+      segment,
       total: recipients.length,
       sample: recipients.slice(0, 5).map(recipient => ({
         conversationId: recipient.id,
@@ -506,13 +539,13 @@ export class WhatsAppTemplateService {
     }
   }
 
-  static async sendBulkByTag(
+  static async sendBulk(
     organizationId: string,
-    input: { templateId: string; tagId: string; variables?: BulkVariableRule[] }
+    input: BulkAudienceInput & { variables?: BulkVariableRule[] }
   ) {
-    const preview = await this.previewBulkByTag(organizationId, input)
+    const preview = await this.previewBulk(organizationId, input)
     if (!preview.total) {
-      throw new AppError('Nenhum contato elegível encontrado com esta etiqueta neste canal.', 400, 'VALIDATION_ERROR')
+      throw new AppError('Nenhum contato elegível encontrado neste segmento e canal.', 400, 'VALIDATION_ERROR')
     }
     if (preview.total > 200) {
       throw new AppError(
@@ -576,7 +609,7 @@ export class WhatsAppTemplateService {
 
     const sent = results.filter(result => result.success).length
     return {
-      tag: preview.tag,
+      segment: preview.segment,
       total: preview.total,
       sent,
       failed: preview.total - sent,

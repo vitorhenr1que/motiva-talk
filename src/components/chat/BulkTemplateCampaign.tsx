@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, Loader2, Megaphone,
+  AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, Columns3, Loader2, Megaphone,
   Phone, Tag, UserRound, UsersRound, XCircle,
 } from 'lucide-react'
 
@@ -19,11 +19,28 @@ type CampaignTag = {
   emoji?: string
 }
 
+type CampaignStage = {
+  id: string
+  name: string
+  type: 'STEP' | 'SELECT'
+  order: number
+}
+
+type AudienceType = 'tag' | 'stage'
+
+type CampaignSegment = {
+  type: AudienceType
+  id: string
+  name: string
+  color?: string
+  emoji?: string
+}
+
 type VariableMode = 'fixed' | 'contact_name' | 'contact_phone'
 type VariableRule = { mode: VariableMode; value: string }
 
 type Preview = {
-  tag: CampaignTag
+  segment: CampaignSegment
   total: number
   limit: number
   sample: Array<{ conversationId: string; contactName: string; phone: string }>
@@ -63,9 +80,12 @@ const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2
 export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
   const variables = useMemo(() => extractVariables(template.bodyText), [template.bodyText])
   const [tags, setTags] = useState<CampaignTag[]>([])
+  const [stages, setStages] = useState<CampaignStage[]>([])
+  const [audienceType, setAudienceType] = useState<AudienceType>('tag')
   const [tagId, setTagId] = useState('')
+  const [stageId, setStageId] = useState('')
   const [rules, setRules] = useState<VariableRule[]>(() => variables.map(initialRule))
-  const [loadingTags, setLoadingTags] = useState(true)
+  const [loadingAudience, setLoadingAudience] = useState(true)
   const [loadingPreview, setLoadingPreview] = useState(false)
   const [preview, setPreview] = useState<Preview | null>(null)
   const [confirming, setConfirming] = useState(false)
@@ -74,19 +94,24 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
 
   useEffect(() => {
     let active = true
-    fetch('/api/tags')
-      .then(async response => {
-        const data = await response.json()
-        if (!response.ok || !data.success) throw new Error(data.message || 'Falha ao carregar etiquetas.')
-        if (active) setTags(data.data || [])
+    Promise.all([fetch('/api/tags'), fetch('/api/funnel/stages')])
+      .then(async ([tagsResponse, stagesResponse]) => {
+        const [tagsData, stagesData] = await Promise.all([tagsResponse.json(), stagesResponse.json()])
+        if (!tagsResponse.ok || !tagsData.success) throw new Error(tagsData.message || 'Falha ao carregar etiquetas.')
+        if (!stagesResponse.ok || !stagesData.success) throw new Error(stagesData.message || 'Falha ao carregar fases do Kanban.')
+        if (active) {
+          setTags(tagsData.data || [])
+          setStages((stagesData.data || []).filter((stage: CampaignStage) => stage.type === 'STEP'))
+        }
       })
-      .catch(error => onError({ message: error.message || 'Falha ao carregar etiquetas.' }))
-      .finally(() => { if (active) setLoadingTags(false) })
+      .catch(error => onError({ message: error.message || 'Falha ao carregar os segmentos.' }))
+      .finally(() => { if (active) setLoadingAudience(false) })
     return () => { active = false }
   }, [onError])
 
   useEffect(() => {
-    if (!tagId) {
+    const audienceId = audienceType === 'tag' ? tagId : stageId
+    if (!audienceId) {
       setPreview(null)
       return
     }
@@ -98,7 +123,12 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
-      body: JSON.stringify({ action: 'preview', templateId: template.id, tagId }),
+      body: JSON.stringify({
+        action: 'preview',
+        templateId: template.id,
+        audienceType,
+        ...(audienceType === 'tag' ? { tagId } : { stageId }),
+      }),
     })
       .then(async response => {
         const data = await response.json()
@@ -113,10 +143,12 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
       })
 
     return () => controller.abort()
-  }, [tagId, template.id, onError])
+  }, [audienceType, tagId, stageId, template.id, onError])
 
   const invalidFixedRule = rules.some(rule => rule.mode === 'fixed' && !rule.value.trim())
-  const canReview = !!preview && preview.total > 0 && preview.total <= preview.limit && !invalidFixedRule
+  const selectedAudienceId = audienceType === 'tag' ? tagId : stageId
+  const previewMatchesAudience = preview?.segment.type === audienceType && preview.segment.id === selectedAudienceId
+  const canReview = !!preview && previewMatchesAudience && preview.total > 0 && preview.total <= preview.limit && !invalidFixedRule
 
   const updateRule = (index: number, patch: Partial<VariableRule>) => {
     setRules(current => current.map((rule, ruleIndex) => ruleIndex === index ? { ...rule, ...patch } : rule))
@@ -132,7 +164,8 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
         body: JSON.stringify({
           action: 'send',
           templateId: template.id,
-          tagId,
+          audienceType,
+          ...(audienceType === 'tag' ? { tagId } : { stageId }),
           variables: rules.map(rule => ({ mode: rule.mode, value: rule.value })),
         }),
       })
@@ -160,7 +193,7 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
               <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-300">Campanha segmentada</p>
                 <h2 id="campaign-title" className="mt-1 truncate text-xl font-black">{template.name}</h2>
-                <p className="mt-1 text-xs font-medium text-slate-400">Dispare o template para contatos agrupados por etiqueta.</p>
+                <p className="mt-1 text-xs font-medium text-slate-400">Dispare o template por etiqueta ou fase do Kanban.</p>
               </div>
             </div>
             <button type="button" onClick={onClose} disabled={sending} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-40" aria-label="Fechar campanha">
@@ -227,7 +260,10 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Segmento</p>
-                    <p className="mt-1 text-sm font-black text-slate-900">{preview.tag.emoji || '🏷️'} {preview.tag.name}</p>
+                    <p className="mt-1 flex items-center gap-2 text-sm font-black text-slate-900">
+                      {preview.segment.type === 'tag' ? <span>{preview.segment.emoji || '🏷️'}</span> : <Columns3 size={16} className="text-indigo-600" />}
+                      {preview.segment.name}
+                    </p>
                   </div>
                   <div className="rounded-2xl bg-slate-950 px-5 py-3 text-center text-white">
                     <p className="text-2xl font-black">{preview.total}</p>
@@ -243,17 +279,49 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
               <div className="space-y-5">
                 <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="mb-4 flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-600"><Tag size={17} /></div>
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+                      {audienceType === 'tag' ? <Tag size={17} /> : <Columns3 size={17} />}
+                    </div>
                     <div>
                       <h3 className="text-sm font-black text-slate-900">Escolha o público</h3>
                       <p className="text-xs font-medium text-slate-500">Somente contatos deste canal serão incluídos.</p>
                     </div>
                   </div>
-                  <label htmlFor="campaign-tag" className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-slate-500">Etiqueta</label>
-                  <select id="campaign-tag" value={tagId} onChange={event => setTagId(event.target.value)} disabled={loadingTags} className={inputClass}>
-                    <option value="">Selecione uma etiqueta</option>
-                    {tags.map(tag => <option key={tag.id} value={tag.id}>{tag.emoji || '🏷️'} {tag.name}</option>)}
-                  </select>
+                  <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1" role="group" aria-label="Tipo de público">
+                    <button
+                      type="button"
+                      onClick={() => setAudienceType('tag')}
+                      aria-pressed={audienceType === 'tag'}
+                      className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-black transition ${audienceType === 'tag' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                    >
+                      <Tag size={14} /> Etiqueta
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAudienceType('stage')}
+                      aria-pressed={audienceType === 'stage'}
+                      className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-black transition ${audienceType === 'stage' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                    >
+                      <Columns3 size={14} /> Fase do Kanban
+                    </button>
+                  </div>
+                  {audienceType === 'tag' ? (
+                    <>
+                      <label htmlFor="campaign-tag" className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-slate-500">Etiqueta</label>
+                      <select id="campaign-tag" value={tagId} onChange={event => setTagId(event.target.value)} disabled={loadingAudience} className={inputClass}>
+                        <option value="">Selecione uma etiqueta</option>
+                        {tags.map(tag => <option key={tag.id} value={tag.id}>{tag.emoji || '🏷️'} {tag.name}</option>)}
+                      </select>
+                    </>
+                  ) : (
+                    <>
+                      <label htmlFor="campaign-stage" className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-slate-500">Fase do fluxo</label>
+                      <select id="campaign-stage" value={stageId} onChange={event => setStageId(event.target.value)} disabled={loadingAudience} className={inputClass}>
+                        <option value="">Selecione uma fase</option>
+                        {stages.map(stage => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+                      </select>
+                    </>
+                  )}
                 </section>
 
                 {variables.length > 0 && (
@@ -310,7 +378,9 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
                       <span className="text-5xl font-black tracking-tight">{preview.total}</span>
                       <span className="pb-1 text-xs font-bold text-slate-400">contatos</span>
                     </div>
-                    <p className="mt-2 text-xs font-medium text-slate-400">com a etiqueta <span className="font-black text-white">{preview.tag.name}</span> neste canal</p>
+                    <p className="mt-2 text-xs font-medium text-slate-400">
+                      na {preview.segment.type === 'tag' ? 'etiqueta' : 'fase'} <span className="font-black text-white">{preview.segment.name}</span> deste canal
+                    </p>
                     {preview.total > preview.limit && (
                       <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs font-bold leading-5 text-amber-200">Reduza o segmento para até {preview.limit} contatos.</div>
                     )}
@@ -331,7 +401,7 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
                 ) : (
                   <div className="flex h-28 flex-col items-center justify-center text-center text-slate-500">
                     <UsersRound size={24} />
-                    <p className="mt-2 text-xs font-bold">Selecione uma etiqueta para calcular o público.</p>
+                    <p className="mt-2 text-xs font-bold">Selecione {audienceType === 'tag' ? 'uma etiqueta' : 'uma fase'} para calcular o público.</p>
                   </div>
                 )}
               </aside>

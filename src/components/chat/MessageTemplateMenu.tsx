@@ -480,6 +480,8 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
   const pendingCount = templates.filter(template => template.status === 'pendente').length
   const selectedVariables = selected ? extractVariableNames(selected.bodyText) : []
   const selectedPreviewVariables = selectedVariables.map((name, index) => ({ name, example: sendExamples[index] || '' }))
+  const firstEmptySendVariableIndex = selectedVariables.findIndex((_, index) => !sendExamples[index]?.trim())
+  const hasEmptySendVariables = firstEmptySendVariableIndex !== -1
   const formPreview = renderWithExamples(form.corpo || 'Ola, {{nome}}, sua entrega sera feita em {{data}}.', form.variaveis)
 
   const startCreate = () => {
@@ -568,6 +570,13 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
 
   const handleSend = async () => {
     if (!selected || !activeConversation) return
+    if (hasEmptySendVariables) {
+      onError({
+        message: `Informe um valor para ${variableToken(selectedVariables[firstEmptySendVariableIndex])}.`,
+        code: 'VALIDATION_ERROR',
+      })
+      return
+    }
     setSaving(true)
     try {
       const resp = await fetch('/api/whatsapp/templates/send', {
@@ -938,12 +947,21 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
                               next[index] = event.target.value
                               setSendExamples(next)
                             }}
-                            className={inputClass}
+                            className={cn(
+                              inputClass,
+                              !sendExamples[index]?.trim() && 'border-red-300 focus:border-red-500 focus:ring-red-500/10'
+                            )}
                             placeholder={`Valor para ${variableToken(name)}`}
+                            aria-invalid={!sendExamples[index]?.trim()}
                           />
                         </div>
                       ))}
                     </div>
+                    {hasEmptySendVariables && (
+                      <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700" role="alert">
+                        Preencha todas as variaveis para liberar o envio.
+                      </p>
+                    )}
                   </section>
                 )}
 
@@ -970,7 +988,7 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
                   />
                 </div>
                 <div className="mt-4 grid gap-2">
-                  <button type="button" onClick={handleSend} disabled={saving || selected.status !== 'aprovado'} className="flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-xs font-black uppercase tracking-widest text-slate-950 shadow-lg transition-all hover:bg-blue-50 active:scale-95 disabled:opacity-40">
+                  <button type="button" onClick={handleSend} disabled={saving || selected.status !== 'aprovado' || hasEmptySendVariables} className="flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-xs font-black uppercase tracking-widest text-slate-950 shadow-lg transition-all hover:bg-blue-50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40">
                     {saving ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                     Enviar para esta conversa
                   </button>

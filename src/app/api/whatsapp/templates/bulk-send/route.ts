@@ -14,11 +14,11 @@ export async function POST(req: Request) {
 
     const body = await req.json()
     if (body.action === 'preview') {
-      const preview = await WhatsAppTemplateService.previewBulkByTag(organizationId, body)
+      const preview = await WhatsAppTemplateService.previewBulk(organizationId, body)
       return NextResponse.json({
         success: true,
         data: {
-          tag: preview.tag,
+          segment: preview.segment,
           total: preview.total,
           sample: preview.sample,
           limit: 200,
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       throw new AppError('Ação inválida.', 400, 'VALIDATION_ERROR')
     }
 
-    const result = await WhatsAppTemplateService.sendBulkByTag(organizationId, body)
+    const result = await WhatsAppTemplateService.sendBulk(organizationId, body)
     return NextResponse.json({ success: true, data: result }, { status: 201 })
   } catch (error) {
     return handleApiError(error, req, { route: ROUTE })
