@@ -6,7 +6,7 @@ import {
   MoreVertical, Search, MessageCircle, FileText, Reply, Trash2,
   Loader2, Check, Pin, UserPlus, CheckCircle2, XCircle, X, ChevronDown, UserPlus as ContactIcon,
   Mic, Play, Pause, Volume2, Eye, Forward, AlertCircle, Smile, Plus, Edit2, Clock, Bot, Info,
-  Send, ArrowRightLeft
+  Send, ArrowRightLeft, ExternalLink, Phone
 } from 'lucide-react';
 import { TagSelector } from './TagSelector';
 import { formatWhatsappText } from '@/lib/formatWhatsappText';
@@ -977,6 +977,13 @@ Todos os dados e mensagens serão excluídos.`;
               const prevMsg = index > 0 ? messages[index - 1] : null;
               const prevMsgDate = prevMsg ? parseSafeDate(prevMsg.createdAt) : null;
               const showDivider = !prevMsgDate || currentMsgDate.toLocaleDateString('pt-BR', { timeZone: 'America/Bahia' }) !== prevMsgDate.toLocaleDateString('pt-BR', { timeZone: 'America/Bahia' });
+              const templateButtons = Array.isArray(msg.metadata?.templateButtons)
+                ? msg.metadata.templateButtons.filter((button: any) => button?.text)
+                : [];
+              const quotedSnapshotText = msg.metadata?.quotedMessageSnapshot?.quotedText;
+              const safeQuotedSnapshotText = quotedSnapshotText && quotedSnapshotText !== '[Mensagem respondida]'
+                ? quotedSnapshotText
+                : 'Mensagem original indisponível';
 
               return (
                 <React.Fragment key={msg.id}>
@@ -1059,7 +1066,7 @@ Todos os dados e mensagens serão excluídos.`;
                             <span className="block truncate max-w-xs italic text-slate-500">
                               {msg.replyToMessage 
                                 ? msg.replyToMessage.content 
-                                : msg.metadata?.quotedMessageSnapshot?.quotedText}
+                                : safeQuotedSnapshotText}
                             </span>
                           </div>
                         )}
@@ -1076,6 +1083,31 @@ Todos os dados e mensagens serão excluídos.`;
                         ) : (
                           <>
                             {(msg.type === 'TEXT' || msg.type === 'SYSTEM') && <p className="whitespace-pre-wrap leading-relaxed text-[13px]">{formatWhatsappText(msg.content)}</p>}
+                            {templateButtons.length > 0 && (
+                              <div className="mt-2 overflow-hidden rounded-lg border border-black/10 bg-white/45">
+                                {templateButtons.map((button: any, buttonIndex: number) => {
+                                  const buttonType = String(button.type || '').toLowerCase();
+                                  const ButtonIcon = buttonType === 'url'
+                                    ? ExternalLink
+                                    : buttonType === 'phone'
+                                      ? Phone
+                                      : MessageCircle;
+
+                                  return (
+                                    <div
+                                      key={`${buttonType}-${buttonIndex}-${button.text}`}
+                                      className={cn(
+                                        "flex min-h-9 items-center justify-center gap-2 px-3 py-2 text-center text-[12px] font-semibold text-blue-600",
+                                        buttonIndex > 0 && "border-t border-black/10"
+                                      )}
+                                    >
+                                      <ButtonIcon size={14} strokeWidth={2.2} className="shrink-0" aria-hidden="true" />
+                                      <span className="min-w-0 break-words">{button.text}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                             {msg.type === 'IMAGE' && (
                                <div className="flex flex-col gap-2">
                                  <img 

@@ -28,7 +28,8 @@ export class MessageRepository {
           content,
           senderType,
           type,
-          externalMessageId
+          externalMessageId,
+          metadata
         ),
         sector:Sector(id, name)
       `)
@@ -103,6 +104,20 @@ export class MessageRepository {
       .single()
     if (error) throw error
     return data
+  }
+
+  static async findManyByExternalIds(externalMessageIds: string[], organizationId: string) {
+    const uniqueIds = Array.from(new Set(externalMessageIds.filter(Boolean)))
+    if (!uniqueIds.length) return []
+
+    const { data, error } = await supabaseAdmin
+      .from('Message')
+      .select('id, content, senderType, type, externalMessageId, metadata')
+      .eq('organizationId', organizationId)
+      .in('externalMessageId', uniqueIds)
+
+    if (error) throw error
+    return data || []
   }
 
   static async create(organizationId: string, data: any) {

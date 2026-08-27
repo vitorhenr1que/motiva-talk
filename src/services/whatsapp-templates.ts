@@ -473,6 +473,7 @@ export class WhatsAppTemplateService {
         templateId: template.id,
         templateName: template.name,
         templateLanguage: template.language,
+        templateButtons: Array.isArray(template.buttons) ? template.buttons : [],
         variables,
       },
       sectorId: conversation.currentSectorId || null,

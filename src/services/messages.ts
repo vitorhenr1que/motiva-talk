@@ -1,5 +1,6 @@
 import { MessageRepository } from '@/repositories/messageRepository'
 import { AppError } from '@/lib/api-errors';
+import { normalizeStoredWhatsAppMessage } from '@/lib/whatsapp-message';
 
 const CONVERSATION_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -55,6 +56,85 @@ export class MessageService {
       before,
       allowedSectorIds: filterSectorIds
     })
+
+    // Mensagens de template antigas guardavam apenas o templateId. Enriquecer
+    // a resposta mantém os botões visíveis no histórico sem alterar o banco.
+    const templateIdsMissingButtons = Array.from(new Set(
+      messages
+        .filter((message: any) => (
+          message.metadata?.isTemplate &&
+          message.metadata?.templateId &&
+          !Array.isArray(message.metadata?.templateButtons)
+        ))
+        .map((message: any) => String(message.metadata.templateId))
+    ));
+
+    if (templateIdsMissingButtons.length) {
+      const { WhatsAppTemplateRepository } = await import('@/repositories/whatsappTemplateRepository');
+      const templates = await WhatsAppTemplateRepository.findManyByIds(templateIdsMissingButtons, organizationId);
+      const buttonsByTemplateId = new Map(
+        templates.map((template: any) => [String(template.id), Array.isArray(template.buttons) ? template.buttons : []])
+      );
+
+      messages.forEach((message: any) => {
+        const templateId = message.metadata?.templateId;
+        if (!templateId || !buttonsByTemplateId.has(String(templateId))) return;
+        message.metadata = {
+          ...message.metadata,
+          templateButtons: buttonsByTemplateId.get(String(templateId)),
+        };
+      });
+    }
+
+    // Corrige em memória mensagens button/interactive gravadas por versões
+    // antigas como SYSTEM e com o placeholder de tipo não suportado.
+    messages.forEach((message: any, index: number) => {
+      messages[index] = normalizeStoredWhatsAppMessage(message);
+      if (message.replyToMessage) {
+        messages[index].replyToMessage = normalizeStoredWhatsAppMessage(message.replyToMessage);
+      }
+    });
+
+    // Webhooks antigos guardavam apenas o ID externo e o texto fixo no snapshot.
+    // Resolver a relação durante a leitura recupera a própria mensagem citada.
+    const unresolvedQuotedIds = Array.from(new Set(
+      messages
+        .filter((message: any) => !message.replyToMessage && message.metadata?.quotedMessageSnapshot)
+        .map((message: any) => (
+          message.metadata.quotedMessageSnapshot.externalId ||
+          message.metadata.quotedMessageSnapshot.stanzaId
+        ))
+        .filter((externalId: unknown): externalId is string => typeof externalId === 'string' && !!externalId)
+    ));
+
+    if (unresolvedQuotedIds.length) {
+      const originals = await MessageRepository.findManyByExternalIds(unresolvedQuotedIds, organizationId);
+      const originalsByExternalId = new Map(
+        originals.map((original: any) => {
+          const normalized = normalizeStoredWhatsAppMessage(original);
+          return [String(original.externalMessageId), normalized];
+        })
+      );
+
+      messages.forEach((message: any) => {
+        if (message.replyToMessage) return;
+        const snapshot = message.metadata?.quotedMessageSnapshot;
+        const externalId = snapshot?.externalId || snapshot?.stanzaId;
+        const original = externalId ? originalsByExternalId.get(String(externalId)) : undefined;
+        if (!original) return;
+
+        message.replyToMessageId = original.id;
+        message.replyToMessage = original;
+        message.metadata = {
+          ...message.metadata,
+          quotedMessageSnapshot: {
+            ...snapshot,
+            quotedText: original.content,
+            quotedMessageType: original.type,
+          },
+        };
+      });
+    }
 
     // Filtrar localmente as deletadas para o atendente
     const filtered = messages.filter((m: any) => !m.deletedForMe);

@@ -1,7 +1,25 @@
 import { ConversationRepository } from '@/repositories/conversationRepository'
 import { ConversationSectorHistoryRepository } from '@/repositories/conversationSectorHistoryRepository'
+import { MessageRepository } from '@/repositories/messageRepository'
+import { normalizeStoredWhatsAppMessage } from '@/lib/whatsapp-message'
 
 export class ConversationService {
+  private static async normalizeLegacyButtonPreviews(conversations: any[], organizationId: string) {
+    const affected = conversations.filter(conversation => (
+      typeof conversation.lastMessagePreview === 'string' &&
+      /^\[Mensagem do tipo (button|interactive) não suportada\]$/i.test(conversation.lastMessagePreview.trim())
+    ));
+
+    await Promise.all(affected.map(async conversation => {
+      const lastMessage = await MessageRepository.findLastByConversation(conversation.id, organizationId);
+      if (!lastMessage) return;
+      const normalized = normalizeStoredWhatsAppMessage(lastMessage);
+      conversation.lastMessagePreview = normalized.content?.substring(0, 100) || conversation.lastMessagePreview;
+    }));
+
+    return conversations;
+  }
+
   static async closeExpiredWindows(organizationId: string) {
     const expiredIds = await ConversationRepository.findExpiredActiveWindowIds(organizationId);
     // Janela de atendimento expirada nao finaliza a conversa. Ela apenas bloqueia
@@ -101,17 +119,19 @@ export class ConversationService {
     if (!where.historical) {
       await this.closeExpiredWindows(organizationId);
     }
-    return await ConversationRepository.findMany(organizationId, where)
+    const conversations = await ConversationRepository.findMany(organizationId, where)
+    return await this.normalizeLegacyButtonPreviews(conversations, organizationId)
   }
 
   /**
    * Lista conversas por canal
    */
   static async listByChannel(channelId: string, organizationId: string, status?: string) {
-    return await ConversationRepository.findMany(organizationId, {
+    const conversations = await ConversationRepository.findMany(organizationId, {
        channelId,
        status: status || undefined
     })
+    return await this.normalizeLegacyButtonPreviews(conversations, organizationId)
   }
 
   /**

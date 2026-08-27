@@ -1,6 +1,7 @@
 import { Channel, MessageType } from "@/types/chat";
 import { WhatsAppProvider } from "./whatsapp-provider";
 import { WebhookEvent } from "../provider";
+import { getWhatsAppReplyContent } from '@/lib/whatsapp-message';
 
 type MetaWebhookMessageContext = {
   id?: string;
@@ -102,7 +103,9 @@ export class MetaCloudProvider implements WhatsAppProvider {
     return {
       stanzaId: quotedExternalId,
       externalId: quotedExternalId,
-      quotedText: '[Mensagem respondida]',
+      // A Meta envia apenas o ID da mensagem citada no webhook. O texto real
+      // é preenchido pelo WebhookService após consultar a mensagem original.
+      quotedText: '',
       quotedSender: message.context?.from || '',
       quotedMessageType: 'UNKNOWN',
     };
@@ -459,9 +462,22 @@ export class MetaCloudProvider implements WhatsAppProvider {
     const quotedMessageExternalId = this.getQuotedMessageExternalId(message);
     const quotedMessageSnapshot = this.buildQuotedMessageSnapshot(message);
 
-    switch (message.type) {
+    const incomingMessageType = String(message.type || '').trim().toLowerCase();
+
+    switch (incomingMessageType) {
         case 'text':
             content = message.text?.body;
+            type = 'TEXT';
+            break;
+        case 'button':
+            // Resposta aos botões de templates da Cloud API.
+            content = getWhatsAppReplyContent(message) || 'Botão selecionado';
+            type = 'TEXT';
+            break;
+        case 'interactive':
+            // Respostas a botões interativos e itens de lista usam o mesmo
+            // formato visual de uma mensagem de texto no inbox.
+            content = getWhatsAppReplyContent(message) || 'Opção selecionada';
             type = 'TEXT';
             break;
         case 'image':
@@ -513,7 +529,7 @@ export class MetaCloudProvider implements WhatsAppProvider {
             break;
         default:
             type = 'SYSTEM';
-            content = `[Mensagem do tipo ${message.type} não suportada]`;
+            content = `[Mensagem do tipo ${incomingMessageType || 'desconhecido'} não suportada]`;
     }
 
     return {

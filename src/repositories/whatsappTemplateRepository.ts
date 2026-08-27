@@ -3,6 +3,20 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateId } from '@/lib/utils'
 
 export class WhatsAppTemplateRepository {
+  static async findManyByIds(ids: string[], organizationId: string) {
+    const uniqueIds = Array.from(new Set(ids.filter(Boolean)))
+    if (!uniqueIds.length) return []
+
+    const { data, error } = await supabaseAdmin
+      .from('WhatsAppTemplate')
+      .select('id, buttons')
+      .eq('organizationId', organizationId)
+      .in('id', uniqueIds)
+
+    if (error) throw error
+    return data || []
+  }
+
   static async findMany(organizationId: string, where?: { channelId?: string; status?: string }) {
     let query = supabaseAdmin
       .from('WhatsAppTemplate')

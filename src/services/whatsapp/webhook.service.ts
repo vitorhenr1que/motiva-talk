@@ -49,7 +49,7 @@ export class WebhookService {
       // 2. Buscar a mensagem original SEMPRE escopada na organização do canal resolvido.
       let { data: originalMsg } = await supabaseAdmin
         .from('Message')
-        .select('id')
+        .select('id, content, senderType, type')
         .eq('externalMessageId', quotedId)
         .eq('organizationId', channel.organizationId)
         .maybeSingle();
@@ -57,7 +57,7 @@ export class WebhookService {
       if (!originalMsg) {
         const { data: metadataMsg } = await supabaseAdmin
           .from('Message')
-          .select('id')
+          .select('id, content, senderType, type')
           .filter('metadata->>id', 'eq', quotedId)
           .eq('organizationId', channel.organizationId)
           .maybeSingle();
@@ -65,7 +65,21 @@ export class WebhookService {
       }
 
       if (originalMsg) {
-        if (metadata) metadata.resolvedReplyToId = originalMsg.id;
+        if (metadata) {
+          metadata.resolvedReplyToId = originalMsg.id;
+
+          // O webhook da Meta traz somente o ID da mensagem respondida.
+          // Enriquecemos o snapshot com a fonte de verdade do banco para que
+          // o realtime e o histórico exibam o conteúdo original imediatamente.
+          metadata.quotedMessageSnapshot = {
+            ...(metadata.quotedMessageSnapshot || {}),
+            stanzaId: quotedId,
+            externalId: quotedId,
+            quotedText: originalMsg.content,
+            quotedSender: originalMsg.senderType === 'USER' ? 'Contato' : 'Você',
+            quotedMessageType: originalMsg.type,
+          };
+        }
         console.log(`[WEBHOOK_DEBUG] Mensagem original encontrada! Original DB ID: ${originalMsg.id}`);
       } else {
         console.log(`[WEBHOOK_DEBUG] Mensagem original [${quotedId}] não encontrada no tenant ${channel.organizationId}.`);
