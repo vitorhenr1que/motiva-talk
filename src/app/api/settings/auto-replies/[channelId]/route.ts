@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase-admin'
 import { handleApiError } from '@/lib/api-errors'
 import { getServerSession, getUserRole } from '@/lib/auth-server'
 import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
+import { AutoReplyService } from '@/services/auto-replies'
 
 export const dynamic = 'force-dynamic';
 
@@ -22,57 +22,23 @@ export async function PUT(
     const role = await getUserRole(userSession.email!, organizationId)
     const userId = userSession.id
 
-    const { data: channel } = await supabaseAdmin
-      .from('Channel')
-      .select('id')
-      .eq('id', channelId)
-      .eq('organizationId', organizationId)
-      .maybeSingle()
-
-    if (!channel) {
-      return NextResponse.json({ error: 'Canal não encontrado' }, { status: 404 })
-    }
-
-    // Validar se usuário tem permissão no canal
-    if (role !== 'ADMIN') {
-      const { data: permission } = await supabaseAdmin
-        .from('UserChannel')
-        .select('channelId')
-        .eq('userId', userId)
-        .eq('channelId', channelId)
-        .eq('organizationId', organizationId)
-        .maybeSingle()
-      
-      if (!permission) {
-        return NextResponse.json({ error: 'Acesso negado ao canal' }, { status: 403 })
-      }
-    }
-
     const body = await req.json()
-    console.log(`[AUTO-REPLY] Updating settings for channel ${channelId}:`, body)
-    
-    const { enabled, message, cooldownHours } = body
+    const result = await AutoReplyService.saveChannelSettings(
+      organizationId,
+      channelId,
+      userId,
+      role === 'ADMIN',
+      body
+    )
 
-    const { data, error } = await supabaseAdmin
-      .from('auto_reply_settings')
-      .upsert({
-        organizationId,
-        channelId,
-        enabled,
-        message,
-        cooldownHours,
-        updatedByUserId: userId,
-        updatedAt: new Date().toISOString()
-      }, { onConflict: 'channelId' })
-      .select()
-      .single()
-
-    if (error) {
-      console.error('[AUTO-REPLY] Upsert error:', error)
-      throw error
+    if ('error' in result) {
+      return NextResponse.json(
+        { error: result.error, details: result.details },
+        { status: result.status }
+      )
     }
 
-    return NextResponse.json({ success: true, data })
+    return NextResponse.json({ success: true, data: result.data })
   } catch (error) {
     return handleApiError(error, req, { route: ROUTE })
   }

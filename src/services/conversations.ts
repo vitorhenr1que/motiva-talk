@@ -4,10 +4,10 @@ import { MessageRepository } from '@/repositories/messageRepository'
 import { normalizeStoredWhatsAppMessage } from '@/lib/whatsapp-message'
 
 export class ConversationService {
-  private static async normalizeLegacyButtonPreviews(conversations: any[], organizationId: string) {
+  private static async normalizeLegacyMessagePreviews(conversations: any[], organizationId: string) {
     const affected = conversations.filter(conversation => (
       typeof conversation.lastMessagePreview === 'string' &&
-      /^\[Mensagem do tipo (button|interactive) não suportada\]$/i.test(conversation.lastMessagePreview.trim())
+      /^\[Mensagem do tipo (button|interactive|contacts?) não suportada\]$/i.test(conversation.lastMessagePreview.trim())
     ));
 
     await Promise.all(affected.map(async conversation => {
@@ -120,7 +120,7 @@ export class ConversationService {
       await this.closeExpiredWindows(organizationId);
     }
     const conversations = await ConversationRepository.findMany(organizationId, where)
-    return await this.normalizeLegacyButtonPreviews(conversations, organizationId)
+    return await this.normalizeLegacyMessagePreviews(conversations, organizationId)
   }
 
   /**
@@ -131,7 +131,7 @@ export class ConversationService {
        channelId,
        status: status || undefined
     })
-    return await this.normalizeLegacyButtonPreviews(conversations, organizationId)
+    return await this.normalizeLegacyMessagePreviews(conversations, organizationId)
   }
 
   /**

@@ -1,7 +1,7 @@
 import { Channel, MessageType } from "@/types/chat";
 import { WhatsAppProvider } from "./whatsapp-provider";
 import { WebhookEvent } from "../provider";
-import { getWhatsAppReplyContent } from '@/lib/whatsapp-message';
+import { getWhatsAppContactCards, getWhatsAppReplyContent } from '@/lib/whatsapp-message';
 
 type MetaWebhookMessageContext = {
   id?: string;
@@ -480,6 +480,15 @@ export class MetaCloudProvider implements WhatsAppProvider {
             content = getWhatsAppReplyContent(message) || 'Opção selecionada';
             type = 'TEXT';
             break;
+        case 'contacts':
+        case 'contact': {
+            const contacts = getWhatsAppContactCards(message);
+            type = 'CONTACT';
+            content = contacts.length === 1
+              ? `Contato: ${contacts[0].fullName}`
+              : `${contacts.length} contatos`;
+            break;
+        }
         case 'image':
             type = 'IMAGE';
             content = message.image?.caption || '';

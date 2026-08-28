@@ -29,6 +29,7 @@ import {
   getConversationWindowState,
 } from '@/lib/conversation-window';
 import { ContactAvatar } from '@/components/ui/ContactAvatar';
+import { getWhatsAppContactCards, type WhatsAppContactCard } from '@/lib/whatsapp-message';
 
 const CustomAudioPlayer = ({ url, duration, fileName, mimeType, mediaUrl }: { url: string, duration?: number, fileName?: string, mimeType?: string, mediaUrl?: string }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -238,7 +239,10 @@ export const ChatWindow = () => {
     setSelectionMode,
     toggleMessageSelection,
     clearSelection,
-    selectedSectorId
+    selectedSectorId,
+    setActiveConversation,
+    setSelectedChannelId,
+    requestTemplateMenu
   } = useChatStore();
 
   const { isDragging, onDragOver, onDragLeave, onDrop } = useChatFileDrop();
@@ -266,6 +270,7 @@ export const ChatWindow = () => {
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [conversationNowMs, setConversationNowMs] = useState(() => Date.now());
   const [warnedConversationId, setWarnedConversationId] = useState<string | null>(null);
+  const [sharedContactAction, setSharedContactAction] = useState<{ phone: string; error?: string } | null>(null);
 
   const EMOJI_CATEGORIES = [
     { name: 'Rostos', emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕'] },
@@ -326,6 +331,51 @@ export const ChatWindow = () => {
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
         behavior: 'smooth'
+      });
+    }
+  };
+
+  const handleStartSharedContactConversation = async (contact: WhatsAppContactCard) => {
+    if (!activeConversation?.channelId || sharedContactAction?.phone === contact.wuid) return;
+
+    setSharedContactAction({ phone: contact.wuid });
+    try {
+      const contactResponse = await fetch('/api/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: contact.fullName, phone: contact.phoneNumber }),
+      });
+      const contactResult = await contactResponse.json();
+      const targetContact = contactResult.data;
+      if ((!contactResponse.ok && contactResponse.status !== 409) || !targetContact?.id) {
+        throw new Error(contactResult.message || 'Não foi possível preparar o contato.');
+      }
+
+      const conversationResponse = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contactId: targetContact.id,
+          channelId: activeConversation.channelId,
+        }),
+      });
+      const conversationResult = await conversationResponse.json();
+      if (!conversationResponse.ok || !conversationResult.success || !conversationResult.data) {
+        throw new Error(conversationResult.message || 'Não foi possível iniciar a conversa.');
+      }
+
+      const targetConversation = conversationResult.data;
+      setSelectedChannelId(activeConversation.channelId);
+      setActiveConversation(targetConversation);
+
+      if (getConversationWindowState(targetConversation).isExpired) {
+        requestTemplateMenu(targetConversation.id);
+      }
+      setSharedContactAction(null);
+    } catch (error) {
+      setSharedContactAction({
+        phone: contact.wuid,
+        error: error instanceof Error ? error.message : 'Não foi possível iniciar a conversa.',
       });
     }
   };
@@ -984,6 +1034,7 @@ Todos os dados e mensagens serão excluídos.`;
               const safeQuotedSnapshotText = quotedSnapshotText && quotedSnapshotText !== '[Mensagem respondida]'
                 ? quotedSnapshotText
                 : 'Mensagem original indisponível';
+              const sharedContacts = msg.type === 'CONTACT' ? getWhatsAppContactCards(msg.metadata) : [];
 
               return (
                 <React.Fragment key={msg.id}>
@@ -1150,17 +1201,35 @@ Todos os dados e mensagens serão excluídos.`;
                                </div>
                              )}
                             {msg.type === 'CONTACT' && (
-                               <div className="flex flex-col gap-3 rounded-xl bg-white border border-slate-100 p-4 min-w-[240px] shadow-sm">
-                                  <div className="flex items-center gap-4">
-                                     <div className="h-12 w-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600"><ContactIcon size={24} /></div>
-                                     <div className="flex-1 overflow-hidden">
-                                        <p className="text-sm font-black text-slate-800 truncate">{msg.metadata?.contact?.fullName || 'Sem Nome'}</p>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{msg.metadata?.contact?.wuid ? formatPhone(msg.metadata.contact.wuid) : 'Sem Número'}</p>
-                                     </div>
-                                  </div>
-                                  <div className="h-px bg-slate-50" />
-                                  <a href={`https://wa.me/${msg.metadata?.contact?.wuid}`} target="_blank" className="w-full py-1.5 text-center text-[10px] font-black uppercase text-blue-600 hover:text-blue-700 transition-colors">Conversar via WhatsApp</a>
-                               </div>
+                              <div className="flex min-w-[260px] flex-col gap-2">
+                                {sharedContacts.map((contact) => {
+                                  const isStarting = sharedContactAction?.phone === contact.wuid && !sharedContactAction.error;
+                                  const actionError = sharedContactAction?.phone === contact.wuid ? sharedContactAction.error : undefined;
+
+                                  return (
+                                    <div key={`${msg.id}-${contact.wuid}`} className="flex flex-col gap-3 rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                                      <div className="flex items-center gap-4">
+                                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600"><ContactIcon size={24} /></div>
+                                        <div className="min-w-0 flex-1">
+                                          <p className="truncate text-sm font-black text-slate-800">{contact.fullName}</p>
+                                          <p className="truncate text-[10px] font-bold uppercase tracking-widest text-slate-400">{formatPhone(contact.wuid)}</p>
+                                        </div>
+                                      </div>
+                                      <div className="h-px bg-slate-100" />
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStartSharedContactConversation(contact)}
+                                        disabled={isStarting}
+                                        className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[10px] font-black uppercase tracking-wide text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700 disabled:cursor-wait disabled:opacity-60"
+                                      >
+                                        {isStarting ? <Loader2 size={14} className="animate-spin" /> : <MessageCircle size={14} />}
+                                        {isStarting ? 'Preparando conversa' : 'Iniciar conversa'}
+                                      </button>
+                                      {actionError && <p className="text-center text-[10px] font-bold text-red-600" role="alert">{actionError}</p>}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             )}
                             {msg.type === 'DOCUMENT' && (
                              <div className="flex flex-col gap-2">

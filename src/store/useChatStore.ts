@@ -127,6 +127,10 @@ interface ChatState {
   toggleMessageSelection: (messageId: string) => void
   clearSelection: () => void
 
+  templateMenuConversationId: string | null
+  requestTemplateMenu: (conversationId: string) => void
+  consumeTemplateMenuRequest: () => void
+
   setConversations: (conversations: any[]) => void
   setActiveConversation: (conversation: any | null) => void
   setReplyToMessage: (message: any | null) => void
@@ -166,6 +170,7 @@ export const useChatStore = create<ChatState>((set) => ({
   editingMessage: null,
   pendingFile: null,
   mediaCaption: '',
+  templateMenuConversationId: null,
   messages: [],
   channels: [],
   tags: [],
@@ -301,6 +306,8 @@ export const useChatStore = create<ChatState>((set) => ({
   setEditingMessage: (message) => set({ editingMessage: message }),
   setPendingFile: (file) => set({ pendingFile: file }),
   setMediaCaption: (caption) => set({ mediaCaption: caption }),
+  requestTemplateMenu: (conversationId) => set({ templateMenuConversationId: conversationId }),
+  consumeTemplateMenuRequest: () => set({ templateMenuConversationId: null }),
   setMessages: (data) => {
     const { messages, nextCursor = null, hasMore = false } = data;
     const uniqueMap = new Map();

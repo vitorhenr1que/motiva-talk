@@ -122,7 +122,9 @@ export const MessageInput = () => {
     activeConversation, addMessage, upsertMessage, removeMessage, messages,
     replyToMessage, setReplyToMessage,
     editingMessage, setEditingMessage,
-    selectedSectorId
+    selectedSectorId,
+    templateMenuConversationId,
+    consumeTemplateMenuRequest
   } = useChatStore();
 
   const { isDragging, onDragOver, onDragLeave, onDrop, processFile } = useChatFileDrop((fileData) => {
@@ -201,6 +203,14 @@ export const MessageInput = () => {
     setAttachmentMenuOpen(false);
     setEditingMessage(null);
   }, [activeConversation?.id]);
+
+  useEffect(() => {
+    if (!activeConversation?.id || templateMenuConversationId !== activeConversation.id) return;
+    setTemplatesOpen(true);
+    setRepliesOpen(false);
+    setAttachmentMenuOpen(false);
+    consumeTemplateMenuRequest();
+  }, [activeConversation?.id, templateMenuConversationId, consumeTemplateMenuRequest]);
 
   useEffect(() => {
     if (editingMessage) {
