@@ -24,8 +24,6 @@ export interface WhatsAppProvider {
   disconnect(channel: Channel): Promise<void>;
   
   // Additional methods for full compatibility
-  deleteMessage(channel: Channel, to: string, externalId: string, fromMe: boolean): Promise<void>;
   sendPresence(channel: Channel, to: string, presence: 'composing' | 'paused'): Promise<void>;
-  editMessage(channel: Channel, to: string, externalId: string, fromMe: boolean, newContent: string): Promise<any>;
   sendReaction(channel: Channel, to: string, externalId: string, fromMe: boolean, emoji: string): Promise<any>;
 }

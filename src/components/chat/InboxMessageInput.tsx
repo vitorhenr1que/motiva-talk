@@ -396,6 +396,7 @@ export const MessageInput = () => {
     const finalContent = `*${nameToUse}:*\n\n${content.trim()}`;
 
     const messageId = editingMessage.id;
+    const previousMessage = editingMessage;
     
     // Optimistic update
     upsertMessage({ ...editingMessage, content: finalContent });
@@ -411,8 +412,14 @@ export const MessageInput = () => {
       if (resp.ok) {
         const data = await resp.json();
         upsertMessage(data.data);
+      } else {
+        const error = await resp.json().catch(() => null);
+        upsertMessage(previousMessage);
+        setSendError({ message: error?.message || 'Não foi possível editar a mensagem.' });
       }
     } catch (error: any) {
+      upsertMessage(previousMessage);
+      setSendError({ message: 'Erro de conexão ao editar a mensagem.' });
       console.error('Erro ao editar mensagem:', error);
     }
   };

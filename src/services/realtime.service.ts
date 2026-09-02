@@ -28,14 +28,14 @@ export class RealtimeService {
 
   static async notifyNewMessage(conversationId: string, message: any) {
     // 1. Notificar a conversa específica
-    await this.publish(`conversation:${conversationId}`, 'message:new', { message });
+    await this.publish(`active_chat:${conversationId}`, 'message:new', { message });
     // 2. Notificar o inbox geral (sidebar)
     await this.publish('inbox:all', 'inbox:update', { conversationId, message });
   }
 
   static async notifyMessageUpdate(conversationId: string, message: any) {
     // Notifica que uma mensagem foi alterada (ex: edição)
-    await this.publish(`conversation:${conversationId}`, 'message:update', { message });
+    await this.publish(`active_chat:${conversationId}`, 'message:update', { message });
   }
 
   static async notifyConversationUpdate(conversationId: string) {

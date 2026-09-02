@@ -5,7 +5,7 @@ import { useChatStore } from '@/store/useChatStore';
 import { 
   MoreVertical, Search, MessageCircle, FileText, Reply, Trash2,
   Loader2, Check, Pin, UserPlus, CheckCircle2, XCircle, X, ChevronDown, UserPlus as ContactIcon,
-  Mic, Play, Pause, Volume2, Eye, Forward, AlertCircle, Smile, Plus, Edit2, Clock, Bot, Info,
+  Mic, Play, Pause, Volume2, Eye, Forward, AlertCircle, Smile, Plus, Clock, Bot, Info,
   Send, ArrowRightLeft, ExternalLink, Phone
 } from 'lucide-react';
 import { TagSelector } from './TagSelector';
@@ -1417,20 +1417,6 @@ Todos os dados e mensagens serão excluídos.`;
                                   <span className="text-[11px] font-black uppercase tracking-tight">Responder</span>
                                 </button>
                                 
-                                {msg.senderType === 'AGENT' && msg.type === 'TEXT' && (
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      useChatStore.getState().setEditingMessage(msg);
-                                      setOptionsMenuId(null);
-                                    }} 
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 hover:text-emerald-600 transition-all"
-                                  >
-                                    <Edit2 size={16} />
-                                    <span className="text-[11px] font-black uppercase tracking-tight">Editar Mensagem</span>
-                                  </button>
-                                )}
-
                                 {msg.sendStatus === 'scheduled' && (
                                   <button 
                                     onClick={(e) => {
@@ -1488,14 +1474,6 @@ Todos os dados e mensagens serão excluídos.`;
                                     >
                                       Apagar para mim
                                     </button>
-                                    {msg.senderType === 'AGENT' && (
-                                      <button 
-                                        onClick={() => { handleDeleteMessage(msg.id, 'everyone'); setOptionsMenuId(null); }} 
-                                        className="w-full text-left px-4 py-2.5 text-[10px] font-black uppercase tracking-tight text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
-                                      >
-                                        Apagar para todos
-                                      </button>
-                                    )}
                                   </div>
                                 )}
                               </div>

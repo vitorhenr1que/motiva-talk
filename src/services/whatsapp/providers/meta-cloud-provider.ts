@@ -589,44 +589,9 @@ export class MetaCloudProvider implements WhatsAppProvider {
   async disconnect(channel: Channel): Promise<void> {
   }
 
-  async deleteMessage(channel: Channel, to: string, externalId: string, fromMe: boolean): Promise<void> {
-    // Meta Cloud API supports deleting messages sent by the business
-    if (!fromMe) return;
-
-    const { phoneNumberId, accessToken } = this.getCredentials(channel);
-    const url = this.graphUrl(`${phoneNumberId}/messages`);
-    const payload = {
-      messaging_product: "whatsapp",
-      status: "deleted",
-      message_id: externalId
-    };
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-        const data = await response.json();
-        throw this.buildGraphError('deleteMessage', response.status, data, {
-          phoneNumberId: this.maskId(phoneNumberId),
-        });
-    }
-  }
-
   async sendPresence(channel: Channel, to: string, presence: 'composing' | 'paused'): Promise<void> {
     // Meta Cloud doesn't have a direct equivalent to "typing" indicator in the same way,
     // but some versions of the API support it. For now we skip or mock.
-  }
-
-  async editMessage(channel: Channel, to: string, externalId: string, fromMe: boolean, newContent: string): Promise<any> {
-    // Meta Cloud API support for editing messages is limited and might require a different endpoint or version.
-    // A edição de mensagens ainda não faz parte do fluxo adotado neste projeto.
-    throw new Error('Editing messages is not supported in Meta Cloud API yet.');
   }
 
   async sendReaction(channel: Channel, to: string, externalId: string, fromMe: boolean, emoji: string): Promise<any> {

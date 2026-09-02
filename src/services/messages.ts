@@ -367,7 +367,12 @@ export class MessageService {
        // O conteúdo para "mim" será decidido na UI baseada em quem enviou
     }
 
-    return await MessageRepository.update(id, organizationId, updateData);
+    const updated = await MessageRepository.update(id, organizationId, updateData);
+
+    const { RealtimeService } = await import('@/services/realtime.service');
+    await RealtimeService.notifyMessageUpdate(message.conversationId, updated);
+
+    return updated;
   }
 
   /**
@@ -386,31 +391,11 @@ export class MessageService {
     const message = await MessageRepository.findById(id, organizationId);
     if (!message) throw new Error('Mensagem não encontrada');
 
-    // 1. Apagar no WhatsApp via Meta Cloud API se tiver ID externo
-    if (message.externalMessageId) {
-      try {
-        const { getWhatsAppProvider, resolveWhatsAppProviderType } = await import('@/services/whatsapp/providers');
-        const { ConversationRepository } = await import('@/repositories/conversationRepository');
-        const conversation = await ConversationRepository.findByIdForMessaging(message.conversationId, organizationId);
-        
-        if (conversation && conversation.contact && conversation.channel) {
-           const providerType = resolveWhatsAppProviderType(conversation.channel);
-           const provider = getWhatsAppProvider(providerType);
-           await provider.deleteMessage(
-             conversation.channel, 
-             conversation.contact.phone, 
-             message.externalMessageId,
-             message.senderType === 'AGENT'
-           );
-        }
-      } catch (error: any) {
-        console.error('[API_DELETE_EVERYONE] Falha na Meta Cloud API:', error.message);
-        throw new Error(`WhatsApp não permitiu apagar: ${error.message}`);
-      }
-    }
-
-    // 2. Soft-delete local
-    return await this.performLocalRemoval(message, 'everyone', organizationId);
+    throw new AppError(
+      'A API oficial do WhatsApp não permite apagar uma mensagem enviada no aparelho do destinatário. Use “Apagar para mim” para removê-la apenas do painel.',
+      409,
+      'CONFLICT'
+    );
   }
 
   /**
@@ -439,38 +424,11 @@ export class MessageService {
     const message = await MessageRepository.findById(id, organizationId);
     if (!message) throw new AppError('Mensagem não encontrada', 404, 'NOT_FOUND');
 
-    // 1. Se for do atendente, tenta editar no WhatsApp via Meta Cloud API
-    if (message.senderType === 'AGENT' && message.externalMessageId) {
-      try {
-        const { getWhatsAppProvider, resolveWhatsAppProviderType } = await import('@/services/whatsapp/providers');
-        const { ConversationRepository } = await import('@/repositories/conversationRepository');
-        const conversation = await ConversationRepository.findByIdForMessaging(message.conversationId, organizationId);
-        
-        if (conversation && conversation.contact && conversation.channel) {
-          const providerType = resolveWhatsAppProviderType(conversation.channel);
-          const provider = getWhatsAppProvider(providerType);
-          await provider.editMessage(
-            conversation.channel,
-            conversation.contact.phone,
-            message.externalMessageId,
-            true, // fromMe
-            newContent
-          );
-        }
-      } catch (error: any) {
-        console.error('[MSG_SERVICE] Erro ao editar mensagem via Meta Cloud API:', error);
-        throw new AppError(`Falha na edição via WhatsApp: ${error.message}`, 500, 'INTERNAL_ERROR');
-      }
-    }
-
-    // 2. Atualizar no banco de dados
-    const updated = await MessageRepository.update(id, organizationId, { content: newContent });
-
-    // 3. Notificar via Realtime
-    const { RealtimeService } = await import('@/services/realtime.service');
-    await RealtimeService.notifyMessageUpdate(message.conversationId, updated);
-
-    return updated;
+    throw new AppError(
+      'A API oficial do WhatsApp não permite editar no aparelho do destinatário uma mensagem já enviada. Envie uma nova mensagem com a correção.',
+      409,
+      'CONFLICT'
+    );
   }
 
   /**
