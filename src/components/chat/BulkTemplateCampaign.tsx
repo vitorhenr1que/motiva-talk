@@ -210,14 +210,14 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
                   <CheckCircle2 className="text-emerald-600" size={28} />
                   <div>
                     <h3 className="text-lg font-black text-emerald-950">Campanha concluída</h3>
-                    <p className="text-sm font-medium text-emerald-800">{result.sent} de {result.total} mensagens foram enviadas.</p>
+                    <p className="text-sm font-medium text-emerald-800">{result.sent} de {result.total} mensagens foram aceitas pela Meta para processamento.</p>
                   </div>
                 </div>
               </div>
               <div className="mt-4 grid grid-cols-3 gap-3">
                 {[
                   ['Público', result.total, 'text-slate-900'],
-                  ['Enviadas', result.sent, 'text-emerald-700'],
+                  ['Aceitas', result.sent, 'text-emerald-700'],
                   ['Falhas', result.failed, 'text-red-700'],
                 ].map(([label, value, color]) => (
                   <div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm">

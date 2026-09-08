@@ -476,6 +476,7 @@ export class WhatsAppTemplateService {
         templateButtons: Array.isArray(template.buttons) ? template.buttons : [],
         variables,
       },
+      sendStatus: 'sending',
       sectorId: conversation.currentSectorId || null,
       createdAt: new Date().toISOString(),
     })

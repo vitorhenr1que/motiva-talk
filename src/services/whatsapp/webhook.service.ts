@@ -1,6 +1,12 @@
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { WebhookEvent } from './provider';
 import { TenantChannel } from './tenant-resolver';
+import {
+  getMetaMessageError,
+  type MetaMessageStatusPayload,
+  shouldApplyMetaMessageStatus,
+  toMessageSendStatus,
+} from '@/lib/meta-message-status';
 
 export class WebhookService {
   /**
@@ -26,8 +32,70 @@ export class WebhookService {
         break;
 
       case 'STATUS':
+        await this.handleStatus(event, channel);
         break;
     }
+  }
+
+  private static async handleStatus(event: WebhookEvent, channel: TenantChannel) {
+    const status = event.metadata as MetaMessageStatusPayload;
+    const externalMessageId = status?.id;
+    const deliveryStatus = String(status?.status || '').toLowerCase();
+    if (!externalMessageId || !deliveryStatus) {
+      console.warn('[META_MESSAGE_STATUS] Payload sem id ou status', {
+        organizationId: channel.organizationId,
+        channelId: channel.id,
+      });
+      return;
+    }
+
+    const { data: message, error } = await supabaseAdmin
+      .from('Message')
+      .select('id, conversationId, metadata, sendStatus')
+      .eq('organizationId', channel.organizationId)
+      .eq('externalMessageId', externalMessageId)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!message) {
+      console.warn('[META_MESSAGE_STATUS] Mensagem não encontrada', {
+        organizationId: channel.organizationId,
+        channelId: channel.id,
+        externalMessageId,
+        deliveryStatus,
+      });
+      return;
+    }
+
+    const currentDeliveryStatus = message.metadata?.deliveryStatus;
+    if (!shouldApplyMetaMessageStatus(currentDeliveryStatus, deliveryStatus)) return;
+
+    const errorMessage = getMetaMessageError(status);
+    const metadata = {
+      ...(message.metadata || {}),
+      deliveryStatus,
+      deliveryTimestamp: status.timestamp || null,
+      deliveryErrors: Array.isArray(status.errors) ? status.errors : [],
+    };
+    const sendStatus = toMessageSendStatus(deliveryStatus);
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from('Message')
+      .update({ sendStatus, errorMessage, metadata })
+      .eq('id', message.id)
+      .eq('organizationId', channel.organizationId)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+    console.info('[META_MESSAGE_STATUS] Atualizado', {
+      organizationId: channel.organizationId,
+      channelId: channel.id,
+      messageId: message.id,
+      deliveryStatus,
+    });
+
+    const { RealtimeService } = await import('@/services/realtime.service');
+    await RealtimeService.notifyMessageUpdate(message.conversationId, updated);
   }
 
   private static async handleIncomingMessage(event: WebhookEvent, channel: TenantChannel) {

@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateId } from '@/lib/utils'
 import type { Channel } from '@/types/chat'
+import { selectBulkMessagingRecipients } from '@/lib/bulk-messaging-recipients'
 
 type MessagingConversation = {
   id: string;
@@ -9,6 +10,8 @@ type MessagingConversation = {
   status: string;
   currentSectorId: string | null;
   conversationWindowStartedAt: string | null;
+  lastMessageAt?: string | null;
+  finalizedAt?: string | null;
   contact: { id: string; name: string; phone: string } | null;
   channel: Channel | null;
 }
@@ -32,6 +35,7 @@ export class ConversationRepository {
         .from('Conversation')
         .select(`
           id, channelId, contactId, status, currentSectorId, conversationWindowStartedAt,
+          lastMessageAt, finalizedAt,
           contact:Contact(id, name, phone),
           channel:Channel(*)
         `)
@@ -43,14 +47,7 @@ export class ConversationRepository {
       conversations.push(...((data || []) as unknown as BulkMessagingConversation[]))
     }
 
-    const uniqueByContact = new Map<string, BulkMessagingConversation>()
-    for (const conversation of conversations) {
-      if (!conversation.contact || !conversation.channel) continue
-      const contactKey = conversation.contact.id || conversation.contact.phone
-      if (!uniqueByContact.has(contactKey)) uniqueByContact.set(contactKey, conversation)
-    }
-
-    return Array.from(uniqueByContact.values())
+    return selectBulkMessagingRecipients(conversations)
   }
 
   private static async findHistoricalIdsViaRpc(organizationId: string, where: any, limit: number) {

@@ -77,13 +77,27 @@ export async function POST(req: NextRequest) {
           : Array.isArray(value?.message_echoes)
             ? value.message_echoes
             : [];
+        const statuses = Array.isArray(value?.statuses) ? value.statuses : [];
 
-        if (!phoneNumberId || !messages.length) continue;
+        if (!phoneNumberId || (!messages.length && !statuses.length)) continue;
 
         const channel = await ChannelRepository.findByMetaPhoneNumberId(phoneNumberId);
         if (!channel?.organizationId) {
           console.warn(`[META_WEBHOOK] Channel not found for phone_number_id: ${phoneNumberId}`);
           continue;
+        }
+
+        for (const status of statuses) {
+          const event = await metaCloudProvider.parseIncomingWebhook({
+            ...body,
+            entry: [{
+              ...entry,
+              changes: [{ ...change, value: { ...value, messages: undefined, statuses: [status] } }]
+            }]
+          });
+          event.channelId = channel.id;
+          const { WebhookService } = await import("@/services/whatsapp/webhook.service");
+          await WebhookService.processEvent(event, channel as TenantChannel);
         }
 
         for (const message of messages) {
