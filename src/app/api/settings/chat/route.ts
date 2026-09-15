@@ -19,8 +19,9 @@ export async function GET(req: Request) {
       success: true, 
         data: {
           autoIdentifyAgent: settings.autoIdentifyAgent,
-          allowAgentNameEdit: settings.allowAgentNameEdit ?? (settings as any).allowAgentEditName ?? false,
+          allowAgentNameEdit: settings.allowAgentNameEdit ?? settings.allowAgentEditName ?? false,
           allowAgentDeleteConversation: settings.allowAgentDeleteConversation ?? false,
+          allowAgentCreateTemplate: settings.allowAgentCreateTemplate ?? false,
           finishMessage: settings.finishMessage || 'Seu atendimento foi finalizado. Gostaríamos de saber sua opinião sobre o nosso atendimento:',
           agentMenuVisibility: settings.agentMenuVisibility || {
             conversations: true,
@@ -52,7 +53,7 @@ export async function PATCH(req: Request) {
     const body = await req.json()
     console.log(`[API] ${req.method} ${ROUTE}:`, body);
 
-    const { autoIdentifyAgent, allowAgentNameEdit, allowAgentDeleteConversation, agentMenuVisibility, finishMessage, defaultTriageSectorId } = body
+    const { autoIdentifyAgent, allowAgentNameEdit, allowAgentDeleteConversation, allowAgentCreateTemplate, agentMenuVisibility, finishMessage, defaultTriageSectorId } = body
 
     if (defaultTriageSectorId) {
       const { data: sector } = await supabaseAdmin
@@ -70,6 +71,7 @@ export async function PATCH(req: Request) {
       autoIdentifyAgent, 
       allowAgentNameEdit,
       allowAgentDeleteConversation,
+      allowAgentCreateTemplate,
       agentMenuVisibility,
       finishMessage,
       defaultTriageSectorId

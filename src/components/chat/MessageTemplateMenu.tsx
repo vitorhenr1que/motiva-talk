@@ -426,6 +426,7 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
   const { activeConversation, addMessage } = useChatStore()
   const channelId = activeConversation?.channel?.id || ''
   const [templates, setTemplates] = useState<MessageTemplate[]>([])
+  const [canCreateTemplates, setCanCreateTemplates] = useState(false)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<MessageTemplate | null>(null)
@@ -447,6 +448,7 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
       if (!resp.ok || !data.success) throw new Error(data.message || 'Falha ao carregar templates.')
       const nextTemplates = data.data || []
       setTemplates(nextTemplates)
+      setCanCreateTemplates(data.permissions?.canCreateTemplates === true)
       setSelected(current => current
         ? nextTemplates.find((template: MessageTemplate) => template.id === current.id) || current
         : null
@@ -485,6 +487,10 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
   const formPreview = renderWithExamples(form.corpo || 'Ola, {{nome}}, sua entrega sera feita em {{data}}.', form.variaveis)
 
   const startCreate = () => {
+    if (!canCreateTemplates) {
+      onError({ message: 'Você não tem permissão para criar templates. Solicite a liberação ao administrador.', code: 'FORBIDDEN' })
+      return
+    }
     setFormOpen(true)
     setSelected(null)
     setEditing(null)
@@ -613,9 +619,11 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
                 <h2 className="mt-1 truncate text-xl font-black text-slate-950">Templates WhatsApp</h2>
                 <p className="mt-1 text-xs font-bold text-slate-500">{templates.length} modelos cadastrados</p>
               </div>
-              <button type="button" onClick={startCreate} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white shadow-lg shadow-slate-900/15 transition-all hover:bg-blue-600 active:scale-95" title="Criar template">
-                <Plus size={18} />
-              </button>
+              {canCreateTemplates && (
+                <button type="button" onClick={startCreate} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white shadow-lg shadow-slate-900/15 transition-all hover:bg-blue-600 active:scale-95" title="Criar template">
+                  <Plus size={18} />
+                </button>
+              )}
             </div>
 
             <div className="grid grid-cols-3 gap-2">
@@ -1007,10 +1015,14 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
                 </div>
                 <p className="text-sm font-black text-slate-900">Nenhum template selecionado</p>
                 <p className="mt-2 text-xs font-medium leading-5 text-slate-500">Escolha um modelo na biblioteca para enviar ou crie um novo template para aprovacao.</p>
-                <button type="button" onClick={startCreate} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-white transition-all hover:bg-blue-600 active:scale-95">
-                  <Plus size={14} />
-                  Criar template
-                </button>
+                {canCreateTemplates ? (
+                  <button type="button" onClick={startCreate} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-white transition-all hover:bg-blue-600 active:scale-95">
+                    <Plus size={14} />
+                    Criar template
+                  </button>
+                ) : (
+                  <p className="mt-4 text-xs font-bold text-amber-600">Criação de templates bloqueada pelo administrador.</p>
+                )}
               </div>
             </div>
           )}

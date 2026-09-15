@@ -5,6 +5,7 @@ const DEFAULT_CHAT_SETTINGS = {
   autoIdentifyAgent: false,
   allowAgentNameEdit: false,
   allowAgentDeleteConversation: false,
+  allowAgentCreateTemplate: false,
   finishMessage: 'Seu atendimento foi finalizado. Gostaríamos de saber sua opinião sobre o nosso atendimento:',
   agentMenuVisibility: {
     conversations: true,
@@ -50,7 +51,7 @@ export class SettingRepository {
     return settings
   }
 
-  static async updateChatSettings(id: string, organizationId: string, data: any) {
+  static async updateChatSettings(id: string, organizationId: string, data: Record<string, unknown>) {
     const { data: updated, error } = await supabaseAdmin
       .from('ChatSetting')
       .update(data)

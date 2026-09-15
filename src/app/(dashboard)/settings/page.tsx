@@ -17,6 +17,7 @@ export default function SettingsPage() {
     autoIdentifyAgent: true,
     allowAgentNameEdit: false,
     allowAgentDeleteConversation: false,
+    allowAgentCreateTemplate: false,
     finishMessage: '',
     agentMenuVisibility: {
       conversations: true,
@@ -240,6 +241,24 @@ export default function SettingsPage() {
                             className="sr-only peer"
                             checked={chatSettings.autoIdentifyAgent}
                             onChange={(e) => setChatSettings({...chatSettings, autoIdentifyAgent: e.target.checked})}
+                         />
+                         <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 shadow-inner"></div>
+                      </label>
+                   </div>
+
+                   <div className="flex items-center justify-between group p-4 rounded-2xl border border-slate-50 hover:border-slate-100 hover:bg-slate-50/50 transition-all">
+                      <div className="flex-1 pr-10">
+                         <h3 className="font-bold text-slate-800">Permitir que agentes CRIEM templates</h3>
+                         <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                            Libera para atendentes com cargo AGENT o envio de novos templates para aprovação na Meta.
+                         </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                         <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={chatSettings.allowAgentCreateTemplate}
+                            onChange={(e) => setChatSettings({...chatSettings, allowAgentCreateTemplate: e.target.checked})}
                          />
                          <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 shadow-inner"></div>
                       </label>
