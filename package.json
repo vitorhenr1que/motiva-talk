@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "health:check": "node scripts/monitor-supabase-health.mjs",
     "test": "tsx --test src/services/auto-reply-policy.test.ts src/lib/bulk-messaging-recipients.test.ts src/lib/meta-message-status.test.ts"
   },
   "prisma": {
