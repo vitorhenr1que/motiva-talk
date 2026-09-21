@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, Columns3, Loader2, Megaphone,
-  Phone, Tag, UserRound, UsersRound, XCircle,
+  AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, Clock3, Columns3, ExternalLink,
+  Loader2, Megaphone, Phone, Tag, UserRound, UsersRound, XCircle,
 } from 'lucide-react'
 
 type CampaignTemplate = {
@@ -46,11 +46,45 @@ type Preview = {
   sample: Array<{ conversationId: string; contactName: string; phone: string }>
 }
 
+type CampaignResultItem = {
+  conversationId: string
+  contactName: string
+  messageId?: string
+  state: 'pending' | 'confirmed' | 'failed'
+  error?: string
+  code?: number
+  actionUrl?: string
+}
+
 type CampaignResult = {
   total: number
+  accepted: number
+  confirmed: number
+  pending: number
+  failed: number
+  results: CampaignResultItem[]
+}
+
+type SubmissionResult = {
+  total: number
+  accepted?: number
   sent: number
   failed: number
-  results: Array<{ conversationId: string; contactName: string; success: boolean; error?: string }>
+  results: Array<{
+    conversationId: string
+    contactName: string
+    success: boolean
+    messageId?: string
+    error?: string
+  }>
+}
+
+type DeliveryResult = {
+  messageId: string
+  state: CampaignResultItem['state']
+  message?: string
+  code?: number
+  actionUrl?: string
 }
 
 type Props = {
@@ -76,6 +110,31 @@ function initialRule(name: string): VariableRule {
 }
 
 const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10'
+const DELIVERY_POLL_INTERVALS = [800, 1200, 2000, 3000, 5000]
+
+function summarizeCampaign(total: number, accepted: number, results: CampaignResultItem[]): CampaignResult {
+  let confirmed = 0
+  let pending = 0
+  let failed = 0
+
+  for (const result of results) {
+    if (result.state === 'confirmed') confirmed += 1
+    else if (result.state === 'pending') pending += 1
+    else failed += 1
+  }
+
+  return { total, accepted, confirmed, pending, failed, results }
+}
+
+function wait(milliseconds: number, signal: AbortSignal) {
+  return new Promise<void>(resolve => {
+    const timeoutId = window.setTimeout(resolve, milliseconds)
+    signal.addEventListener('abort', () => {
+      window.clearTimeout(timeoutId)
+      resolve()
+    }, { once: true })
+  })
+}
 
 export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
   const variables = useMemo(() => extractVariables(template.bodyText), [template.bodyText])
@@ -90,7 +149,11 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
   const [preview, setPreview] = useState<Preview | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [sending, setSending] = useState(false)
+  const [checkingDelivery, setCheckingDelivery] = useState(false)
   const [result, setResult] = useState<CampaignResult | null>(null)
+  const deliveryControllerRef = useRef<AbortController | null>(null)
+
+  useEffect(() => () => deliveryControllerRef.current?.abort(), [])
 
   useEffect(() => {
     let active = true
@@ -154,6 +217,68 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
     setRules(current => current.map((rule, ruleIndex) => ruleIndex === index ? { ...rule, ...patch } : rule))
   }
 
+  const pollDeliveryStatus = async (
+    total: number,
+    accepted: number,
+    initialResults: CampaignResultItem[]
+  ) => {
+    const messageIds = initialResults.flatMap(item => item.messageId ? [item.messageId] : [])
+    if (!messageIds.length) return
+
+    const controller = new AbortController()
+    deliveryControllerRef.current?.abort()
+    deliveryControllerRef.current = controller
+    setCheckingDelivery(true)
+
+    try {
+      let currentResults = initialResults
+      for (const interval of DELIVERY_POLL_INTERVALS) {
+        await wait(interval, controller.signal)
+        if (controller.signal.aborted) return
+
+        const response = await fetch('/api/whatsapp/templates/bulk-send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({ action: 'status', messageIds }),
+        })
+        const data = await response.json()
+        if (!response.ok || !data.success) throw new Error(data.message || 'Falha ao confirmar as entregas.')
+
+        const statusByMessageId = new Map<string, DeliveryResult>(
+          (data.data.results as DeliveryResult[]).map(item => [item.messageId, item])
+        )
+        currentResults = currentResults.map(item => {
+          if (!item.messageId) return item
+          const delivery = statusByMessageId.get(item.messageId)
+          if (!delivery) return item
+          return {
+            ...item,
+            state: delivery.state,
+            error: delivery.message,
+            code: delivery.code,
+            actionUrl: delivery.actionUrl,
+          }
+        })
+
+        const summary = summarizeCampaign(total, accepted, currentResults)
+        setResult(summary)
+        if (summary.pending === 0) return
+      }
+    } catch (error: unknown) {
+      if (!controller.signal.aborted) {
+        onError({
+          message: error instanceof Error
+            ? `${error.message} As mensagens aceitas continuarão sendo atualizadas no histórico.`
+            : 'Não foi possível confirmar todas as entregas agora.',
+        })
+      }
+    } finally {
+      if (!controller.signal.aborted) setCheckingDelivery(false)
+      if (deliveryControllerRef.current === controller) deliveryControllerRef.current = null
+    }
+  }
+
   const handleSend = async () => {
     if (!preview || !canReview) return
     setSending(true)
@@ -171,8 +296,18 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
       })
       const data = await response.json()
       if (!response.ok || !data.success) throw new Error(data.message || 'Falha ao executar campanha.')
-      setResult(data.data)
+      const submission = data.data as SubmissionResult
+      const accepted = submission.accepted ?? submission.sent
+      const initialResults: CampaignResultItem[] = submission.results.map(item => ({
+        conversationId: item.conversationId,
+        contactName: item.contactName,
+        messageId: item.messageId,
+        state: item.success ? 'pending' : 'failed',
+        error: item.error,
+      }))
+      setResult(summarizeCampaign(submission.total, accepted, initialResults))
       setConfirming(false)
+      void pollDeliveryStatus(submission.total, accepted, initialResults)
     } catch (error: unknown) {
       onError({ message: error instanceof Error ? error.message : 'Falha ao executar campanha.' })
     } finally {
@@ -205,19 +340,38 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
         {result ? (
           <main className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-6 custom-scrollbar">
             <div className="mx-auto max-w-2xl">
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+              <div aria-live="polite" className={`rounded-2xl border p-5 ${result.pending > 0 ? 'border-blue-200 bg-blue-50' : result.failed > 0 ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50'}`}>
                 <div className="flex items-center gap-3">
-                  <CheckCircle2 className="text-emerald-600" size={28} />
+                  {result.pending > 0 && checkingDelivery ? (
+                    <Loader2 className="animate-spin text-blue-600" size={28} />
+                  ) : result.pending > 0 ? (
+                    <Clock3 className="text-blue-600" size={28} />
+                  ) : result.failed > 0 ? (
+                    <XCircle className="text-red-600" size={28} />
+                  ) : (
+                    <CheckCircle2 className="text-emerald-600" size={28} />
+                  )}
                   <div>
-                    <h3 className="text-lg font-black text-emerald-950">Campanha concluída</h3>
-                    <p className="text-sm font-medium text-emerald-800">{result.sent} de {result.total} mensagens foram aceitas pela Meta para processamento.</p>
+                    <h3 className={`text-lg font-black ${result.pending > 0 ? 'text-blue-950' : result.failed > 0 ? 'text-red-950' : 'text-emerald-950'}`}>
+                      {result.pending > 0
+                        ? checkingDelivery ? 'Confirmando o envio' : 'Envio aceito; confirmação pendente'
+                        : result.failed > 0 ? 'Campanha concluída com falhas' : 'Campanha confirmada'}
+                    </h3>
+                    <p className={`text-sm font-medium ${result.pending > 0 ? 'text-blue-800' : result.failed > 0 ? 'text-red-800' : 'text-emerald-800'}`}>
+                      {result.pending > 0
+                        ? checkingDelivery
+                          ? `${result.accepted} mensagens foram aceitas pela Meta; ${result.pending} ainda aguardam confirmação.`
+                          : `${result.pending} mensagens seguem pendentes. O status continuará sendo atualizado no histórico das conversas.`
+                        : `${result.confirmed} de ${result.total} mensagens tiveram o envio confirmado pela Meta.`}
+                    </p>
                   </div>
                 </div>
               </div>
-              <div className="mt-4 grid grid-cols-3 gap-3">
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
                   ['Público', result.total, 'text-slate-900'],
-                  ['Aceitas', result.sent, 'text-emerald-700'],
+                  ['Aceitas', result.accepted, 'text-blue-700'],
+                  ['Confirmadas', result.confirmed, 'text-emerald-700'],
                   ['Falhas', result.failed, 'text-red-700'],
                 ].map(([label, value, color]) => (
                   <div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm">
@@ -230,10 +384,15 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
                 <section className="mt-4 rounded-2xl border border-red-200 bg-white p-4">
                   <h3 className="text-sm font-black text-slate-900">Envios que precisam de atenção</h3>
                   <div className="mt-3 space-y-2">
-                    {result.results.filter(item => !item.success).map(item => (
+                    {result.results.filter(item => item.state === 'failed').map(item => (
                       <div key={item.conversationId} className="rounded-xl bg-red-50 px-3 py-2 text-xs">
                         <p className="font-black text-red-900">{item.contactName}</p>
-                        <p className="mt-0.5 font-medium text-red-700">{item.error}</p>
+                        <p className="mt-0.5 font-medium leading-5 text-red-700">{item.error}</p>
+                        {item.actionUrl ? (
+                          <a href={item.actionUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 font-black text-red-800 underline decoration-red-300 underline-offset-2 hover:text-red-950">
+                            Corrigir na Meta <ExternalLink size={12} />
+                          </a>
+                        ) : null}
                       </div>
                     ))}
                   </div>
@@ -410,7 +569,13 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
         )}
 
         <footer className="flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-6 py-4">
-          <p className="hidden text-xs font-medium text-slate-500 sm:block">Limite de segurança: 200 destinatários por disparo.</p>
+          <p className="hidden items-center gap-2 text-xs font-medium text-slate-500 sm:flex">
+            {checkingDelivery
+              ? <><Clock3 size={14} /> Aguardando confirmação da Meta…</>
+              : result?.pending
+                ? 'A Meta pode confirmar algumas mensagens depois.'
+                : 'Limite de segurança: 200 destinatários por disparo.'}
+          </p>
           <div className="ml-auto flex gap-2">
             <button type="button" onClick={onClose} disabled={sending} className="rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-widest text-slate-500 transition hover:bg-slate-100 disabled:opacity-40">
               {result ? 'Fechar' : 'Cancelar'}

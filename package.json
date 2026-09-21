@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "health:check": "node scripts/monitor-supabase-health.mjs",
-    "test": "tsx --test src/services/auto-reply-policy.test.ts src/lib/bulk-messaging-recipients.test.ts src/lib/meta-message-status.test.ts"
+    "test": "tsx --test src/services/auto-reply-policy.test.ts src/lib/bulk-messaging-recipients.test.ts src/lib/bulk-message-delivery.test.ts src/lib/meta-message-status.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

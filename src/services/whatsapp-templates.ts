@@ -7,6 +7,7 @@ import { WhatsAppTemplateRepository } from '@/repositories/whatsappTemplateRepos
 import { TagRepository } from '@/repositories/tagRepository'
 import { FunnelRepository } from '@/repositories/funnelRepository'
 import { metaCloudProvider } from '@/services/whatsapp/providers/meta-cloud-provider'
+import { getBulkDeliveryError, getBulkDeliveryState } from '@/lib/bulk-message-delivery'
 
 type TemplateCategory = 'utility' | 'marketing' | 'authentication'
 type HeaderInput = { type: 'text' | 'image' | 'video' | 'document'; text?: string; example?: string }
@@ -613,8 +614,62 @@ export class WhatsAppTemplateService {
     return {
       segment: preview.segment,
       total: preview.total,
+      accepted: sent,
       sent,
       failed: preview.total - sent,
+      results,
+    }
+  }
+
+  static async getBulkDeliveryStatus(organizationId: string, input: { messageIds?: string[] }) {
+    const messageIds = Array.from(new Set(
+      (Array.isArray(input.messageIds) ? input.messageIds : [])
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    ))
+
+    if (!messageIds.length || messageIds.length > 200) {
+      throw new AppError('Informe entre 1 e 200 mensagens para verificar.', 400, 'VALIDATION_ERROR')
+    }
+
+    const messages = await MessageRepository.findDeliveryStatusesByIds(messageIds, organizationId)
+    const messagesById = new Map(messages.map(message => [message.id, message]))
+    const results = messageIds.map(messageId => {
+      const message = messagesById.get(messageId)
+      if (!message) {
+        return { messageId, state: 'pending' as const }
+      }
+
+      const state = getBulkDeliveryState(message)
+      if (state !== 'failed') {
+        return {
+          messageId,
+          conversationId: message.conversationId,
+          state,
+          deliveryStatus: message.metadata?.deliveryStatus || null,
+        }
+      }
+
+      return {
+        messageId,
+        conversationId: message.conversationId,
+        state,
+        deliveryStatus: message.metadata?.deliveryStatus || null,
+        ...getBulkDeliveryError(message),
+      }
+    })
+
+    let confirmed = 0
+    let failed = 0
+    for (const result of results) {
+      if (result.state === 'confirmed') confirmed += 1
+      else if (result.state === 'failed') failed += 1
+    }
+
+    return {
+      total: messageIds.length,
+      confirmed,
+      failed,
+      pending: messageIds.length - confirmed - failed,
       results,
     }
   }

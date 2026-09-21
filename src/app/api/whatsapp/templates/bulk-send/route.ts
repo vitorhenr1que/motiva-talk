@@ -25,6 +25,10 @@ export async function POST(req: Request) {
         },
       })
     }
+    if (body.action === 'status') {
+      const status = await WhatsAppTemplateService.getBulkDeliveryStatus(organizationId, body)
+      return NextResponse.json({ success: true, data: status })
+    }
     if (body.action !== 'send') {
       throw new AppError('Ação inválida.', 400, 'VALIDATION_ERROR')
     }

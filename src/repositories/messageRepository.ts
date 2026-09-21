@@ -120,7 +120,21 @@ export class MessageRepository {
     return data || []
   }
 
-  static async create(organizationId: string, data: any) {
+  static async findDeliveryStatusesByIds(messageIds: string[], organizationId: string) {
+    const uniqueIds = Array.from(new Set(messageIds.filter(Boolean)))
+    if (!uniqueIds.length) return []
+
+    const { data, error } = await supabaseAdmin
+      .from('Message')
+      .select('id, conversationId, sendStatus, errorMessage, metadata')
+      .eq('organizationId', organizationId)
+      .in('id', uniqueIds)
+
+    if (error) throw error
+    return data || []
+  }
+
+  static async create(organizationId: string, data: Record<string, unknown>) {
     const { data: newMessage, error } = await supabaseAdmin
       .from('Message')
       .insert([{ id: generateId(), ...data, organizationId }])
@@ -133,7 +147,7 @@ export class MessageRepository {
   /**
    * Atualiza uma mensagem pelo ID
    */
-  static async update(id: string, organizationId: string, data: any) {
+  static async update(id: string, organizationId: string, data: Record<string, unknown>) {
     const { data: updated, error } = await supabaseAdmin
       .from('Message')
       .update(data)
