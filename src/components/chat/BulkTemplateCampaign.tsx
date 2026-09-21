@@ -150,6 +150,7 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
   const [confirming, setConfirming] = useState(false)
   const [sending, setSending] = useState(false)
   const [checkingDelivery, setCheckingDelivery] = useState(false)
+  const [showFailedRecipients, setShowFailedRecipients] = useState(false)
   const [result, setResult] = useState<CampaignResult | null>(null)
   const deliveryControllerRef = useRef<AbortController | null>(null)
 
@@ -212,6 +213,14 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
   const selectedAudienceId = audienceType === 'tag' ? tagId : stageId
   const previewMatchesAudience = preview?.segment.type === audienceType && preview.segment.id === selectedAudienceId
   const canReview = !!preview && previewMatchesAudience && preview.total > 0 && preview.total <= preview.limit && !invalidFixedRule
+  const failedResults = result?.results.filter(item => item.state === 'failed') || []
+  const allRecipientsFailed = !!result && result.total > 0 && result.failed === result.total
+  const failureReasons = allRecipientsFailed
+    ? Array.from(new Map(failedResults.map(item => [
+        `${item.code || 'unknown'}:${item.error || 'unknown'}`,
+        item,
+      ])).values())
+    : []
 
   const updateRule = (index: number, patch: Partial<VariableRule>) => {
     setRules(current => current.map((rule, ruleIndex) => ruleIndex === index ? { ...rule, ...patch } : rule))
@@ -382,20 +391,60 @@ export function BulkTemplateCampaign({ template, onClose, onError }: Props) {
               </div>
               {result.failed > 0 && (
                 <section className="mt-4 rounded-2xl border border-red-200 bg-white p-4">
-                  <h3 className="text-sm font-black text-slate-900">Envios que precisam de atenção</h3>
-                  <div className="mt-3 space-y-2">
-                    {result.results.filter(item => item.state === 'failed').map(item => (
-                      <div key={item.conversationId} className="rounded-xl bg-red-50 px-3 py-2 text-xs">
-                        <p className="font-black text-red-900">{item.contactName}</p>
-                        <p className="mt-0.5 font-medium leading-5 text-red-700">{item.error}</p>
-                        {item.actionUrl ? (
-                          <a href={item.actionUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 font-black text-red-800 underline decoration-red-300 underline-offset-2 hover:text-red-950">
-                            Corrigir na Meta <ExternalLink size={12} />
-                          </a>
-                        ) : null}
-                      </div>
-                    ))}
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900">
+                        {allRecipientsFailed ? `Todos os ${result.total} envios falharam` : `${result.failed} envios precisam de atenção`}
+                      </h3>
+                      <p className="mt-1 text-xs font-medium text-slate-500">
+                        {allRecipientsFailed
+                          ? 'Como todo o público foi afetado, a lista de contatos foi omitida.'
+                          : 'Abra a lista para identificar os contatos que não receberam a mensagem.'}
+                      </p>
+                    </div>
+                    {!allRecipientsFailed ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowFailedRecipients(current => !current)}
+                        aria-expanded={showFailedRecipients}
+                        aria-controls="failed-campaign-recipients"
+                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-800 transition hover:border-red-300 hover:bg-red-100 focus:outline-none focus:ring-4 focus:ring-red-500/10"
+                      >
+                        <UsersRound size={15} />
+                        {showFailedRecipients ? 'Ocultar contatos' : `Ver ${result.failed} ${result.failed === 1 ? 'contato' : 'contatos'}`}
+                        <ChevronRight className={`transition-transform ${showFailedRecipients ? 'rotate-90' : ''}`} size={14} />
+                      </button>
+                    ) : null}
                   </div>
+
+                  {allRecipientsFailed ? (
+                    <div className="mt-3 space-y-2">
+                      {failureReasons.map((item, index) => (
+                        <div key={`${item.code || 'error'}-${index}`} className="rounded-xl bg-red-50 px-3 py-2 text-xs">
+                          <p className="font-medium leading-5 text-red-700">{item.error}</p>
+                          {item.actionUrl ? (
+                            <a href={item.actionUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 font-black text-red-800 underline decoration-red-300 underline-offset-2 hover:text-red-950">
+                              Corrigir na Meta <ExternalLink size={12} />
+                            </a>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : showFailedRecipients ? (
+                    <div id="failed-campaign-recipients" className="mt-3 space-y-2">
+                      {failedResults.map(item => (
+                        <div key={item.conversationId} className="rounded-xl bg-red-50 px-3 py-2 text-xs">
+                          <p className="font-black text-red-900">{item.contactName}</p>
+                          <p className="mt-0.5 font-medium leading-5 text-red-700">{item.error}</p>
+                          {item.actionUrl ? (
+                            <a href={item.actionUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 font-black text-red-800 underline decoration-red-300 underline-offset-2 hover:text-red-950">
+                              Corrigir na Meta <ExternalLink size={12} />
+                            </a>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </section>
               )}
             </div>
