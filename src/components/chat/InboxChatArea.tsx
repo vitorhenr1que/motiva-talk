@@ -458,18 +458,11 @@ Todos os dados e mensagens serão excluídos.`;
     if (!activeConversation || activeConversation.status === 'CLOSED') return;
     const windowState = getConversationWindowState(activeConversation, conversationNowMs);
 
-    if (windowState.isExpired) {
-      fetch(`/api/conversations/${activeConversation.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'CLOSED' }),
-      })
-        .then((resp) => {
-          if (resp.ok) updateConversationLocally(activeConversation.id, { status: 'CLOSED' });
-        })
-        .catch(console.error);
-      return;
-    }
+    // Expirar a janela de 24h bloqueia somente mensagens livres. A conversa
+    // precisa continuar aberta para que o atendente consiga enviar um template
+    // aprovado e retomar o contato. Finalizar o atendimento aqui tornava o
+    // próprio fluxo de templates inacessível logo após criar/reabrir a conversa.
+    if (windowState.isExpired) return;
 
     if (
       windowState.remainingMs <= CONVERSATION_WARNING_MS &&
