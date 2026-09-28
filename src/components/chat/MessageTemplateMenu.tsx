@@ -1,7 +1,7 @@
 'use client'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useEffect, useMemo, useReducer, useState } from 'react'
+import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import {
   Check, ChevronLeft, Edit2, ExternalLink, Loader2, MessageSquareReply, Mic, MoreVertical,
   Megaphone, Paperclip, Phone, Plus, Search, Send, Smile, Trash2, Variable, Video, X
@@ -438,25 +438,60 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
   const [variableName, setVariableName] = useState('')
   const [campaignOpen, setCampaignOpen] = useState(false)
   const [form, dispatch] = useReducer(formReducer, channelId, emptyForm)
+  const templatesRequestRef = useRef<{
+    channelId: string
+    promise: Promise<void>
+    abort: () => void
+  } | null>(null)
 
   const fetchTemplates = async (background = false) => {
     if (!channelId) return
-    if (!background) setLoading(true)
+    if (templatesRequestRef.current?.channelId === channelId) {
+      return templatesRequestRef.current.promise
+    }
+    templatesRequestRef.current?.abort()
+
+    const controller = new AbortController()
+
+    const request = (async () => {
+      if (!background) setLoading(true)
+      const timeout = window.setTimeout(() => controller.abort(), 15_000)
+
+      try {
+        const resp = await fetch(`/api/whatsapp/templates?channelId=${channelId}`, {
+          signal: controller.signal,
+        })
+        const data = await resp.json()
+        if (!resp.ok || !data.success) throw new Error(data.message || 'Falha ao carregar templates.')
+        const nextTemplates = data.data || []
+        setTemplates(nextTemplates)
+        setCanCreateTemplates(data.permissions?.canCreateTemplates === true)
+        setSelected(current => current
+          ? nextTemplates.find((template: MessageTemplate) => template.id === current.id) || current
+          : null
+        )
+      } catch (error: any) {
+        if (!background) {
+          const message = error?.name === 'AbortError'
+            ? 'A consulta de templates demorou demais. Tente novamente.'
+            : error.message || 'Falha ao carregar templates.'
+          onError({ message })
+        }
+      } finally {
+        window.clearTimeout(timeout)
+        if (!background) setLoading(false)
+      }
+    })()
+
+    templatesRequestRef.current = {
+      channelId,
+      promise: request,
+      abort: () => controller.abort(),
+    }
     try {
-      const resp = await fetch(`/api/whatsapp/templates?channelId=${channelId}`)
-      const data = await resp.json()
-      if (!resp.ok || !data.success) throw new Error(data.message || 'Falha ao carregar templates.')
-      const nextTemplates = data.data || []
-      setTemplates(nextTemplates)
-      setCanCreateTemplates(data.permissions?.canCreateTemplates === true)
-      setSelected(current => current
-        ? nextTemplates.find((template: MessageTemplate) => template.id === current.id) || current
-        : null
-      )
-    } catch (error: any) {
-      if (!background) onError({ message: error.message || 'Falha ao carregar templates.' })
+      await request
     } finally {
-      if (!background) setLoading(false)
+      if (templatesRequestRef.current?.promise === request) templatesRequestRef.current = null
     }
   }
 
@@ -467,7 +502,10 @@ export const MessageTemplateMenu = ({ onClose, onError }: Props) => {
       void fetchTemplates(true)
     }, 60_000)
 
-    return () => window.clearInterval(statusSyncTimer)
+    return () => {
+      window.clearInterval(statusSyncTimer)
+      templatesRequestRef.current?.abort()
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId])
 

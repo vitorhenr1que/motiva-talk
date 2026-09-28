@@ -222,70 +222,12 @@ function renderTemplateText(template: any, variables: string[] = []) {
 
 export class WhatsAppTemplateService {
   static async list(organizationId: string, filters: { channelId?: string; status?: string }) {
-    // O status local pode estar defasado; filtre somente depois de consultar a Meta.
-    const templates = await WhatsAppTemplateRepository.findMany(organizationId, {
+    // A listagem precisa permanecer somente leitura. Os status são atualizados pelo
+    // webhook da Meta; sincronizar aqui gerava um PATCH por template em todo polling.
+    return WhatsAppTemplateRepository.findMany(organizationId, {
       channelId: filters.channelId,
+      status: filters.status,
     })
-    if (!templates.length) return templates
-
-    const syncedById = new Map<string, any>()
-    const channelIds = Array.from(new Set(templates.map(template => template.channelId).filter(Boolean)))
-
-    for (const channelId of channelIds) {
-      try {
-        const channel = await ChannelRepository.findById(channelId, organizationId)
-        if (channel.whatsappProvider !== 'META_CLOUD') continue
-
-        const metaTemplates = await metaCloudProvider.listMessageTemplates(channel as any)
-        const metaById = new Map(
-          metaTemplates
-            .filter(template => template?.id)
-            .map(template => [String(template.id), template])
-        )
-
-        const channelTemplates = templates.filter(template => template.channelId === channelId && template.metaTemplateId)
-        const syncedAt = new Date().toISOString()
-
-        await Promise.all(channelTemplates.map(async template => {
-          const metaTemplate: any = metaById.get(String(template.metaTemplateId))
-          if (!metaTemplate) return
-
-          const status = mapMetaStatus(metaTemplate.status)
-          const rejectionReason = status === 'rejeitado'
-            ? metaTemplate.rejected_reason || null
-            : null
-          const patch: any = {
-            status,
-            lastSyncedAt: syncedAt,
-            errorMessage: rejectionReason,
-            rejectionReason,
-            approvedAt: status === 'aprovado' ? (template.approvedAt || syncedAt) : null,
-            rejectedAt: status === 'rejeitado' ? (template.rejectedAt || syncedAt) : null,
-          }
-
-          const updated = await WhatsAppTemplateRepository.update(
-            template.id,
-            organizationId,
-            patch
-          )
-          syncedById.set(template.id, updated)
-        }))
-      } catch (error) {
-        console.error(`[WHATSAPP_TEMPLATES] Falha ao sincronizar canal ${channelId} com a Meta:`, error)
-        if (filters.channelId === channelId) {
-          throw new AppError(
-            'Não foi possível consultar o status dos templates na Meta. Tente novamente em instantes.',
-            502,
-            'INTERNAL_ERROR'
-          )
-        }
-      }
-    }
-
-    const syncedTemplates = templates.map(template => syncedById.get(template.id) || template)
-    return filters.status
-      ? syncedTemplates.filter(template => template.status === filters.status)
-      : syncedTemplates
   }
 
   static async create(organizationId: string, input: TemplateInput) {
