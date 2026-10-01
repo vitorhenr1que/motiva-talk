@@ -2,6 +2,8 @@ import { Channel, MessageType } from "@/types/chat";
 import { WhatsAppProvider } from "./whatsapp-provider";
 import { WebhookEvent } from "../provider";
 import { getWhatsAppContactCards, getWhatsAppReplyContent } from '@/lib/whatsapp-message';
+import { AppError } from '@/lib/api-errors';
+import { hasProfilePhotoSignature, validateProfilePhoto } from '@/lib/whatsapp-profile-photo';
 
 type MetaWebhookMessageContext = {
   id?: string;
@@ -59,6 +61,72 @@ export class MetaCloudProvider implements WhatsAppProvider {
 
   private graphUrl(resource: string) {
     return `https://graph.facebook.com/${this.graphVersion}/${resource}`;
+  }
+
+  private async profileRequest(resource: string, accessToken: string, init?: RequestInit) {
+    const response = await fetch(this.graphUrl(resource), {
+      ...init,
+      headers: { Authorization: `Bearer ${accessToken}`, ...init?.headers },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(30_000),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || data?.error) {
+      const details = data?.error?.error_user_msg || data?.error?.message;
+      throw new AppError(
+        details ? `A Meta recusou a operação: ${details}` : 'Não foi possível acessar o perfil na Meta. Tente novamente.',
+        502,
+      );
+    }
+    if (!data) throw new AppError('A Meta retornou uma resposta inválida.', 502);
+    return data;
+  }
+
+  async getProfilePhoto(channel: Channel): Promise<string | null> {
+    const { phoneNumberId, accessToken } = this.getCredentials(channel);
+    const data = await this.profileRequest(`${phoneNumberId}/whatsapp_business_profile?fields=profile_picture_url`, accessToken);
+    const profile = data.data?.[0];
+    // Support both Graph API's direct fields and the business_profile envelope.
+    return profile?.profile_picture_url || profile?.business_profile?.profile_picture_url || null;
+  }
+
+  async updateProfilePhoto(channel: Channel, file: File): Promise<void> {
+    const validationError = validateProfilePhoto(file);
+    if (validationError) throw new AppError(validationError, 400, 'VALIDATION_ERROR');
+    const bytes = await file.arrayBuffer();
+    if (!hasProfilePhotoSignature(new Uint8Array(bytes), file.type)) {
+      throw new AppError('O conteúdo do arquivo não corresponde a uma imagem JPG ou PNG.', 400, 'VALIDATION_ERROR');
+    }
+    const { phoneNumberId, accessToken } = this.getCredentials(channel);
+    const appId = process.env.META_APP_ID?.trim();
+    if (!appId) throw new AppError('Configure META_APP_ID no servidor para alterar a foto de perfil.', 400, 'VALIDATION_ERROR');
+
+    const query = new URLSearchParams({
+      file_length: String(bytes.byteLength),
+      file_type: file.type,
+      file_name: file.type === 'image/png' ? 'profile.png' : 'profile.jpg',
+    });
+    const session = await this.profileRequest(`${appId}/uploads?${query}`, accessToken, { method: 'POST' });
+    if (typeof session.id !== 'string' || !session.id.startsWith('upload:')) {
+      throw new AppError('A Meta não retornou uma sessão de upload válida.', 502);
+    }
+    // Preserve the signed session ID, including its query string.
+    const upload = await this.profileRequest(session.id, accessToken, {
+      method: 'POST',
+      headers: { Authorization: `OAuth ${accessToken}`, 'Content-Type': file.type, file_offset: '0' },
+      body: bytes,
+    });
+    if (typeof upload.h !== 'string' || !upload.h) {
+      throw new AppError('A Meta não retornou o identificador da imagem.', 502);
+    }
+    const result = await this.profileRequest(`${phoneNumberId}/whatsapp_business_profile`, accessToken, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', profile_picture_handle: upload.h }),
+    });
+    if (result.success !== true && !result.data?.length) {
+      throw new AppError('A Meta não confirmou a atualização da foto de perfil.', 502);
+    }
   }
 
   private buildGraphError(action: string, status: number, data: any, context: Record<string, unknown>) {

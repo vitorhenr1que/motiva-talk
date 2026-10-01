@@ -9,6 +9,7 @@ Central interna de atendimento multicanal para uma única organização. Esta ed
 - Funil Kanban, relatórios, avaliações e sugestões
 - Gestão de usuários e permissões da equipe
 - Conexão exclusiva pela API oficial do WhatsApp Business (Meta Cloud API)
+- Alteração da foto de perfil do WhatsApp nas configurações do canal
 - Supabase para autenticação, dados, realtime e arquivos
 
 ## Desenvolvimento
@@ -25,6 +26,14 @@ npm run dev
 ```
 
 Abra [http://localhost:3000](http://localhost:3000). O onboarding de canais exige autenticação e pode ser acessado em `/onboarding`.
+
+## Foto de perfil do WhatsApp
+
+Em **Canais → Configurar → Foto de perfil do WhatsApp**, selecione uma imagem JPG ou PNG de até 4 MB, confira a prévia e clique em **Salvar foto no WhatsApp**. A ação exige administrador ou proprietário da organização e uma conexão Meta configurada.
+
+Configure `META_APP_ID` e um token da Meta com acesso ao número e permissão `whatsapp_business_management` no servidor. O token do canal, quando presente, tem prioridade sobre `META_ACCESS_TOKEN`. O aplicativo deve corresponder ao token utilizado. A imagem é enviada diretamente à Meta pelo servidor, sem armazenamento local ou no Supabase.
+
+O endpoint `POST /api/channels/[id]/profile-photo` recebe `multipart/form-data` com o campo `file`; `GET` no mesmo endereço consulta a foto atual. O fluxo utiliza a [Resumable Upload API e a atualização do perfil empresarial na coleção oficial da Meta](https://www.postman.com/meta/whatsapp-business-platform/documentation/wlk6lh4/whatsapp-cloud-api?entity=request-13382743-68b3edbb-85dd-43a5-ad7a-876bdd051f32). O WhatsApp pode demorar alguns instantes para mostrar a nova foto.
 
 ## Verificação
 

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Cloud, Loader2, Settings, ShieldCheck, Unlink, X } from 'lucide-react';
+import { ChannelProfilePhoto } from './ChannelProfilePhoto';
 
 interface ChannelConfigModalProps {
   isOpen: boolean;
@@ -75,10 +76,10 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({ isOpen, 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-[32px] bg-white p-8 shadow-2xl dark:bg-slate-900">
+      <div role="dialog" aria-modal="true" aria-label={`Configurar ${channel.name}`} className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-[32px] bg-white p-6 shadow-2xl sm:p-8 dark:bg-slate-900">
         <div className="mb-7 flex items-center justify-between">
           <div className="flex items-center gap-3"><div className="rounded-2xl bg-blue-50 p-3 text-blue-600 dark:bg-blue-900/30"><Settings size={22} /></div><div><h2 className="text-xl font-black text-slate-900 dark:text-white">{channel.name}</h2><p className="text-xs font-semibold text-slate-400">+{channel.phoneNumber}</p></div></div>
-          <button onClick={onClose} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Fechar"><X size={20} /></button>
+          <button onClick={onClose} disabled={loading === 'profilePhoto'} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-800" aria-label="Fechar"><X size={20} /></button>
         </div>
 
         <div className="mb-6 flex items-center justify-between rounded-2xl border border-emerald-100 bg-emerald-50 p-4 dark:border-emerald-900/30 dark:bg-emerald-900/20">
@@ -86,16 +87,20 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({ isOpen, 
           <span className={`rounded-full px-3 py-1 text-[10px] font-black ${channel.connectionStatus === 'CONNECTED' ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{channel.connectionStatus === 'CONNECTED' ? 'ONLINE' : 'OFFLINE'}</span>
         </div>
 
+        {channel.connectionStatus === 'CONNECTED' && (
+          <ChannelProfilePhoto key={channel.id} channelId={channel.id} disabled={Boolean(loading)} onBusyChange={(busy) => setLoading(busy ? 'profilePhoto' : null)} />
+        )}
+
         <div className="space-y-5 rounded-3xl border border-slate-100 p-5 dark:border-slate-800">
           <div className="flex items-center justify-between gap-4"><div><p className="text-sm font-bold text-slate-800 dark:text-white">Identificar atendente</p><p className="text-xs text-slate-400">Permite personalizar o nome enviado nas mensagens.</p></div><button onClick={() => updateSetting('allowAgentNameEdit', !allowAgentNameEdit)} disabled={Boolean(loading)} className={toggleClass(allowAgentNameEdit)}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${allowAgentNameEdit ? 'left-6' : 'left-1'}`} /></button></div>
           <div className="h-px bg-slate-100 dark:bg-slate-800" />
           <div className="flex items-center justify-between gap-4"><div><p className="text-sm font-bold text-slate-800 dark:text-white">Visualizar todos os setores</p><p className="text-xs text-slate-400">Libera o filtro global para agentes deste canal.</p></div><button onClick={() => updateSetting('allowAgentFilterAllSectors', !allowAgentFilterAllSectors)} disabled={Boolean(loading)} className={toggleClass(allowAgentFilterAllSectors)}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${allowAgentFilterAllSectors ? 'left-6' : 'left-1'}`} /></button></div>
           <div className="h-px bg-slate-100 dark:bg-slate-800" />
-          <div><label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-slate-400">Setor padrão</label><select value={defaultSectorId || ''} onChange={(event) => updateSetting('defaultSectorId', event.target.value || null)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"><option value="">Fila geral</option>{sectors.map((sector) => <option key={sector.id} value={sector.id}>{sector.name}</option>)}</select></div>
+          <div><label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-slate-400">Setor padrão</label><select value={defaultSectorId || ''} disabled={Boolean(loading)} onChange={(event) => updateSetting('defaultSectorId', event.target.value || null)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-white"><option value="">Fila geral</option>{sectors.map((sector) => <option key={sector.id} value={sector.id}>{sector.name}</option>)}</select></div>
         </div>
 
         <div className="mt-6 grid grid-cols-2 gap-3">
-          <button onClick={() => { onClose(); onOpenConnect(channel.id, channel.name); }} className="flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white"><Cloud size={17} /> Credenciais</button>
+          <button onClick={() => { onClose(); onOpenConnect(channel.id, channel.name); }} disabled={Boolean(loading)} className="flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50"><Cloud size={17} /> Credenciais</button>
           <button onClick={disconnect} disabled={Boolean(loading)} className="flex items-center justify-center gap-2 rounded-2xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">{loading === 'disconnect' ? <Loader2 className="animate-spin" size={17} /> : <Unlink size={17} />} Desconectar</button>
         </div>
 
