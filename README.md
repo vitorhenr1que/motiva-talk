@@ -35,6 +35,12 @@ Configure `META_APP_ID` e um token da Meta com acesso ao número e permissão `w
 
 O endpoint `POST /api/channels/[id]/profile-photo` recebe `multipart/form-data` com o campo `file`; `GET` no mesmo endereço consulta a foto atual. O fluxo utiliza a [Resumable Upload API e a atualização do perfil empresarial na coleção oficial da Meta](https://www.postman.com/meta/whatsapp-business-platform/documentation/wlk6lh4/whatsapp-cloud-api?entity=request-13382743-68b3edbb-85dd-43a5-ad7a-876bdd051f32). O WhatsApp pode demorar alguns instantes para mostrar a nova foto.
 
+## Nome de exibição do WhatsApp
+
+Em **Canais → Configurar → Nome de exibição do WhatsApp**, informe o novo nome e clique em **Solicitar alteração do nome**. A solicitação utiliza o token do canal ou `META_ACCESS_TOKEN`, com o mesmo acesso administrativo e isolamento por organização da foto. Não são necessárias novas variáveis de ambiente.
+
+O endpoint `POST /api/channels/[id]/display-name` recebe JSON `{ "displayName": "Nome da empresa" }` e solicita a alteração à Meta. O nome passa pela análise do WhatsApp; o recebimento da solicitação não confirma aprovação ou ativação. O botão de consulta busca os dados atuais via `GET` no mesmo endereço e distingue o nome em uso do nome solicitado. Campos de análise indisponíveis para a conta/versão são exibidos como não informados, preservando a consulta do nome atual. O nome interno do canal permanece independente do nome público do WhatsApp.
+
 ## Verificação
 
 ```bash

@@ -4,6 +4,7 @@ import { WebhookEvent } from "../provider";
 import { getWhatsAppContactCards, getWhatsAppReplyContent } from '@/lib/whatsapp-message';
 import { AppError } from '@/lib/api-errors';
 import { hasProfilePhotoSignature, validateProfilePhoto } from '@/lib/whatsapp-profile-photo';
+import { validateWhatsAppDisplayName, type WhatsAppDisplayName } from '@/lib/whatsapp-display-name';
 
 type MetaWebhookMessageContext = {
   id?: string;
@@ -76,6 +77,8 @@ export class MetaCloudProvider implements WhatsAppProvider {
       throw new AppError(
         details ? `A Meta recusou a operação: ${details}` : 'Não foi possível acessar o perfil na Meta. Tente novamente.',
         502,
+        'INTERNAL_ERROR',
+        { metaCode: data?.error?.code, metaMessage: data?.error?.message },
       );
     }
     if (!data) throw new AppError('A Meta retornou uma resposta inválida.', 502);
@@ -88,6 +91,42 @@ export class MetaCloudProvider implements WhatsAppProvider {
     const profile = data.data?.[0];
     // Support both Graph API's direct fields and the business_profile envelope.
     return profile?.profile_picture_url || profile?.business_profile?.profile_picture_url || null;
+  }
+
+  async getDisplayName(channel: Channel): Promise<WhatsAppDisplayName> {
+    const { phoneNumberId, accessToken } = this.getCredentials(channel);
+    // Optional name-review fields are not available to every account/API version.
+    const fieldSets = ['verified_name,name_status,new_display_name,new_name_status', 'verified_name,name_status', 'verified_name'];
+    for (const [index, fields] of fieldSets.entries()) {
+      try {
+        const data = await this.profileRequest(`${phoneNumberId}?fields=${fields}`, accessToken);
+        return {
+          verifiedName: typeof data.verified_name === 'string' ? data.verified_name : null,
+          nameStatus: typeof data.name_status === 'string' ? data.name_status : null,
+          requestedName: typeof data.new_display_name === 'string' ? data.new_display_name : null,
+          requestedNameStatus: typeof data.new_name_status === 'string' ? data.new_name_status : null,
+        };
+      } catch (error) {
+        const unsupportedField = error instanceof AppError && error.details?.metaCode === 100
+          && /nonexisting field|non-existing field|unknown field/i.test(error.details?.metaMessage || '');
+        if (!unsupportedField || index === fieldSets.length - 1) throw error;
+      }
+    }
+    throw new AppError('Não foi possível consultar o nome na Meta.', 502);
+  }
+
+  async requestDisplayNameChange(channel: Channel, value: unknown): Promise<void> {
+    let name: string;
+    try { name = validateWhatsAppDisplayName(value); } catch (error) {
+      throw new AppError(error instanceof Error ? error.message : 'Nome inválido.', 400, 'VALIDATION_ERROR');
+    }
+    const { phoneNumberId, accessToken } = this.getCredentials(channel);
+    const result = await this.profileRequest(phoneNumberId, accessToken, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', new_display_name: name }),
+    });
+    if (result.success !== true) throw new AppError('A Meta não confirmou o recebimento da solicitação.', 502);
   }
 
   async updateProfilePhoto(channel: Channel, file: File): Promise<void> {

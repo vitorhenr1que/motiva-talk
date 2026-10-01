@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Cloud, Loader2, Settings, ShieldCheck, Unlink, X } from 'lucide-react';
 import { ChannelProfilePhoto } from './ChannelProfilePhoto';
+import { ChannelDisplayName } from './ChannelDisplayName';
 
 interface ChannelConfigModalProps {
   isOpen: boolean;
@@ -79,7 +80,7 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({ isOpen, 
       <div role="dialog" aria-modal="true" aria-label={`Configurar ${channel.name}`} className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-[32px] bg-white p-6 shadow-2xl sm:p-8 dark:bg-slate-900">
         <div className="mb-7 flex items-center justify-between">
           <div className="flex items-center gap-3"><div className="rounded-2xl bg-blue-50 p-3 text-blue-600 dark:bg-blue-900/30"><Settings size={22} /></div><div><h2 className="text-xl font-black text-slate-900 dark:text-white">{channel.name}</h2><p className="text-xs font-semibold text-slate-400">+{channel.phoneNumber}</p></div></div>
-          <button onClick={onClose} disabled={loading === 'profilePhoto'} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-800" aria-label="Fechar"><X size={20} /></button>
+          <button onClick={onClose} disabled={loading === 'profilePhoto' || loading === 'displayName'} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-800" aria-label="Fechar"><X size={20} /></button>
         </div>
 
         <div className="mb-6 flex items-center justify-between rounded-2xl border border-emerald-100 bg-emerald-50 p-4 dark:border-emerald-900/30 dark:bg-emerald-900/20">
@@ -89,6 +90,10 @@ export const ChannelConfigModal: React.FC<ChannelConfigModalProps> = ({ isOpen, 
 
         {channel.connectionStatus === 'CONNECTED' && (
           <ChannelProfilePhoto key={channel.id} channelId={channel.id} disabled={Boolean(loading)} onBusyChange={(busy) => setLoading(busy ? 'profilePhoto' : null)} />
+        )}
+
+        {channel.connectionStatus === 'CONNECTED' && (
+          <ChannelDisplayName key={channel.id} channelId={channel.id} disabled={Boolean(loading)} onBusyChange={(busy) => setLoading(busy ? 'displayName' : null)} />
         )}
 
         <div className="space-y-5 rounded-3xl border border-slate-100 p-5 dark:border-slate-800">

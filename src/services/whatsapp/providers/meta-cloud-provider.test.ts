@@ -4,6 +4,7 @@ import { AppError } from '@/lib/api-errors';
 import { MAX_PROFILE_PHOTO_BYTES } from '@/lib/whatsapp-profile-photo';
 import type { Channel } from '@/types/chat';
 import { MetaCloudProvider } from './meta-cloud-provider';
+import { displayNameStatusLabel } from '@/lib/whatsapp-display-name';
 
 const channel: Channel = {
   id: 'channel-1', name: 'Atendimento', phoneNumber: '5511999999999',
@@ -11,6 +12,65 @@ const channel: Channel = {
   metaPhoneNumberId: 'phone-123', metaAccessToken: 'channel-token',
 };
 const png = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], 'photo.png', { type: 'image/png' });
+
+test('requests a display name change on the phone number with the channel token', async (t) => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  t.mock.method(globalThis, 'fetch', async (url: string, init?: RequestInit) => {
+    calls.push({ url: String(url), init });
+    return Response.json({ success: true });
+  });
+  await new MetaCloudProvider().requestDisplayNameChange(channel, '  Minha Empresa  ');
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].url.endsWith('/phone-123'));
+  assert.equal(calls[0].init?.method, 'POST');
+  assert.equal(new Headers(calls[0].init?.headers).get('Authorization'), 'Bearer channel-token');
+  assert.deepEqual(JSON.parse(calls[0].init?.body as string), { messaging_product: 'whatsapp', new_display_name: 'Minha Empresa' });
+});
+
+test('rejects invalid names before contacting Meta and requires confirmation of receipt', async (t) => {
+  const fetchMock = t.mock.method(globalThis, 'fetch', async () => Response.json({}));
+  const provider = new MetaCloudProvider();
+  for (const name of [null, 42, '', '  ', 'x'.repeat(513), 'Empresa\nUnidade']) {
+    await assert.rejects(provider.requestDisplayNameChange(channel, name), (error: unknown) => error instanceof AppError && error.statusCode === 400);
+  }
+  assert.equal(fetchMock.mock.callCount(), 0);
+  await assert.rejects(provider.requestDisplayNameChange(channel, 'Empresa'), /não confirmou/);
+});
+
+test('keeps the current approved name distinct from a pending requested name', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => Response.json({
+    verified_name: 'Empresa Antiga', name_status: 'APPROVED',
+    new_display_name: 'Empresa Nova', new_name_status: 'PENDING_REVIEW',
+  }));
+  assert.deepEqual(await new MetaCloudProvider().getDisplayName(channel), {
+    verifiedName: 'Empresa Antiga', nameStatus: 'APPROVED',
+    requestedName: 'Empresa Nova', requestedNameStatus: 'PENDING_REVIEW',
+  });
+  assert.equal(displayNameStatusLabel('PENDING_REVIEW'), 'Em análise');
+  assert.equal(displayNameStatusLabel(null), 'Não informado pela Meta');
+  assert.equal(displayNameStatusLabel('UNRECOGNIZED'), 'UNRECOGNIZED');
+});
+
+test('falls back only for unavailable optional fields without inventing a review status', async (t) => {
+  const urls: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    urls.push(String(url));
+    return urls.length < 3
+      ? Response.json({ error: { code: 100, message: 'Tried accessing nonexisting field on node type' } }, { status: 400 })
+      : Response.json({ verified_name: 'Empresa' });
+  });
+  assert.deepEqual(await new MetaCloudProvider().getDisplayName(channel), {
+    verifiedName: 'Empresa', nameStatus: null, requestedName: null, requestedNameStatus: null,
+  });
+  assert.equal(urls.length, 3);
+  assert.ok(urls[2].endsWith('?fields=verified_name'));
+});
+
+test('does not hide permission failures as unsupported name status fields', async (t) => {
+  const fetchMock = t.mock.method(globalThis, 'fetch', async () => Response.json({ error: { code: 190, message: 'Invalid token' } }, { status: 401 }));
+  await assert.rejects(new MetaCloudProvider().getDisplayName(channel), /Invalid token/);
+  assert.equal(fetchMock.mock.callCount(), 1);
+});
 
 test('uploads binary through the signed session and updates the business profile with its handle', async (t) => {
   const previousAppId = process.env.META_APP_ID;
