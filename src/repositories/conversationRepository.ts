@@ -19,6 +19,52 @@ type MessagingConversation = {
 export type BulkMessagingConversation = MessagingConversation
 
 export class ConversationRepository {
+  static async findForIncomingMessage(
+    contactIds: string[],
+    organizationId: string,
+    channelId: string,
+    replyToMessageId?: string
+  ) {
+    if (!contactIds.length) return null
+
+    const findConversations = () => supabaseAdmin
+      .from('Conversation')
+      .select('id, status, unreadCount, currentSectorId, createdAt, channelId, contactId, lastMessageAt, conversationWindowStartedAt')
+      .eq('organizationId', organizationId)
+      .eq('channelId', channelId)
+      .in('contactId', contactIds)
+
+    // Uma resposta explícita pertence à conversa da mensagem original, mesmo
+    // quando há cadastros antigos com as duas formas do telefone.
+    if (replyToMessageId) {
+      const { data: original, error } = await supabaseAdmin
+        .from('Message')
+        .select('conversationId')
+        .eq('id', replyToMessageId)
+        .eq('organizationId', organizationId)
+        .eq('channelId', channelId)
+        .maybeSingle()
+      if (error) throw error
+      if (original) {
+        const { data: conversation, error: conversationError } = await findConversations()
+          .eq('id', original.conversationId)
+          .maybeSingle()
+        if (conversationError) throw conversationError
+        if (conversation) return conversation
+      }
+    }
+
+    const { data, error } = await findConversations()
+      .order('lastMessageAt', { ascending: false, nullsFirst: false })
+      .order('createdAt', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    // Uma falha de consulta não significa que não existe conversa.
+    if (error) throw error
+    return data
+  }
+
   private static async findManyByIdsForMessaging(
     conversationIds: string[],
     channelId: string,

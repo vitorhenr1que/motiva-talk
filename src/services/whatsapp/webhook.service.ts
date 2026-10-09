@@ -120,6 +120,7 @@ export class WebhookService {
         .select('id, content, senderType, type')
         .eq('externalMessageId', quotedId)
         .eq('organizationId', channel.organizationId)
+        .eq('channelId', channel.id)
         .maybeSingle();
 
       if (!originalMsg) {
@@ -128,6 +129,7 @@ export class WebhookService {
           .select('id, content, senderType, type')
           .filter('metadata->>id', 'eq', quotedId)
           .eq('organizationId', channel.organizationId)
+          .eq('channelId', channel.id)
           .maybeSingle();
         originalMsg = metadataMsg;
       }

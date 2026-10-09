@@ -181,33 +181,23 @@ export class WebhookIngestionService {
         }
       }
 
-      const contact = await ContactRepository.findOrCreateByPhone(
-        senderPhone,
-        senderName || senderPhone,
-        organizationId
-      );
+      const matchingContacts = await ContactRepository.findAllByPhone(senderPhone, organizationId);
+      let contact = matchingContacts.find(candidate => candidate.phone === numericOnly) || matchingContacts[0];
+      if (!contact) {
+        contact = await ContactRepository.findOrCreateByPhone(senderPhone, senderName || senderPhone, organizationId);
+        matchingContacts.push(contact);
+      }
       console.log(`[INGEST] 2. Contato ${contact.name} (${contact.id}) org=${organizationId}`);
 
-      const { data: lastConversations } = await supabaseAdmin
-        .from('Conversation')
-        .select(`
-          id,
-          status,
-          unreadCount,
-          currentSectorId,
-          createdAt,
-          channelId,
-          contactId,
-          lastMessageAt,
-          conversationWindowStartedAt
-        `)
-        .eq('organizationId', organizationId)
-        .eq('contactId', contact.id)
-        .eq('channelId', channelId)
-        .order('lastMessageAt', { ascending: false })
-        .limit(1);
-
-      let conversation: any = lastConversations?.[0] || null;
+      let conversation: any = await ConversationRepository.findForIncomingMessage(
+        matchingContacts.map(candidate => candidate.id),
+        organizationId,
+        channelId,
+        metadata?.resolvedReplyToId
+      );
+      if (conversation) {
+        contact = matchingContacts.find(candidate => candidate.id === conversation.contactId) || contact;
+      }
 
       if (!conversation) {
         console.log(`[INGEST] Criando nova conversa org=${organizationId}...`);

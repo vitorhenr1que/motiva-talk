@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateId } from '@/lib/utils'
+import { getContactPhoneVariants } from '@/lib/contact-phone'
 
 export class ContactRepository {
   static async findMany(organizationId: string, where?: { OR: any[] } | any) {
@@ -39,15 +40,20 @@ export class ContactRepository {
     return data
   }
 
-  static async findByPhone(phone: string, organizationId: string) {
+  static async findAllByPhone(phone: string, organizationId: string) {
     const { data, error } = await supabaseAdmin
       .from('Contact')
       .select('*')
-      .eq('phone', phone)
+      .in('phone', getContactPhoneVariants(phone))
       .eq('organizationId', organizationId)
-      .maybeSingle()
     if (error) throw error
-    return data
+    return data || []
+  }
+
+  static async findByPhone(phone: string, organizationId: string) {
+    const contacts = await this.findAllByPhone(phone, organizationId)
+    const digits = phone.replace(/\D/g, '')
+    return contacts.find(contact => contact.phone === digits) || contacts[0] || null
   }
 
   static async create(organizationId: string, data: any) {
@@ -76,6 +82,6 @@ export class ContactRepository {
     const existing = await this.findByPhone(phone, organizationId)
     if (existing) return existing
 
-    return this.create(organizationId, { phone, name })
+    return this.create(organizationId, { phone: phone.replace(/\D/g, ''), name })
   }
 }
