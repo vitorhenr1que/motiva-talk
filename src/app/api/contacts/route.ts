@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ContactRepository } from '@/repositories/contactRepository'
 import { handleApiError, validateBody, AppError } from '@/lib/api-errors'
 import { getCurrentOrganizationId, organizationNotFoundError } from '@/lib/tenant'
+import { decodeContactCursor, normalizeContactSearch } from '@/lib/contact-pagination'
 
 export const dynamic = 'force-dynamic';
 
@@ -12,17 +13,30 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const organizationId = await getCurrentOrganizationId()
     if (!organizationId) throw organizationNotFoundError()
+    // Opt-in preserves the existing response consumed by dashboard/chat selectors.
+    if (searchParams.get('paginate') === 'true') {
+      const search = normalizeContactSearch(searchParams.get('search') || '')
+      const rawCursor = searchParams.get('cursor')
+      let cursor = null
+      if (rawCursor !== null) {
+        try {
+          cursor = decodeContactCursor(rawCursor, search)
+        } catch {
+          throw new AppError('Cursor de contatos inválido.', 400, 'VALIDATION_ERROR')
+        }
+      }
+      const page = await ContactRepository.findPage(organizationId, search, cursor, req.signal)
+      return NextResponse.json({ success: true, ...page }, { headers: { 'Cache-Control': 'private, no-store' } })
+    }
     const search = searchParams.get('search')
     
-    let query = searchParams.get('query') || '';
-
     const contacts = await ContactRepository.findMany(organizationId)
     
     // Filtro simples no backend (poderia ser via query Supabase mas aqui vamos filtrar o resultado)
     let filtered = contacts || [];
     if (search) {
       const s = search.toLowerCase();
-      filtered = filtered.filter((c: any) => 
+      filtered = filtered.filter((c: { name: string; phone: string }) =>
         c.name.toLowerCase().includes(s) || 
         c.phone.includes(s)
       );

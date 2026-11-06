@@ -8,13 +8,14 @@
     "start": "next start",
     "lint": "eslint",
     "health:check": "node scripts/monitor-supabase-health.mjs",
-    "test": "tsx --test src/services/auto-reply-policy.test.ts src/lib/bulk-messaging-recipients.test.ts src/lib/bulk-message-delivery.test.ts src/lib/meta-message-status.test.ts src/services/whatsapp/providers/meta-cloud-provider.test.ts src/services/whatsapp/incoming-conversation.test.ts"
+    "test": "tsx --test src/services/auto-reply-policy.test.ts src/lib/bulk-messaging-recipients.test.ts src/lib/bulk-message-delivery.test.ts src/lib/meta-message-status.test.ts src/services/whatsapp/providers/meta-cloud-provider.test.ts src/services/whatsapp/incoming-conversation.test.ts src/lib/contact-pagination.test.ts src/hooks/useInfiniteContacts.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.100.1",
+    "@tanstack/react-query": "^5.104.5",
     "@types/pg": "^8.20.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",

@@ -1,8 +1,20 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { generateId } from '@/lib/utils'
 import { getContactPhoneVariants } from '@/lib/contact-phone'
+import { buildContactPage, escapeContactSearch, type ContactCursor, type ContactListItem } from '@/lib/contact-pagination'
 
 export class ContactRepository {
+  static async findPage(organizationId: string, search: string, cursor: ContactCursor | null, signal: AbortSignal) {
+    const { data, error } = await supabaseAdmin.rpc('list_contact_page', {
+      p_organization_id: organizationId,
+      p_search: escapeContactSearch(search),
+      p_after_name: cursor?.name ?? null,
+      p_after_id: cursor?.id ?? null,
+    }).abortSignal(signal)
+    if (error) throw error
+    return buildContactPage((data || []) as ContactListItem[], search)
+  }
+
   static async findMany(organizationId: string, where?: { OR: any[] } | any) {
     let query = supabaseAdmin
       .from('Contact')

@@ -1,10 +1,13 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteContacts } from '@/hooks/useInfiniteContacts';
+import type { ContactListItem } from '@/lib/contact-pagination';
 import {
-  Users, Search, Download, UserPlus, MoreHorizontal,
-  MessageSquare, Phone, Trash2, Loader2, X, Check,
-  ExternalLink, Filter, Edit2, ChevronRight, Globe, Layers
+  Users, Search, Download, UserPlus,
+  MessageSquare, Loader2, X, Check,
+  Filter, Edit2, ChevronRight, Globe, Layers
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useChatStore } from '@/store/useChatStore';
@@ -15,17 +18,56 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+interface ContactChannel {
+  id: string;
+  name: string;
+  phoneNumber: string;
+  isActive: boolean;
+}
+
 export default function ContactsPage() {
+  // Keep this cache scoped to the contacts screen/authenticated mount.
+  const [queryClient] = useState(() => new QueryClient());
+  return <QueryClientProvider client={queryClient}><ContactsContent /></QueryClientProvider>;
+}
+
+function ContactsContent() {
   const router = useRouter();
-  const [contacts, setContacts] = useState<any[]>([]);
-  const [channels, setChannels] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const [channels, setChannels] = useState<ContactChannel[]>([]);
   const [search, setSearch] = useState('');
+  const sentinel = useRef<HTMLDivElement>(null);
+  const {
+    data, search: activeSearch, ready, isPending, isFetching, isFetchingNextPage,
+    hasNextPage, isError, error: listError, fetchNextPage, refetch,
+  } = useInfiniteContacts(search);
+  const loading = isPending || !ready;
+  const contacts = useMemo(() => {
+    // Defensive deduplication if a contact is renamed while scrolling.
+    const seen = new Set<string>();
+    return (data?.pages.flatMap(page => page.data) || []).filter(contact => {
+      if (seen.has(contact.id)) return false;
+      seen.add(contact.id);
+      return true;
+    });
+  }, [data]);
+
+  useEffect(() => {
+    const target = sentinel.current;
+    if (!target || !ready || !hasNextPage || isFetching || isError) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) {
+        void fetchNextPage({ cancelRefetch: false });
+      }
+    }, { root: target.closest('main'), rootMargin: '0px 0px 300px 0px' });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [ready, hasNextPage, isFetching, isError, fetchNextPage]);
 
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isChannelModalOpen, setIsChannelModalOpen] = useState(false);
-  const [selectedContact, setSelectedContact] = useState<any>(null);
+  const [selectedContact, setSelectedContact] = useState<ContactListItem | null>(null);
   const [isInitiatingChat, setIsInitiatingChat] = useState(false);
 
   // Form para novo contato
@@ -34,40 +76,19 @@ export default function ContactsPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
 
-  const fetchContacts = async (query = '') => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/contacts?search=${encodeURIComponent(query)}`);
-      const data = await res.json();
-      if (data.success) {
-        setContacts(data.data || []);
-      }
-    } catch (e) {
-      console.error('Falha ao carregar contatos:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const fetchChannels = async () => {
     try {
       const res = await fetch('/api/channels');
       const data = await res.json();
       if (data.success) {
-        setChannels(data.data?.filter((c: any) => c.isActive) || []);
+        setChannels(data.data?.filter((c: ContactChannel) => c.isActive) || []);
       }
-    } catch (e) { }
+    } catch { }
   };
 
   useEffect(() => {
-    fetchContacts();
     fetchChannels();
   }, []);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    fetchContacts(search);
-  };
 
   const handleCreateContact = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,14 +104,15 @@ export default function ContactsPage() {
 
       const data = await res.json();
       if (res.ok) {
-        setContacts([data.data, ...contacts]);
+        // Restart at page one so the new alphabetical position cannot corrupt cursors.
+        await queryClient.resetQueries({ queryKey: ['contacts'] });
         setNewName('');
         setNewPhone('');
         setIsModalOpen(false);
       } else {
         setError(data.message || 'Erro ao criar contato');
       }
-    } catch (e) {
+    } catch {
       setError('Erro de conexão com o servidor');
     } finally {
       setCreating(false);
@@ -100,7 +122,7 @@ export default function ContactsPage() {
   /**
    * Passo 1: Selecionar o contato e abrir modal de canal
    */
-  const handleOpenChannelSelector = (contact: any) => {
+  const handleOpenChannelSelector = (contact: ContactListItem) => {
     setSelectedContact(contact);
     setIsChannelModalOpen(true);
   };
@@ -144,7 +166,7 @@ export default function ContactsPage() {
           <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3">
             Meus Contatos
             <span className="bg-slate-100 text-slate-400 px-3 py-1 rounded-full text-xs align-middle">
-              {contacts.length}
+              {contacts.length} carregados
             </span>
           </h1>
           <p className="mt-2 text-slate-500 font-medium italic max-w-lg">
@@ -168,16 +190,17 @@ export default function ContactsPage() {
 
       {/* Filters Bar */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <form onSubmit={handleSearch} className="lg:col-span-8 relative group">
+        <div className="lg:col-span-8 relative group">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#00A884] transition-colors" size={20} />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Pesquisar por nome ou número..."
+            placeholder="Buscar contato por nome..."
+            aria-label="Buscar contato por nome"
             className="w-full rounded-2xl border-slate-200 bg-white py-4 pl-12 pr-4 text-sm font-medium shadow-sm ring-1 ring-slate-900/5 focus:ring-4 focus:ring-emerald-500/10 focus:border-[#008f72] outline-none transition-all placeholder:text-slate-400"
           />
-        </form>
+        </div>
         <div className="lg:col-span-4 flex gap-2">
           <div className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 flex items-center gap-3 text-sm font-bold text-slate-400 select-none shadow-sm opacity-50 cursor-not-allowed">
             <Filter size={18} />
@@ -198,21 +221,24 @@ export default function ContactsPage() {
                 <th className="px-8 py-5 text-right w-40">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-slate-50" aria-busy={loading}>
               {loading && contacts.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-8 py-20 text-center">
-                    <Loader2 className="mx-auto animate-spin text-emerald-500 mb-4" size={32} />
-                    <p className="text-sm font-bold text-slate-400">Carregando base de contatos...</p>
-                  </td>
-                </tr>
+                Array.from({ length: 6 }, (_, index) => (
+                  <tr key={index} aria-hidden="true" className="animate-pulse">
+                    {[0, 1, 2, 3].map(cell => (
+                      <td key={cell} className="px-8 py-7"><div className="h-6 rounded-lg bg-slate-100" /></td>
+                    ))}
+                  </tr>
+                ))
+              ) : isError && contacts.length === 0 ? (
+                <tr><td colSpan={4} className="px-8 py-20 text-center text-sm text-red-600">Não foi possível carregar os contatos.</td></tr>
               ) : contacts.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-8 py-20 text-center">
                     <div className="h-16 w-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
                       <Users size={32} className="text-slate-200" />
                     </div>
-                    <h3 className="text-lg font-bold text-slate-700">Nenhum contato encontrado</h3>
+                    <h3 className="text-lg font-bold text-slate-700">{activeSearch ? 'Nenhum resultado para esta busca' : 'Nenhum contato cadastrado'}</h3>
                   </td>
                 </tr>
               ) : (
@@ -234,7 +260,7 @@ export default function ContactsPage() {
                     </td>
                     <td className="px-8 py-5">
                       <div className="flex gap-1.5 flex-wrap">
-                        {contact.tags?.length > 0 ? contact.tags.map((t: any) => (
+                        {contact.tags && contact.tags.length > 0 ? contact.tags.map((t) => (
                           <span key={t.id} className="inline-flex items-center rounded-lg bg-white border border-slate-200 px-2.5 py-1 text-[9px] font-black text-slate-500 uppercase shadow-sm">
                             {t.name}
                           </span>
@@ -263,6 +289,21 @@ export default function ContactsPage() {
               )}
             </tbody>
           </table>
+        </div>
+        <div ref={sentinel} className="min-h-16 px-8 py-5 text-center text-sm font-bold text-slate-400" role="status" aria-live="polite">
+          {isError ? (
+            <div>
+              <p>{listError?.message}</p>
+              <button className="mt-2 text-emerald-600 hover:underline" onClick={() => {
+                if (contacts.length && hasNextPage) void fetchNextPage({ cancelRefetch: false });
+                else void refetch();
+              }}>Tentar novamente</button>
+            </div>
+          ) : loading || isFetchingNextPage ? (
+            <span className="inline-flex items-center gap-2"><Loader2 size={18} className="animate-spin text-emerald-500" />Carregando contatos...</span>
+          ) : contacts.length > 0 && !hasNextPage ? 'Fim da listagem' : hasNextPage ? (
+            <button className="text-emerald-600 hover:underline" onClick={() => void fetchNextPage({ cancelRefetch: false })}>Carregar mais contatos</button>
+          ) : null}
         </div>
       </div>
 
@@ -315,7 +356,7 @@ export default function ContactsPage() {
 
               <h2 className="text-3xl font-black text-slate-900 tracking-tight leading-none">Iniciar Atendimento</h2>
               <p className="mt-3 text-slate-500 font-medium italic">
-                Escolha o canal de saída para <span className="text-indigo-600 font-black uppercase">"{selectedContact.name}"</span>
+                Escolha o canal de saída para <span className="text-indigo-600 font-black uppercase">&quot;{selectedContact.name}&quot;</span>
               </p>
 
               <div className="mt-10 space-y-3">
